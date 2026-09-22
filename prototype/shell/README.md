@@ -37,19 +37,24 @@ including favicons, is generated locally.
 
 ## Tuning (your feedback loop)
 
-Open the sidebar and press **Tune** at the bottom of the expanded panel:
+Open the sidebar and press **Tune** at the bottom of the expanded panel.
+Every settable value is editable — that is the explicit first test:
 
-- **Density presets — Compact / Default / Large.** One switch rescales every
-  control: rail buttons, tab rows, spacing, rail width. Traffic lights stay
-  macOS 12px on all densities (platform convention, not app density).
-- **Every geometry value editable** — rail width, spacing, corner radius,
-  blur radius. Numeric fields overlay the active density; Reset restores.
+- **Profiles — Minus / Default / Plus.** One basement value set
+  (`BASEMENT` in `app.js`, the single source under test); profiles apply
+  deltas over it (−8/+12 rail, −6/+8 buttons, −2/+2 spacing, and so on).
+  Traffic lights default to macOS 12px but are editable like everything else.
+- **Every token exposed** — rail, panel, buttons, tab rows, spacing, radius,
+  blur, saturation, font, lights, motion duration, easing (Snappy/Smooth/
+  Swift). Edited fields gain an accent border as custom overlays that survive
+  profile switches, so a profile can be judged with personal tweaks intact.
 - **Motion duration user-testable** — slider from 0–400ms applies live;
   **Replay expand** collapses and re-expands the panel in isolation so each
   duration can be felt, with the FPS meter beside it as witness.
 - Values persist in `localStorage` on **this machine only** (nothing leaves
-  the page); Reset clears them. The winning numbers graduate into
-  `aequera/design` tokens later — this panel is how we find them.
+  the page); Reset returns to the basement default profile. When you declare
+  the winning basement, it graduates into `aequera/design` tokens — this
+  panel is how we find it.
 
 ## Model mapping (prototype → product)
 

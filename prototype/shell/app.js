@@ -386,60 +386,100 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
-/* ---------------- tuning: density + live geometry/motion ----------------
-   Density presets rescale every control (compact/default/large); numeric
-   fields overlay individual axes. Persisted to localStorage — this machine
-   only, cleared by Reset. */
-const TUNE_KEY = "aequera-proto-tune";
-const DENSITY_BASE = {
-  compact: { rail: 48, gap: 4 },
-  default: { rail: 56, gap: 6 },
-  large: { rail: 68, gap: 8 },
+/* ---------------- tuning: basement, profiles, custom overlays --------
+   BASEMENT is the single source of truth under test. Profiles apply deltas
+   over it (minus / default / plus); any edited field becomes a custom
+   overlay (accent-bordered) that survives profile switches. The user will
+   later declare the winning basement; until then everything stays editable.
+   Persisted to localStorage — this machine only. */
+const TUNE_KEY = "aequera-proto-tune-v2";
+const BASEMENT = {
+  rail: 56, panel: 272, ctl: 34, row: 38, gap: 6, rad: 10,
+  blur: 24, sat: 1.5, dur: 140, fs: 13, tl: 12, easing: "snappy",
 };
-const TUNE_DEFAULTS = { density: "default", dur: 140, rail: null, gap: null, rad: 10, blur: 24 };
+const PROFILE_DELTA = {
+  minus:   { rail: -8, panel: -32, ctl: -6, row: -8, gap: -2, rad: -2, fs: -1 },
+  default: {},
+  plus:    { rail: 12, panel: 32, ctl: 8, row: 8, gap: 2, rad: 2, fs: 1 },
+};
+const EASINGS = {
+  snappy: "cubic-bezier(0.2,0.9,0.25,1)",
+  smooth: "cubic-bezier(0.4,0,0.2,1)",
+  swift: "cubic-bezier(0.3,0.7,0.3,1)",
+};
+/* input id, token key, unit, decimals */
+const TUNE_FIELDS = [
+  ["t-rail", "rail"], ["t-panel", "panel"], ["t-ctl", "ctl"], ["t-row", "row"],
+  ["t-gap", "gap"], ["t-rad", "rad"], ["t-blur", "blur"], ["t-sat", "sat"],
+  ["t-fs", "fs"], ["t-tl", "tl"],
+];
 
 let tune = (() => {
   try {
     const raw = localStorage.getItem(TUNE_KEY);
-    if (raw) return { ...structuredClone(TUNE_DEFAULTS), ...JSON.parse(raw) };
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p && PROFILE_DELTA[p.profile]) {
+        return { profile: p.profile, dur: p.dur ?? BASEMENT.dur,
+                 easing: p.easing ?? BASEMENT.easing, custom: p.custom || {} };
+      }
+    }
   } catch { /* private mode: tuning stays session-only */ }
-  return { ...TUNE_DEFAULTS };
+  return { profile: "default", dur: BASEMENT.dur, easing: BASEMENT.easing, custom: {} };
 })();
 
 function saveTune() {
   try { localStorage.setItem(TUNE_KEY, JSON.stringify(tune)); } catch { /* session-only */ }
 }
-function effRail() { return tune.rail ?? DENSITY_BASE[tune.density].rail; }
-function effGap() { return tune.gap ?? DENSITY_BASE[tune.density].gap; }
-
-function applyTune() {
-  document.body.dataset.density = tune.density;
-  const root = document.documentElement.style;
-  root.setProperty("--dur", tune.dur + "ms");
-  root.setProperty("--rail-w", effRail() + "px");
-  root.setProperty("--gap", effGap() + "px");
-  root.setProperty("--radius", tune.rad + "px");
-  root.setProperty("--blur", tune.blur + "px");
-  document.querySelectorAll("[data-density]").forEach((b) =>
-    b.setAttribute("aria-pressed", String(b.dataset.density === tune.density)));
-  $("#t-dur").value = tune.dur;
-  $("#t-dur-v").textContent = tune.dur + "ms";
-  $("#t-rail").value = effRail();
-  $("#t-gap").value = effGap();
-  $("#t-rad").value = tune.rad;
-  $("#t-blur").value = tune.blur;
+/* Effective value: custom overlay wins, else basement + profile delta. */
+function eff(key) {
+  if (tune.custom[key] !== undefined) return tune.custom[key];
+  if (key === "dur") return tune.dur;
+  if (key === "easing") return tune.easing;
+  return BASEMENT[key] + (PROFILE_DELTA[tune.profile][key] || 0);
 }
 
-document.querySelectorAll("[data-density]").forEach((b) =>
-  b.addEventListener("click", () => { tune.density = b.dataset.density; applyTune(); saveTune(); }));
+function applyTune() {
+  const root = document.documentElement.style;
+  root.setProperty("--dur", eff("dur") + "ms");
+  root.setProperty("--snap", EASINGS[tune.easing] || EASINGS.snappy);
+  root.setProperty("--rail-w", eff("rail") + "px");
+  root.setProperty("--panel-w", eff("panel") + "px");
+  root.setProperty("--ctl", eff("ctl") + "px");
+  root.setProperty("--row-h", eff("row") + "px");
+  root.setProperty("--gap", eff("gap") + "px");
+  root.setProperty("--radius", eff("rad") + "px");
+  root.setProperty("--blur", eff("blur") + "px");
+  root.setProperty("--sat", eff("sat"));
+  root.setProperty("--fs", eff("fs") + "px");
+  root.setProperty("--tl", eff("tl") + "px");
+  document.querySelectorAll("[data-profile]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.profile === tune.profile)));
+  $("#t-dur").value = eff("dur");
+  $("#t-dur-v").textContent = eff("dur") + "ms";
+  $("#t-ease").value = tune.easing;
+  for (const [id, key] of TUNE_FIELDS) {
+    const input = $("#" + id);
+    input.value = eff(key);
+    input.classList.toggle("custom", tune.custom[key] !== undefined);
+  }
+  const ease = $("#t-ease");
+  ease.classList.toggle("custom", tune.easing !== BASEMENT.easing);
+}
+
+document.querySelectorAll("[data-profile]").forEach((b) =>
+  b.addEventListener("click", () => { tune.profile = b.dataset.profile; applyTune(); saveTune(); }));
 $("#t-dur").addEventListener("input", (ev) => {
   tune.dur = Number(ev.target.value);
   applyTune(); saveTune();
 });
-for (const [id, key] of [["t-rail", "rail"], ["t-gap", "gap"], ["t-rad", "rad"], ["t-blur", "blur"]]) {
+$("#t-ease").addEventListener("change", (ev) => {
+  if (EASINGS[ev.target.value]) { tune.easing = ev.target.value; applyTune(); saveTune(); }
+});
+for (const [id, key] of TUNE_FIELDS) {
   $("#" + id).addEventListener("change", (ev) => {
     const v = Number(ev.target.value);
-    if (Number.isFinite(v)) { tune[key] = v; applyTune(); saveTune(); }
+    if (Number.isFinite(v)) { tune.custom[key] = v; applyTune(); saveTune(); }
   });
 }
 $("#t-replay").addEventListener("click", () => {
@@ -449,9 +489,9 @@ $("#t-replay").addEventListener("click", () => {
   expand();
 });
 $("#t-reset").addEventListener("click", () => {
-  tune = { ...TUNE_DEFAULTS };
+  tune = { profile: "default", dur: BASEMENT.dur, easing: BASEMENT.easing, custom: {} };
   applyTune(); saveTune();
-  toast("Tuning reset to defaults.");
+  toast("Tuning reset to basement default profile.");
 });
 $("#tune-toggle").addEventListener("click", () => {
   const panel = $("#tune");

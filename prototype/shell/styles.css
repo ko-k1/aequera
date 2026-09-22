@@ -4,11 +4,15 @@
    promoting animated layers; the tab list is contain:ed, not re-laid-out. */
 
 :root {
+  /* Basement tokens: every value below is user-editable in the Tune panel.
+     Profiles (minus/default/plus) apply deltas over this single source. */
   --rail-w: 56px;
   --panel-w: 272px;
-  --ctl: 34px;      /* rail control size: density-driven (compact/default/large) */
-  --row-h: 38px;    /* expanded tab row height, density-driven */
-  --gap: 6px;       /* rail + list spacing, user-editable */
+  --ctl: 34px;      /* rail control size */
+  --row-h: 38px;    /* expanded tab row height */
+  --gap: 6px;       /* rail + list spacing */
+  --fs: 13px;       /* base font size */
+  --tl: 12px;       /* traffic-light diameter (macOS convention default) */
   --blur: 24px;
   --sat: 1.5;
   --surface: rgba(15, 17, 23, 0.58);
@@ -23,15 +27,6 @@
   --snap: cubic-bezier(0.2, 0.9, 0.25, 1);
   --dur: 140ms;     /* motion duration, user-testable in the Tune panel */
   --radius: 10px;
-}
-
-/* Density presets: one switch rescales every control. Traffic lights stay
-   macOS 12px on all densities — platform convention, not app density. */
-body[data-density="compact"] {
-  --ctl: 28px; --row-h: 30px; --gap: 4px; --rail-w: 48px;
-}
-body[data-density="large"] {
-  --ctl: 42px; --row-h: 46px; --gap: 8px; --rail-w: 68px;
 }
 
 @media (prefers-color-scheme: light) {
@@ -50,7 +45,7 @@ html, body { height: 100%; }
 body {
   margin: 0;
   color: var(--text);
-  font: 13px/1.45 -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+  font: var(--fs)/1.45 -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
   overflow: hidden;
 }
 
@@ -100,7 +95,7 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
 /* Traffic lights: Aequera's take on the 3-button cluster. Green pins. */
 .traffic { display: flex; gap: 7px; padding: 2px 0 6px; }
 .tl {
-  width: 12px; height: 12px;
+  width: var(--tl); height: var(--tl);
   border-radius: 50%;
   padding: 0;
   display: grid;
@@ -108,7 +103,7 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
   border: 1px solid rgba(0, 0, 0, 0.25);
 }
 .tl span {
-  font-size: 9px;
+  font-size: calc(var(--tl) * 0.75);
   line-height: 1;
   color: rgba(0, 0, 0, 0.55);
   opacity: 0;
@@ -335,12 +330,24 @@ body.expanded #expander,
   flex-direction: column;
   gap: 8px;
   font-size: 12px;
+  max-height: 46vh;
+  overflow-y: auto;
 }
 #tune[hidden] { display: none; }
 .tune-row { display: flex; align-items: center; gap: 8px; color: var(--text-dim); }
 .tune-row output { color: var(--text); min-width: 44px; text-align: right; }
 .tune-row input[type="number"] {
   width: 56px;
+  background: transparent;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  padding: 2px 6px;
+}
+.tune-row input.custom, .tune-row select.custom { border-color: var(--accent); }
+.tune-row select {
+  flex: 1;
   background: transparent;
   border: 1px solid var(--stroke);
   border-radius: 6px;
