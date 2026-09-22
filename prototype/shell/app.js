@@ -482,9 +482,15 @@ $("#t-ease").addEventListener("change", (ev) => {
   if (EASINGS[ev.target.value]) { tune.easing = ev.target.value; applyTune(); saveTune(); }
 });
 for (const [id, key] of TUNE_FIELDS) {
-  $("#" + id).addEventListener("change", (ev) => {
+  const input = $("#" + id);
+  input.title = "Double-click to clear this override";
+  input.addEventListener("change", (ev) => {
     const v = Number(ev.target.value);
     if (Number.isFinite(v)) { tune.custom[key] = v; applyTune(); saveTune(); }
+  });
+  input.addEventListener("dblclick", () => {
+    delete tune.custom[key];
+    applyTune(); saveTune();
   });
 }
 $("#t-replay").addEventListener("click", () => {
