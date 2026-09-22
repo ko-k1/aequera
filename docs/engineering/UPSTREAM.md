@@ -84,3 +84,19 @@ Use `patches/build/` for necessary source/build integration changes.
 The project should always be able to answer:
 
 > Which Firefox revision are we based on, what did Aequera change, why did it change, and what validates the divergence today?
+
+## Track Policy (Phase 0)
+
+Detailed upstream policy lives in `UPSTREAM.md` (repository root). The
+committed decisions for this phase:
+
+```text
+release          = production baseline (pinned in upstream/manifests/firefox.lock)
+mozilla-central  = forward-compatibility preview (independent channels/central.lock, later)
+ESR              = optional future LTS baseline (independent channels/esr.lock, later)
+```
+
+Phase 0 pins and builds the Release track only (`156.0`,
+`FIREFOX_156_0_RELEASE`). Preview and LTS tracks exist as schema plus policy
+until a later phase activates them. A failing central preview check must
+produce a maintenance signal, never invalidate the Release baseline.
