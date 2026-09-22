@@ -123,9 +123,24 @@ function renderRail() {
     `<li><button role="tab" data-tab="${t.id}" aria-selected="${t.id === w.activeTab}"`
     + ` aria-label="${esc(t.title)}" class="${t.pinned ? "pinned" : ""}">`
     + `<img src="${t.fav}" alt=""></button></li>`).join("");
-  $("#ws-rail").innerHTML = store.workspaces.map((x) =>
+  $("#ws-dots").innerHTML = store.workspaces.map((x) =>
     `<button data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
     + ` aria-label="${esc(x.name)}" title="${esc(x.name)}"></button>`).join("");
+  positionWsIndicator();
+}
+
+/* Glide the active-workspace dot to its new home. Pure transform, so a
+   rapid re-switch supersedes the running animation instead of queueing. */
+function positionWsIndicator() {
+  const ind = $("#ws-indicator");
+  const active = document.querySelector(`#ws-dots [data-ws="${store.activeWs}"]`);
+  if (!active) {
+    ind.style.opacity = "0";
+    return;
+  }
+  ind.style.opacity = "1";
+  const y = active.offsetTop + (active.offsetHeight - ind.offsetHeight) / 2;
+  ind.style.transform = `translateY(${y}px)`;
 }
 
 function renderExpander() {

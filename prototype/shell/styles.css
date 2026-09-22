@@ -199,15 +199,31 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
   font-size: 16px;
 }
 
-#ws-rail { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
-#ws-rail button {
+#ws-rail { position: relative; display: flex; margin-top: auto; }
+#ws-dots { display: flex; flex-direction: column; gap: 6px; }
+#ws-dots button {
   width: 10px; height: 10px;
   border-radius: 50%;
   padding: 0;
   background: var(--text-dim);
   opacity: 0.45;
 }
-#ws-rail button[aria-selected="true"] { opacity: 1; background: var(--accent); }
+/* Active-workspace indicator: one accent dot gliding between positions on
+   transform only — the switch itself is the animation, interruptible by
+   the next switch (a new transform supersedes the running one). */
+#ws-indicator {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 10px; height: 10px;
+  margin-left: -5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  pointer-events: none;
+  transition: transform var(--dur) var(--snap);
+  will-change: transform;
+}
 
 /* Expander: compositor-only show/hide. Never animates width or blur. */
 #expander {
