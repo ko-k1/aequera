@@ -1,0 +1,356 @@
+/* Aequera shell prototype — semantic tokens, glass, compositor-only motion.
+   Perf contract (see README): only transform + opacity animate. Widths,
+   blur radii, and backgrounds never transition. Static paint is cached by
+   promoting animated layers; the tab list is contain:ed, not re-laid-out. */
+
+:root {
+  --rail-w: 56px;
+  --panel-w: 272px;
+  --blur: 24px;
+  --sat: 1.5;
+  --surface: rgba(15, 17, 23, 0.58);
+  --surface-strong: rgba(15, 17, 23, 0.78);
+  --stroke: rgba(255, 255, 255, 0.09);
+  --text: #e9ebf2;
+  --text-dim: #9aa1b5;
+  --accent: #6ea8fe;
+  --danger: #ff5f57;
+  --warn: #febc2e;
+  --ok: #28c840;
+  --snap: cubic-bezier(0.2, 0.9, 0.25, 1);
+  --dur: 140ms;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --surface: rgba(255, 255, 255, 0.62);
+    --surface-strong: rgba(255, 255, 255, 0.82);
+    --stroke: rgba(20, 25, 40, 0.1);
+    --text: #191d27;
+    --text-dim: #5b6274;
+    --accent: #0b57d0;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  color: var(--text);
+  font: 13px/1.45 -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 4px;
+}
+button:hover { background: rgba(127, 140, 170, 0.18); }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+#wallpaper {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(1200px 800px at 15% 10%, #2b3a67 0%, transparent 60%),
+    radial-gradient(1000px 700px at 85% 20%, #4a2b5e 0%, transparent 55%),
+    radial-gradient(900px 900px at 50% 100%, #123f3c 0%, transparent 60%),
+    #0b0d12;
+}
+
+/* One shared blurred-surface recipe: rail + expander read as seamless. */
+.glass {
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--sat));
+  backdrop-filter: blur(var(--blur)) saturate(var(--sat));
+  border-right: 1px solid var(--stroke);
+}
+
+#rail {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: var(--rail-w);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+}
+
+/* Traffic lights: Aequera's take on the 3-button cluster. Green pins. */
+.traffic { display: flex; gap: 7px; padding: 2px 0 6px; }
+.tl {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+.tl span {
+  font-size: 9px;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.55);
+  opacity: 0;
+}
+.traffic:hover .tl span, .tl:focus-visible span { opacity: 1; }
+.tl.close { background: var(--danger); }
+.tl.min { background: var(--warn); }
+.tl.max { background: var(--ok); }
+.tl.max[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
+
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav button {
+  width: 32px; height: 28px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+.nav button:hover { color: var(--text); }
+
+#addr-pill {
+  width: 32px; height: 32px;
+  border: 1px solid var(--stroke);
+  border-radius: 9px;
+  color: var(--text-dim);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+#addr-pill-host { font-size: 9px; max-width: 0; overflow: hidden; }
+
+#tab-rail {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  contain: layout paint;
+}
+#tab-rail::-webkit-scrollbar { display: none; }
+#tab-rail button {
+  width: 34px; height: 34px;
+  padding: 0;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+#tab-rail button img { width: 18px; height: 18px; border-radius: 4px; }
+#tab-rail button[aria-selected="true"] { background: rgba(127, 140, 170, 0.22); }
+#tab-rail button[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  width: 3px; height: 18px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+#tab-rail button.pinned img { outline: 1px dashed var(--text-dim); outline-offset: 2px; }
+
+#newtab-rail {
+  width: 32px; height: 28px;
+  color: var(--text-dim);
+  font-size: 16px;
+}
+
+#ws-rail { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+#ws-rail button {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--text-dim);
+  opacity: 0.45;
+}
+#ws-rail button[aria-selected="true"] { opacity: 1; background: var(--accent); }
+
+/* Expander: compositor-only show/hide. Never animates width or blur. */
+#expander {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: var(--panel-w);
+  z-index: 20;
+  padding: 10px 12px 12px calc(var(--rail-w) + 2px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-14px);
+  transition:
+    opacity var(--dur) var(--snap),
+    transform var(--dur) var(--snap),
+    visibility 0s linear var(--dur);
+  will-change: transform, opacity;
+}
+body.expanded #expander,
+#sidebar:focus-within #expander {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+  transition:
+    opacity var(--dur) var(--snap),
+    transform var(--dur) var(--snap);
+}
+
+#addr-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: var(--surface-strong);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: 4px 4px 4px 10px;
+  margin-top: 34px; /* clears the traffic-light row beneath the rail */
+}
+#lock { width: 12px; height: 12px; color: var(--text-dim); flex: none; }
+#addr {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+}
+#addr-row button { color: var(--text-dim); font-size: 16px; width: 28px; }
+
+#results {
+  background: var(--surface-strong);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  overflow: hidden auto;
+  max-height: 264px;
+}
+#results[hidden] { display: none; }
+.result {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 0;
+}
+.result .kind {
+  flex: none;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  width: 64px;
+}
+.result .sub { display: block; font-size: 11px; color: var(--text-dim); }
+.result.sel, .result:hover { background: rgba(110, 168, 254, 0.16); }
+.result img { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+
+#tab-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  contain: layout paint;
+}
+.tab-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.tab-row img { width: 16px; height: 16px; border-radius: 4px; }
+.tab-row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-row .t small { display: block; color: var(--text-dim); font-size: 11px; }
+.tab-row[aria-selected="true"] { background: rgba(127, 140, 170, 0.2); }
+.tab-row .x {
+  opacity: 0;
+  color: var(--text-dim);
+  width: 22px; height: 22px;
+  font-size: 13px;
+}
+.tab-row:hover .x, .tab-row:focus-within .x { opacity: 1; }
+
+#ws-list { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+#ws-list button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+  padding: 6px 8px;
+  color: var(--text-dim);
+}
+#ws-list button[aria-selected="true"] { color: var(--text); }
+#ws-list .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+#ws-list .n { margin-left: auto; font-size: 11px; }
+
+#content { margin-left: var(--rail-w); height: 100%; position: relative; }
+#page {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 12, 17, 0.55);
+  transition: opacity 120ms var(--snap);
+}
+#page.flash { opacity: 0.25; }
+.page-card { text-align: center; max-width: 460px; padding: 24px; }
+.page-card img { width: 56px; height: 56px; border-radius: 14px; }
+.page-card h1 { font-size: 22px; margin: 14px 0 4px; font-weight: 600; }
+.page-card p { color: var(--text-dim); margin: 4px 0; }
+.page-card kbd {
+  font: 11px/1 ui-monospace, Consolas, monospace;
+  background: rgba(127, 140, 170, 0.18);
+  border: 1px solid var(--stroke);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+#fps {
+  position: absolute;
+  right: 12px; bottom: 10px;
+  font: 11px/1 ui-monospace, Consolas, monospace;
+  color: var(--text-dim);
+  background: rgba(10, 12, 17, 0.5);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+#toast {
+  position: absolute;
+  left: 50%; bottom: 24px;
+  transform: translateX(-50%);
+  background: var(--surface-strong);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 8px 14px;
+  transition: opacity var(--dur) var(--snap);
+}
+#toast[hidden] { display: none; }
+
+/* Accessibility baseline: reduced motion removes every transition, but all
+   state information (expanded, selected, results) stays fully available. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+  #expander { transform: none; }
+}

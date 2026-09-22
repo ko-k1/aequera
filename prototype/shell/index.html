@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aequera Shell Prototype</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="wallpaper" aria-hidden="true"></div>
+
+<div id="sidebar">
+  <!-- Collapsed rail: traffic lights, nav, address pill, favicon tabs, workspaces.
+       Always visible, fixed width. Expands purely by revealing #expander. -->
+  <div id="rail" class="glass">
+    <div class="traffic" role="toolbar" aria-label="Window controls">
+      <button class="tl close" data-act="win-close" aria-label="Close (decorative in prototype)"><span aria-hidden="true">×</span></button>
+      <button class="tl min" data-act="win-min" aria-label="Collapse sidebar"><span aria-hidden="true">–</span></button>
+      <button class="tl max" data-act="win-pin" aria-label="Pin sidebar open" aria-pressed="false"><span aria-hidden="true">+</span></button>
+    </div>
+    <div class="nav" role="toolbar" aria-label="Navigation">
+      <button data-act="back" aria-label="Back">←</button>
+      <button data-act="fwd" aria-label="Forward">→</button>
+      <button data-act="reload" aria-label="Reload">⟳</button>
+    </div>
+    <button id="addr-pill" aria-label="Address and search">
+      <span aria-hidden="true">⌕</span><span id="addr-pill-host"></span>
+    </button>
+    <ul id="tab-rail" role="tablist" aria-label="Tabs"></ul>
+    <button id="newtab-rail" data-act="newtab" aria-label="New tab">+</button>
+    <div id="ws-rail" role="tablist" aria-label="Workspaces"></div>
+  </div>
+
+  <!-- Expander: full address bar + titled tabs + workspaces. One seamless
+       blurred surface with the rail (shared tokens, overlapping layers).
+       Shown/hidden with compositor-only properties (opacity + transform). -->
+  <div id="expander" class="glass" aria-hidden="true">
+    <div id="addr-row">
+      <svg id="lock" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" opacity=".7"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+      <input id="addr" type="text" role="combobox" aria-expanded="false" aria-controls="results" aria-label="Address, search tabs, commands and workspaces" placeholder="Search tabs, commands, or type an address" autocomplete="off" spellcheck="false">
+      <button data-act="newtab" aria-label="New tab">+</button>
+    </div>
+    <div id="results" role="listbox" aria-label="Matches" hidden></div>
+    <ul id="tab-list" aria-label="Tabs in this workspace"></ul>
+    <div id="ws-list" aria-label="Workspaces"></div>
+  </div>
+</div>
+
+<main id="content">
+  <div id="page" aria-live="polite"></div>
+  <div id="fps" title="Local frame meter: requestAnimationFrame delta, exponential moving average. No data leaves this page.">– fps</div>
+  <div id="toast" role="status" hidden></div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
