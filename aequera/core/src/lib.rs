@@ -23,6 +23,7 @@
 //! - moving a tab repairs the source workspace exactly like a close.
 
 pub mod command;
+pub mod session;
 
 pub type WorkspaceId = u64;
 pub type TabId = u64;
@@ -109,6 +110,8 @@ pub enum Error {
     TabNotFound(TabId),
     LastWorkspace,
     NothingToRestore(WorkspaceId),
+    UnsupportedSnapshot(u32),
+    EmptySnapshot,
 }
 
 impl std::fmt::Display for Error {
@@ -119,6 +122,10 @@ impl std::fmt::Display for Error {
             Error::TabNotFound(id) => write!(f, "no tab {id}"),
             Error::LastWorkspace => write!(f, "the last workspace cannot be removed"),
             Error::NothingToRestore(id) => write!(f, "workspace {id} has no closed tabs"),
+            Error::UnsupportedSnapshot(v) => {
+                write!(f, "snapshot schema v{v} is not supported by this build")
+            }
+            Error::EmptySnapshot => write!(f, "snapshot contains no workspaces"),
         }
     }
 }
