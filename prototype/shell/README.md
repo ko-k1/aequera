@@ -35,6 +35,22 @@ including favicons, is generated locally.
   `1–9` switches tabs, `Esc` collapses. Reduced-motion users get zero
   transitions with all state information intact.
 
+## Tuning (your feedback loop)
+
+Open the sidebar and press **Tune** at the bottom of the expanded panel:
+
+- **Density presets — Compact / Default / Large.** One switch rescales every
+  control: rail buttons, tab rows, spacing, rail width. Traffic lights stay
+  macOS 12px on all densities (platform convention, not app density).
+- **Every geometry value editable** — rail width, spacing, corner radius,
+  blur radius. Numeric fields overlay the active density; Reset restores.
+- **Motion duration user-testable** — slider from 0–400ms applies live;
+  **Replay expand** collapses and re-expands the panel in isolation so each
+  duration can be felt, with the FPS meter beside it as witness.
+- Values persist in `localStorage` on **this machine only** (nothing leaves
+  the page); Reset clears them. The winning numbers graduate into
+  `aequera/design` tokens later — this panel is how we find them.
+
 ## Model mapping (prototype → product)
 
 | Prototype (`app.js` store) | `aequera-core` | Future shell home |

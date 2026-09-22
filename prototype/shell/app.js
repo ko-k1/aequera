@@ -386,6 +386,80 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
+/* ---------------- tuning: density + live geometry/motion ----------------
+   Density presets rescale every control (compact/default/large); numeric
+   fields overlay individual axes. Persisted to localStorage — this machine
+   only, cleared by Reset. */
+const TUNE_KEY = "aequera-proto-tune";
+const DENSITY_BASE = {
+  compact: { rail: 48, gap: 4 },
+  default: { rail: 56, gap: 6 },
+  large: { rail: 68, gap: 8 },
+};
+const TUNE_DEFAULTS = { density: "default", dur: 140, rail: null, gap: null, rad: 10, blur: 24 };
+
+let tune = (() => {
+  try {
+    const raw = localStorage.getItem(TUNE_KEY);
+    if (raw) return { ...structuredClone(TUNE_DEFAULTS), ...JSON.parse(raw) };
+  } catch { /* private mode: tuning stays session-only */ }
+  return { ...TUNE_DEFAULTS };
+})();
+
+function saveTune() {
+  try { localStorage.setItem(TUNE_KEY, JSON.stringify(tune)); } catch { /* session-only */ }
+}
+function effRail() { return tune.rail ?? DENSITY_BASE[tune.density].rail; }
+function effGap() { return tune.gap ?? DENSITY_BASE[tune.density].gap; }
+
+function applyTune() {
+  document.body.dataset.density = tune.density;
+  const root = document.documentElement.style;
+  root.setProperty("--dur", tune.dur + "ms");
+  root.setProperty("--rail-w", effRail() + "px");
+  root.setProperty("--gap", effGap() + "px");
+  root.setProperty("--radius", tune.rad + "px");
+  root.setProperty("--blur", tune.blur + "px");
+  document.querySelectorAll("[data-density]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.density === tune.density)));
+  $("#t-dur").value = tune.dur;
+  $("#t-dur-v").textContent = tune.dur + "ms";
+  $("#t-rail").value = effRail();
+  $("#t-gap").value = effGap();
+  $("#t-rad").value = tune.rad;
+  $("#t-blur").value = tune.blur;
+}
+
+document.querySelectorAll("[data-density]").forEach((b) =>
+  b.addEventListener("click", () => { tune.density = b.dataset.density; applyTune(); saveTune(); }));
+$("#t-dur").addEventListener("input", (ev) => {
+  tune.dur = Number(ev.target.value);
+  applyTune(); saveTune();
+});
+for (const [id, key] of [["t-rail", "rail"], ["t-gap", "gap"], ["t-rad", "rad"], ["t-blur", "blur"]]) {
+  $("#" + id).addEventListener("change", (ev) => {
+    const v = Number(ev.target.value);
+    if (Number.isFinite(v)) { tune[key] = v; applyTune(); saveTune(); }
+  });
+}
+$("#t-replay").addEventListener("click", () => {
+  // Collapse and re-expand so the current duration can be felt in isolation.
+  document.body.classList.remove("expanded");
+  void sidebar.offsetWidth;
+  expand();
+});
+$("#t-reset").addEventListener("click", () => {
+  tune = { ...TUNE_DEFAULTS };
+  applyTune(); saveTune();
+  toast("Tuning reset to defaults.");
+});
+$("#tune-toggle").addEventListener("click", () => {
+  const panel = $("#tune");
+  const show = panel.hidden;
+  panel.hidden = !show;
+  $("#tune-toggle").setAttribute("aria-expanded", String(show));
+});
+
 /* ---------------- frame meter (local only) ---------------- */
 let last = performance.now(), ema = 16.7, frames = 0, lastPaint = performance.now();
 function meter(now) {
@@ -400,5 +474,6 @@ function meter(now) {
   requestAnimationFrame(meter);
 }
 
+applyTune();
 render();
 requestAnimationFrame(meter);

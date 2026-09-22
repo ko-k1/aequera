@@ -43,6 +43,26 @@
     <div id="results" role="listbox" aria-label="Matches" hidden></div>
     <ul id="tab-list" aria-label="Tabs in this workspace"></ul>
     <div id="ws-list" aria-label="Workspaces"></div>
+    <div id="tune-bar">
+      <button id="tune-toggle" aria-expanded="false" aria-controls="tune">Tune</button>
+    </div>
+    <section id="tune" hidden aria-label="Interface tuning">
+      <div class="tune-row seg" role="group" aria-label="Density">
+        <button data-density="compact" aria-pressed="false">Compact</button>
+        <button data-density="default" aria-pressed="true">Default</button>
+        <button data-density="large" aria-pressed="false">Large</button>
+      </div>
+      <label class="tune-row">Motion
+        <input id="t-dur" type="range" min="0" max="400" step="10" value="140">
+        <output id="t-dur-v" for="t-dur">140ms</output>
+      </label>
+      <div class="tune-row"><button id="t-replay">Replay expand</button></div>
+      <label class="tune-row">Rail <input id="t-rail" type="number" min="40" max="88" step="2" value="56"> px</label>
+      <label class="tune-row">Spacing <input id="t-gap" type="number" min="0" max="16" step="1" value="6"> px</label>
+      <label class="tune-row">Radius <input id="t-rad" type="number" min="0" max="16" step="1" value="10"> px</label>
+      <label class="tune-row">Blur <input id="t-blur" type="number" min="0" max="40" step="1" value="24"> px</label>
+      <div class="tune-row"><button id="t-reset">Reset</button><span class="t-note">saved on this machine only</span></div>
+    </section>
   </div>
 </div>
 
