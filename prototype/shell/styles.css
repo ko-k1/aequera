@@ -159,7 +159,18 @@ body.expanded #sidebar,
   gap: 8px;
   padding: 0 12px;
   border-right: 0;
-  border-bottom: 1px solid var(--stroke);
+  border-bottom: 0; /* the edge is drawn by ::after, starting past the rail */
+}
+/* The single hairline separating chrome from content starts exactly at the
+   rail's right edge — never drawn over the rail itself, so bar and rail
+   stay one uncut surface. Tracks --rail-w through tuning. */
+#topbar::after {
+  content: "";
+  position: absolute;
+  left: var(--rail-w); right: 0; bottom: 0;
+  height: 1px;
+  background: var(--stroke);
+  pointer-events: none;
 }
 #topbar .traffic { width: auto; padding: 0 4px 0 0; }
 #topbar .traffic { padding: 0 2px; }
