@@ -137,7 +137,11 @@ function renderTabs() {
 }
 
 /* Glide the active-workspace dot to its new home. Pure transform, so a
-   rapid re-switch supersedes the running animation instead of queueing. */
+   rapid re-switch supersedes the running animation instead of queueing.
+   Position math uses constants, never measured sizes: measuring is wrong
+   whenever the indicator is hidden (display:none reports height 0, which
+   used to land the dot 5px low after switching while expanded). */
+const INDICATOR_SIZE = 10;
 function positionWsIndicator() {
   const ind = $("#ws-indicator");
   const active = document.querySelector(`#ws-dots [data-ws="${store.activeWs}"]`);
@@ -146,7 +150,7 @@ function positionWsIndicator() {
     return;
   }
   ind.style.opacity = "1";
-  const y = active.offsetTop + (active.offsetHeight - ind.offsetHeight) / 2;
+  const y = active.offsetTop + (active.offsetHeight - INDICATOR_SIZE) / 2;
   ind.style.transform = `translateY(${y}px)`;
 }
 
