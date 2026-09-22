@@ -355,19 +355,21 @@ body.expanded #ws-indicator,
   overflow-y: auto;
   contain: layout paint;
 }
-/* Collapsed: icon-sized rows — the wash hugs the icon like a plain icon
-   button, identical for tabs and New Tab. Icons top-pin at --row-py so the
-   widen never bobs them vertically; only width changes between states. */
+/* STATE 1 — default (collapsed): icon rows anchored LEFT at the exact
+   inset expanded rows use. The button origin never moves: expand extends
+   rightward to full width, collapse shrinks back the identical path.
+   (Centered boxes were tried — recentering the icon mid-flight is what
+   made the minimized/expanded/minimized cycle feel broken.) */
 .tab-row {
   display: grid;
   grid-template-columns: 22px;
-  justify-content: center;
-  justify-items: center;
+  justify-content: start;
+  justify-items: start;
   align-items: start;
   width: var(--ctl);
   min-height: var(--ctl);
-  margin: 0 auto;
-  padding: var(--row-py) 0;
+  margin: 0;
+  padding: var(--row-py) 0 var(--row-py) calc(var(--row-px) + 4px);
   text-align: left;
   border-radius: var(--radius);
   overflow: hidden;
