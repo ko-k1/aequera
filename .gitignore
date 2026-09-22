@@ -1,0 +1,12 @@
+# Generated Firefox tree
+worktree/firefox/
+
+# Build outputs
+build/
+obj-*/
+
+# Local tooling/cache
+.cache/
+
+# Local test/profile state
+.tmp/
