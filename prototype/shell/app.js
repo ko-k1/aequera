@@ -127,7 +127,12 @@ function renderTabs() {
     + `<img src="${t.fav}" alt="">`
     + `<span class="t">${esc(t.title)}<small>${esc(t.url)}</small></span>`
     + `<span class="x" role="button" tabindex="-1" data-close="${t.id}" aria-label="Close ${esc(t.title)}">×</span>`
-    + `</button></li>`).join("");
+    + `</button></li>`).join("")
+    // New tab speaks the same row language: same container, same grid,
+    // icon box aligned with favicons, label revealed with titles.
+    + `<li><button class="tab-row" data-act="newtab" aria-label="New tab">`
+    + `<span class="nic" aria-hidden="true">+</span><span class="t">New tab</span>`
+    + `</button></li>`;
   $("#ws-dots").innerHTML = store.workspaces.map((x) =>
     `<button data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
     + ` aria-label="${esc(x.name)}, ${x.tabs.length} tabs" title="${esc(x.name)}">`
