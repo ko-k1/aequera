@@ -11,7 +11,10 @@
   --panel-w: 272px;
   --ctl: 34px;      /* rail control size */
   --row-h: 38px;    /* expanded tab row height */
-  --gap: 6px;       /* rail + list spacing */
+  --row-gap: 2px;   /* margin between tab rows */
+  --row-py: 6px;    /* tab row vertical padding */
+  --row-px: 8px;    /* tab row horizontal padding (left adds icon inset) */
+  --gap: 6px;       /* rail + chrome spacing */
   --fs: 13px;       /* base font size */
   --tl: 12px;       /* traffic-light diameter (macOS convention default) */
   --blur: 24px;
@@ -196,7 +199,7 @@ body.expanded #sidebar,
   padding: 0 6px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--row-gap);
   overflow-y: auto;
   scrollbar-width: none;
   contain: layout paint;
@@ -380,7 +383,7 @@ body.expanded #ws-indicator,
   width: 100%;
   min-height: var(--row-h);
   text-align: left;
-  padding: 6px 6px 6px 12px;
+  padding: var(--row-py) var(--row-px) var(--row-py) calc(var(--row-px) + 4px);
   border-radius: var(--radius);
 }
 /* In-place reveal: icons never move; titles + URLs wipe in via the bar's
