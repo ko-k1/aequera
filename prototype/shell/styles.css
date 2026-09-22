@@ -91,6 +91,10 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
   align-items: center;
   gap: var(--gap);
   padding: 10px 0;
+  /* No right border: it would cut a vertical divider through the top strip
+     between the traffic lights and the nav buttons. The edge below the bar
+     is drawn by #content instead, so bar + rail still meet in one L. */
+  border-right: 0;
 }
 
 /* Traffic lights: macOS trio (red/yellow/green), macOS order and size.
@@ -394,7 +398,7 @@ body.expanded #expander,
   color: var(--text);
 }
 
-#content { margin: var(--top-h) 0 0 var(--rail-w); height: calc(100% - var(--top-h)); position: relative; }
+#content { margin: var(--top-h) 0 0 var(--rail-w); height: calc(100% - var(--top-h)); position: relative; border-left: 1px solid var(--stroke); }
 #page {
   height: 100%;
   display: grid;
