@@ -61,29 +61,21 @@
   <div class="tune-row"><button id="t-reset">Reset</button><span class="t-note">accent border = custom override · saved on this machine only</span></div>
 </section>
 
-<div id="sidebar">
-  <!-- Collapsed rail: full height, so rail + top bar meet in one L edge.
-       Traffic trio lives here (macOS order), then favicon tabs. -->
-  <div id="rail" class="glass">
+<div id="sidebar" class="glass">
+  <!-- One self-expanding bar: collapsed shows favicons only; on hover the
+       bar itself widens and titles + URLs appear next to stable icons. -->
+  <div id="rail">
     <div class="traffic" role="toolbar" aria-label="Window controls">
       <button class="tl close" data-act="win-close" aria-label="Close (decorative in prototype)"><span aria-hidden="true">×</span></button>
       <button class="tl min" data-act="win-min" aria-label="Collapse sidebar"><span aria-hidden="true">–</span></button>
       <button class="tl max" data-act="win-pin" aria-label="Pin sidebar open" aria-pressed="false"><span aria-hidden="true">+</span></button>
     </div>
-    <ul id="tab-rail" role="tablist" aria-label="Tabs"></ul>
-    <button id="newtab-rail" data-act="newtab" aria-label="New tab">+</button>
+    <ul id="tab-list" aria-label="Tabs"></ul>
+    <button id="newtab-rail" data-act="newtab" aria-label="New tab"><span aria-hidden="true">+</span><span class="lb">New tab</span></button>
     <div id="ws-rail" role="tablist" aria-label="Workspaces">
       <div id="ws-dots"></div>
       <span id="ws-indicator" aria-hidden="true"></span>
     </div>
-  </div>
-
-  <!-- Expander: titled tabs + workspaces. One seamless blurred surface with
-       the rail and top bar (shared tokens, overlapping layers). Shown/hidden
-       with compositor-only properties (opacity + transform). -->
-  <div id="expander" class="glass" aria-hidden="true">
-    <ul id="tab-list" aria-label="Tabs in this workspace"></ul>
-    <div id="ws-list" aria-label="Workspaces"></div>
   </div>
 </div>
 

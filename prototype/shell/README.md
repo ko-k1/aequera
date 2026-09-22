@@ -15,23 +15,23 @@ open with the sidebar pinned (testing aid).
 ## What it proves (your spec, item by item)
 
 - **Top address bar, vertical tabs** — the address bar is horizontal across
-  the top (traffic lights, nav, unified input); tabs live vertically on the
-  left, minimized to a favicon-only rail, revealed on hover.
-- **Seamless connected surface** — the rail runs full height and the top bar
-  starts exactly at its right edge, so rail + bar meet in a single clean L
-  edge around the content with no T-junction seam. All three layers share one
-  glass-token recipe on top of that geometry.
+  the top (nav + unified input); tabs live vertically on the left, minimized
+  to favicons, revealed in place on hover: the bar itself widens, icons never
+  move, titles + URLs appear beside them.
+- **Seamless connected surface** — the full-height rail and the top bar meet
+  in a single clean L edge with one shared glass-token recipe; traffic
+  lights sit atop the rail, no overlay panel, no second surface.
 - **Address bar with macOS 3-button cluster** — red/yellow/green traffic
   lights in macOS order sit atop the rail (close is decorative here, yellow
   collapses, green pins); nav buttons and the full address+command input run
   horizontally in the top bar.
 - **Blur material overall** — one `backdrop-filter` recipe (blur + saturate)
-  on both layers; the animated expander never touches blur radius, width, or
-  background (those would break layer caching).
-- **Cache + performance process** — show/hide runs on opacity + transform
-  only (`will-change` scoped to the animated panel), tab rows are
-  `contain: layout paint`, lists never animate, and a local FPS meter
-  (bottom-right) makes frame cost visible while you interact.
+  on both layers; blur radius and backgrounds never animate (those would
+  break layer caching).
+- **Cache + performance process** — the widening transition is short and
+  interruptible, tab rows are `contain: layout paint`, lists never animate,
+  and a local FPS meter (bottom-right) makes frame cost visible while you
+  interact.
 - **Unified address/command surface** — typing filters tabs across all
   workspaces, workspace switches, and commands (new tab/workspace/restore)
   in one list; `Enter` runs, `Esc` backs out.

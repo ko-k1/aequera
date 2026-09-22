@@ -114,15 +114,20 @@ function esc(s) {
 }
 
 function render() {
-  renderRail(); renderExpander(); renderPage();
+  renderTabs(); renderPage();
 }
 
-function renderRail() {
+/* One list for both states: collapsed shows favicons (CSS clips the rest),
+   expanded reveals titles + URLs next to the unmoved icons. */
+function renderTabs() {
   const w = activeWs();
-  $("#tab-rail").innerHTML = w.tabs.map((t) =>
-    `<li><button role="tab" data-tab="${t.id}" aria-selected="${t.id === w.activeTab}"`
-    + ` aria-label="${esc(t.title)}" class="${t.pinned ? "pinned" : ""}">`
-    + `<img src="${t.fav}" alt=""></button></li>`).join("");
+  $("#tab-list").innerHTML = w.tabs.map((t) =>
+    `<li><button class="tab-row${t.pinned ? " pinned" : ""}" role="tab" data-tab="${t.id}"`
+    + ` aria-selected="${t.id === w.activeTab}" aria-label="${esc(t.title)}">`
+    + `<img src="${t.fav}" alt="">`
+    + `<span class="t">${esc(t.title)}<small>${esc(t.url)}</small></span>`
+    + `<span class="x" role="button" tabindex="-1" data-close="${t.id}" aria-label="Close ${esc(t.title)}">×</span>`
+    + `</button></li>`).join("");
   $("#ws-dots").innerHTML = store.workspaces.map((x) =>
     `<button data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
     + ` aria-label="${esc(x.name)}" title="${esc(x.name)}"></button>`).join("");
@@ -141,20 +146,6 @@ function positionWsIndicator() {
   ind.style.opacity = "1";
   const y = active.offsetTop + (active.offsetHeight - ind.offsetHeight) / 2;
   ind.style.transform = `translateY(${y}px)`;
-}
-
-function renderExpander() {
-  const w = activeWs();
-  $("#tab-list").innerHTML = w.tabs.map((t) =>
-    `<li><button class="tab-row" role="tab" data-tab="${t.id}"`
-    + ` aria-selected="${t.id === w.activeTab}" aria-label="${esc(t.title)}">`
-    + `<img src="${t.fav}" alt="">`
-    + `<span class="t">${esc(t.title)}<small>${esc(t.url)}</small></span>`
-    + `<span class="x" role="button" tabindex="-1" data-close="${t.id}" aria-label="Close ${esc(t.title)}">×</span>`
-    + `</button></li>`).join("");
-  $("#ws-list").innerHTML = store.workspaces.map((x) =>
-    `<button data-ws="${x.id}" aria-selected="${x.id === store.activeWs}">`
-    + `<span class="dot"></span>${esc(x.name)}<span class="n">${x.tabs.length}</span></button>`).join("");
 }
 
 function renderPage() {
@@ -254,13 +245,11 @@ function toast(msg) {
 
 function expand() {
   document.body.classList.add("expanded");
-  $("#expander").setAttribute("aria-hidden", "false");
 }
 function maybeCollapse() {
   if (document.body.classList.contains("pinned")) return;
   if (sidebar.contains(document.activeElement)) return;
   document.body.classList.remove("expanded");
-  $("#expander").setAttribute("aria-hidden", "true");
 }
 
 const actions = {

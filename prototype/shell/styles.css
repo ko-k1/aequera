@@ -83,25 +83,41 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
   border-right: 1px solid var(--stroke);
 }
 
-#rail {
+/* Self-expanding sidebar: the bar itself widens on hover; favicons stay
+   fixed while titles + URLs reveal in place (clipped wipe + fade).
+   Width animates layout per frame during the transition — a deliberate
+   tradeoff for the expected feel, kept short, interruptible by hover-out,
+   and fully disabled under reduced motion. Rows stay paint-contained and
+   blur never animates. */
+#sidebar {
   position: fixed;
   left: 0; top: 0; bottom: 0;
   width: var(--rail-w);
   z-index: 30;
+  overflow: hidden;
+  transition: width var(--dur) var(--snap);
+  /* No right border: it would cut the top strip; the edge below the bar
+     is drawn by #content, meeting the bar in one L. */
+  border-right: 0;
+}
+body.expanded #sidebar,
+#sidebar:focus-within {
+  width: var(--panel-w);
+}
+#rail {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: var(--gap);
   padding: 10px 0;
-  /* No right border: it would cut a vertical divider through the top strip
-     between the traffic lights and the nav buttons. The edge below the bar
-     is drawn by #content instead, so bar + rail still meet in one L. */
-  border-right: 0;
 }
 
 /* Traffic lights: macOS trio (red/yellow/green), macOS order and size.
    Green pins the sidebar. Sized by --tl for testing; 12px is the default. */
 .traffic { display: flex; gap: 7px; padding: 6px 0; justify-content: center; }
+body.expanded .traffic,
+#sidebar:focus-within .traffic { justify-content: flex-start; padding-left: 16px; }
 #topbar .traffic { padding: 0 2px; }
 .tl {
   width: var(--tl); height: var(--tl);
@@ -163,47 +179,41 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
 }
 #tune-toggle[aria-expanded="true"] { color: var(--text); border-color: var(--accent); }
 
-#tab-rail {
+#tab-list {
   list-style: none;
   margin: 4px 0;
-  padding: 0;
+  padding: 0 6px;
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
+  gap: 2px;
   overflow-y: auto;
   scrollbar-width: none;
   contain: layout paint;
 }
-#tab-rail::-webkit-scrollbar { display: none; }
-#tab-rail button {
-  width: var(--ctl); height: var(--ctl);
-  padding: 0;
-  border-radius: var(--radius);
-  display: grid;
-  place-items: center;
-  position: relative;
-}
-#tab-rail button img { width: 18px; height: 18px; border-radius: 4px; }
-#tab-rail button[aria-selected="true"] { background: rgba(127, 140, 170, 0.22); }
-#tab-rail button[aria-selected="true"]::before {
-  content: "";
-  position: absolute;
-  left: -8px;
-  width: 3px; height: 18px;
-  border-radius: 2px;
-  background: var(--accent);
-}
-#tab-rail button.pinned img { outline: 1px dashed var(--text-dim); outline-offset: 2px; }
+#tab-list::-webkit-scrollbar { display: none; }
+#tab-list li { min-width: 0; }
 
 #newtab-rail {
-  width: var(--ctl); height: var(--ctl);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 6px;
+  padding: 6px 0 6px 12px;
   color: var(--text-dim);
   font-size: 16px;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  overflow: hidden;
 }
+#newtab-rail span:first-child { width: 22px; flex: none; text-align: center; }
+#newtab-rail .lb { display: none; font-size: 12px; }
+body.expanded #newtab-rail .lb,
+#sidebar:focus-within #newtab-rail .lb { display: inline; }
 
 #ws-rail {
   position: relative;
   margin-top: auto;
+  align-self: center;
   /* Solid dock behind the dots: no blurred glass here. The switcher reads
      as its own grounded control instead of floating on the rail blur. */
   background: var(--solid);
@@ -236,35 +246,8 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
   will-change: transform;
 }
 
-/* Expander: compositor-only show/hide. Never animates width or blur. */
-#expander {
-  position: fixed;
-  left: 0; top: 0; bottom: 0;
-  width: var(--panel-w);
-  z-index: 20;
-  /* Top padding clears the top bar (the panel slides fully under it). */
-  padding: calc(var(--top-h) + 10px) 12px 12px calc(var(--rail-w) + 2px);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateX(-14px);
-  transition:
-    opacity var(--dur) var(--snap),
-    transform var(--dur) var(--snap),
-    visibility 0s linear var(--dur);
-  will-change: transform, opacity;
-}
-body.expanded #expander,
-#sidebar:focus-within #expander {
-  opacity: 1;
-  visibility: visible;
-  transform: translateX(0);
-  transition:
-    opacity var(--dur) var(--snap),
-    transform var(--dur) var(--snap);
-}
+/* Expander rules retired: the bar itself widens (see #sidebar). Kept out
+   deliberately — no overlay panel, no second surface. */
 
 #addr-row {
   display: flex;
@@ -338,33 +321,34 @@ body.expanded #expander,
   width: 100%;
   min-height: var(--row-h);
   text-align: left;
-  padding: 6px 8px;
+  padding: 6px 6px 6px 12px;
   border-radius: var(--radius);
 }
-.tab-row img { width: 16px; height: 16px; border-radius: 4px; }
-.tab-row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* In-place reveal: icons never move; titles + URLs wipe in via the bar's
+   own widening (clipped) plus a short fade. */
+.tab-row .t {
+  opacity: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity 80ms var(--snap);
+}
+body.expanded .tab-row .t,
+#sidebar:focus-within .tab-row .t { opacity: 1; transition-delay: 30ms; }
+.tab-row img { width: 16px; height: 16px; border-radius: 4px; flex: none; }
 .tab-row .t small { display: block; color: var(--text-dim); font-size: 11px; }
 .tab-row[aria-selected="true"] { background: rgba(127, 140, 170, 0.2); }
-.tab-row .x {
-  opacity: 0;
+.tab-row.pinned img { outline: 1px dashed var(--text-dim); outline-offset: 2px; }
+.tab-row .x { display: none; }
+body.expanded .tab-row:hover .x,
+body.expanded .tab-row:focus-visible .x,
+#sidebar:focus-within .tab-row:hover .x {
+  display: block;
   color: var(--text-dim);
   width: 22px; height: 22px;
   font-size: 13px;
+  flex: none;
 }
-.tab-row:hover .x, .tab-row:focus-within .x { opacity: 1; }
-
-#ws-list { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
-#ws-list button {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  text-align: left;
-  padding: 6px 8px;
-  color: var(--text-dim);
-}
-#ws-list button[aria-selected="true"] { color: var(--text); }
-#ws-list .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
-#ws-list .n { margin-left: auto; font-size: 11px; }
 
 /* Tune popover: first-class customization controls, anchored under the
    top bar. Same glass recipe keeps it on the seamless surface. */
@@ -475,5 +459,4 @@ body.expanded #expander,
     transition: none !important;
     animation: none !important;
   }
-  #expander { transform: none; }
 }
