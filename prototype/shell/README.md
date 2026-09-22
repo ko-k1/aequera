@@ -14,13 +14,14 @@ open with the sidebar pinned (testing aid).
 
 ## What it proves (your spec, item by item)
 
-- **Top address bar, vertical tabs** — the address bar is horizontal across
-  the top (nav + unified input); tabs live vertically on the left, minimized
-  to favicons, revealed in place on hover: the bar itself widens, icons never
-  move, titles + URLs appear beside them.
-- **Seamless connected surface** — the full-height rail and the top bar meet
-  in a single clean L edge with one shared glass-token recipe; traffic
-  lights sit atop the rail, no overlay panel, no second surface.
+- **Top address bar, vertical tabs** — a full-width horizontal bar
+  (traffic lights, nav, unified input) sits above everything, so a hovering
+  tab bar can never overlap it, by construction. Tabs live vertically below
+  the bar: minimized to favicons, revealed in place on hover as the bar
+  itself widens, icons never moving, titles + URLs appearing beside them.
+- **Seamless connected surface** — bar, rail, and content share one
+  glass-token recipe; the bar's bottom edge and the content's left edge meet
+  in a single clean L with no divider cutting the top strip.
 - **Address bar with macOS 3-button cluster** — red/yellow/green traffic
   lights in macOS order sit atop the rail (close is decorative here, yellow
   collapses, green pins); nav buttons and the full address+command input run

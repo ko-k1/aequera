@@ -9,10 +9,14 @@
 <body>
 <div id="wallpaper" aria-hidden="true"></div>
 
-<!-- Top address bar: nav + unified address/command input. Starts right of
-     the rail; both share one glass recipe, meeting in a single clean L
-     edge around the content — no T-junction seam. -->
+<!-- Top address bar: full width, so a hovering tab bar can never overlap it.
+     Traffic trio, nav, unified address/command input share one glass. -->
 <header id="topbar" class="glass">
+  <div class="traffic" role="toolbar" aria-label="Window controls">
+    <button class="tl close" data-act="win-close" aria-label="Close (decorative in prototype)"><span aria-hidden="true">×</span></button>
+    <button class="tl min" data-act="win-min" aria-label="Collapse sidebar"><span aria-hidden="true">–</span></button>
+    <button class="tl max" data-act="win-pin" aria-label="Pin sidebar open" aria-pressed="false"><span aria-hidden="true">+</span></button>
+  </div>
   <div class="nav" role="toolbar" aria-label="Navigation">
     <button data-act="back" aria-label="Back">←</button>
     <button data-act="fwd" aria-label="Forward">→</button>
@@ -48,7 +52,7 @@
   </label>
   <div class="tune-row"><button id="t-replay">Replay expand</button></div>
   <label class="tune-row">Top bar <input id="t-top" type="number" min="36" max="80" step="2"> px</label>
-      <label class="tune-row">Rail <input id="t-rail" type="number" min="44" max="120" step="2"> px</label>
+      <label class="tune-row">Rail <input id="t-rail" type="number" min="32" max="120" step="2"> px</label>
   <label class="tune-row">Panel <input id="t-panel" type="number" min="180" max="420" step="4"> px</label>
   <label class="tune-row">Buttons <input id="t-ctl" type="number" min="20" max="56" step="2"> px</label>
   <label class="tune-row">Tab rows <input id="t-row" type="number" min="24" max="64" step="2"> px</label>
@@ -62,14 +66,10 @@
 </section>
 
 <div id="sidebar" class="glass">
-  <!-- One self-expanding bar: collapsed shows favicons only; on hover the
-       bar itself widens and titles + URLs appear next to stable icons. -->
+  <!-- Self-expanding bar below the full-width address bar: collapsed shows
+       favicons only; on hover the bar itself widens and titles + URLs appear
+       next to stable icons. Never overlaps the address bar (own region). -->
   <div id="rail">
-    <div class="traffic" role="toolbar" aria-label="Window controls">
-      <button class="tl close" data-act="win-close" aria-label="Close (decorative in prototype)"><span aria-hidden="true">×</span></button>
-      <button class="tl min" data-act="win-min" aria-label="Collapse sidebar"><span aria-hidden="true">–</span></button>
-      <button class="tl max" data-act="win-pin" aria-label="Pin sidebar open" aria-pressed="false"><span aria-hidden="true">+</span></button>
-    </div>
     <ul id="tab-list" aria-label="Tabs"></ul>
     <button id="newtab-rail" data-act="newtab" aria-label="New tab"><span aria-hidden="true">+</span><span class="lb">New tab</span></button>
     <div id="ws-rail" role="tablist" aria-label="Workspaces">

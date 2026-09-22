@@ -91,7 +91,7 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
    blur never animates. */
 #sidebar {
   position: fixed;
-  left: 0; top: 0; bottom: 0;
+  left: 0; top: var(--top-h); bottom: 0;
   width: var(--rail-w);
   z-index: 30;
   overflow: hidden;
@@ -115,8 +115,8 @@ body.expanded #sidebar,
 
 /* Traffic lights: macOS trio (red/yellow/green), macOS order and size.
    Green pins the sidebar. Sized by --tl for testing; 12px is the default. */
-/* Traffic trio stays pinned over the favicon column in both states: left-
-   aligning it on expand would slide the third light under the address bar. */
+/* Traffic lights: macOS trio (red/yellow/green), macOS order and size.
+   Green pins the sidebar. Sized by --tl for testing; 12px is the default. */
 .traffic { display: flex; gap: 7px; padding: 6px 0; justify-content: center; width: 56px; }
 #topbar .traffic { padding: 0 2px; }
 .tl {
@@ -151,7 +151,7 @@ body.expanded #sidebar,
    so bar + rail read as one seamless connected surface. */
 #topbar {
   position: fixed;
-  left: var(--rail-w); top: 0; right: 0;
+  left: 0; top: 0; right: 0;
   height: var(--top-h);
   z-index: 40;
   display: flex;
@@ -160,8 +160,8 @@ body.expanded #sidebar,
   padding: 0 12px;
   border-right: 0;
   border-bottom: 1px solid var(--stroke);
-  border-left: 0; /* meets the rail's right border: one L edge, no T seam */
 }
+#topbar .traffic { width: auto; padding: 0 4px 0 0; }
 #topbar .traffic { padding: 0 2px; }
 .addr-wrap {
   position: relative;
