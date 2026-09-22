@@ -1,0 +1,12 @@
+# Aequera Rust workspace.
+#
+# Members own product layers (docs/SOURCE_LAYOUT.md); tooling lives under
+# tools/. One shared lockfile at the workspace root. Language choice does
+# not change layer ownership: aequera/core is domain state, never UI.
+
+[workspace]
+resolver = "2"
+members = [
+    "aequera/core",
+    "tools/cli",
+]

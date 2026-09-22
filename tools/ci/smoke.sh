@@ -7,9 +7,9 @@ CLI_DIR="$ROOT/tools/cli"
 BIN="$CLI_DIR/target/debug/aequera"
 
 pushd "$CLI_DIR" > /dev/null
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 cargo build
 popd > /dev/null
 

@@ -7,11 +7,11 @@ $Bin = Join-Path $CliDir "target\debug\aequera.exe"
 
 Push-Location $CliDir
 try {
-    cargo fmt --check
+    cargo fmt --all --check
     if ($LASTEXITCODE -ne 0) { throw "cargo fmt --check failed" }
-    cargo clippy --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
     if ($LASTEXITCODE -ne 0) { throw "cargo clippy failed" }
-    cargo test
+    cargo test --workspace
     if ($LASTEXITCODE -ne 0) { throw "cargo test failed" }
     cargo build
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
