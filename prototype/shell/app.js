@@ -251,11 +251,14 @@ function toast(msg) {
 
 function expand() {
   document.body.classList.add("expanded");
+  // The dots lay out differently per state; reposition for the live one.
+  positionWsIndicator();
 }
 function maybeCollapse() {
   if (document.body.classList.contains("pinned")) return;
   if (sidebar.contains(document.activeElement)) return;
   document.body.classList.remove("expanded");
+  positionWsIndicator();
 }
 
 const actions = {
