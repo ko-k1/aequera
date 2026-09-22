@@ -22,6 +22,8 @@
 //! - closing a tab records where it was, so restore is exact;
 //! - moving a tab repairs the source workspace exactly like a close.
 
+pub mod command;
+
 pub type WorkspaceId = u64;
 pub type TabId = u64;
 
