@@ -1,8 +1,12 @@
 # Generated Firefox tree
 worktree/firefox/
 
-# Build outputs
-build/
+# Managed upstream Firefox checkout (see UPSTREAM.md).
+# Only upstream/manifests/* is committed; the checkout is reproduced by tooling.
+upstream/firefox/
+
+# Build outputs (root-level only; patches/build/ is committed source)
+/build/
 obj-*/
 
 # Local tooling/cache
@@ -10,3 +14,6 @@ obj-*/
 
 # Local test/profile state
 .tmp/
+
+# Rust build artifacts
+target/

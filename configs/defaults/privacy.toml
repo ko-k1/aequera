@@ -1,0 +1,49 @@
+# Aequera privacy defaults (schema v1; enforced by `aequera config validate`).
+#
+# Product requirement (docs/RESTRICTIONS.md): no telemetry, advertising,
+# sponsored UI, silent remote configuration, or unnecessary vendor services.
+# Every section maps to managed Firefox preferences (`pref:` comments) that a
+# later slice applies as configuration — never as web-platform changes.
+# Security protections (site isolation, sandboxing, certificate validation,
+# Safe Browsing) are NOT weakened here; this file only removes product-level
+# data collection and merchandising.
+
+[meta]
+schema_version = 1
+
+[telemetry]
+# pref: toolkit.telemetry.enabled, .unified, .archive.enabled
+enabled = false
+unified = false
+archive = false
+# pref: datareporting.policy.dataSubmissionEnabled, .healthreport.uploadEnabled
+data_submission = false
+healthreport_upload = false
+
+[studies]
+# pref: app.shield.optoutstudies.enabled, app.normandy.enabled
+# No silent experiments, no remote recipes. Explicit opt-in only (later UI).
+optout_studies = false
+normandy = false
+
+[newtab]
+# pref: browser.newtabpage.activity-stream.showSponsoredTopSites, .showSponsored
+sponsored_topsites = false
+sponsored_stories = false
+
+[vendor_services]
+# pref: extensions.pocket.enabled
+# Pocket is a vendor service, not a web-platform feature; off by default.
+pocket = false
+
+[crash]
+# pref: browser.crashReports.unsubmittedCheck.autoSubmit
+# Never upload without review; the user may still inspect and send explicitly.
+auto_submit = false
+
+[update]
+# Security updates stay independently visible (docs/engineering/RELEASE.md):
+# notify, never silently apply; never a background silent install.
+# Allowed: "notify", "manual".
+mode = "notify"
+background = false

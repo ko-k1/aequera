@@ -1,0 +1,33 @@
+# Aequera Firefox upstream lock — production baseline (Release track).
+#
+# Canonical pin: upstream.revision.git (full 40-character commit SHA).
+# Channel, version, and ref are provenance metadata, not the pin.
+# A build must never silently replace this revision with a remote tip.
+#
+# Policy: UPSTREAM.md (repository root), docs/engineering/UPSTREAM.md.
+# Consumed by: aequera upstream fetch/status/verify/checkout/update
+#              (tools/cli, Phase 0 Workstream 1).
+
+schema_version: 1
+
+upstream:
+  name: firefox
+  repository:
+    type: git
+    url: https://github.com/mozilla-firefox/firefox.git
+
+  channel: release
+  version: "156.0"
+
+  revision:
+    git: "3bf8f468258c2181f455e23d4ffcd6acb8f4cdb1"
+
+  resolved_from:
+    type: tag
+    ref: FIREFOX_156_0_RELEASE
+
+  pinned_at: 2026-09-22
+
+patchset:
+  manifest: patches/manifest.yaml
+  version: 0

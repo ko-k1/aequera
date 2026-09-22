@@ -1,2 +1,4 @@
-# Planned upstream source relationship.
-# Exact repository URL and tracking policy are to be finalized when the implementation repository is initialized.
+# Upstream source policy (decided Phase 0, Workstream 0):
+# Firefox is NOT a submodule. The pin is upstream/manifests/firefox.lock
+# (full commit SHA); tooling manages upstream/firefox/ as a clean checkout.
+# See UPSTREAM.md.
