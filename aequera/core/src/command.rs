@@ -7,6 +7,7 @@
 //! meaning stays here.
 
 use crate::{Browser, Error, TabId, WorkspaceId};
+use serde::Serialize;
 
 /// Stable command identity, e.g. `"tab.close"`, `"workspace.switch"`.
 pub type CommandId = String;
@@ -20,7 +21,7 @@ pub enum Scope {
 
 /// Every mutation the shell may request, as data. Adding a variant is a
 /// deliberate product decision, not a scattered method call.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum CommandAction {
     OpenTab {
         workspace: WorkspaceId,
@@ -71,7 +72,7 @@ pub enum CommandAction {
 /// What an executed command changed, so the shell can report back whether
 /// the action succeeded and what the new state is (UX principle: visible
 /// state, no silent outcomes).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum CommandOutcome {
     TabOpened(TabId),
     TabClosed(TabId),

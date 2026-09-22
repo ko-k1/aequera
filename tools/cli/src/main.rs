@@ -10,6 +10,7 @@
 
 mod bench;
 mod config;
+mod demo;
 mod doctor;
 mod lock;
 mod output;
@@ -38,6 +39,8 @@ struct Cli {
 enum Command {
     /// Check local prerequisites and repository state.
     Doctor,
+    /// Scripted core boundary proof (drives aequera-core end to end).
+    Demo,
     /// Acquire and materialize the locked baseline (fetch, checkout, verify).
     Bootstrap,
     /// Pinned Firefox upstream operations (UPSTREAM.md).
@@ -125,6 +128,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Command::Doctor => doctor::run(cli.json),
+        Command::Demo => demo_cmd(cli.json),
         Command::Bootstrap => bootstrap(cli.json),
         Command::Upstream { op } => match op {
             UpstreamOp::Status => upstream_status(cli.json),
@@ -550,6 +554,30 @@ fn bench_cmd(json: bool, out: Option<&std::path::Path>) -> ExitCode {
             );
             output::emit(json, &human, &report);
             ExitCode::SUCCESS
+        }
+    }
+}
+
+fn demo_cmd(json: bool) -> ExitCode {
+    match demo::run() {
+        Err(e) => {
+            eprintln!("Demo failed: {e}");
+            ExitCode::FAILURE
+        }
+        Ok(report) => {
+            let human = format!(
+                "Aequera demo\n------------\nSteps executed : {}\nSearch \"switch\"  : {} hits (first: {})\nRestore equal  : {}\n\nEvery mutation above ran through Browser::execute; search ran one registry; restore verified by equality.",
+                report.steps.len(),
+                report.search_probe.hits,
+                report.search_probe.first_hit.as_deref().unwrap_or("<none>"),
+                report.restore_equal,
+            );
+            output::emit(json, &human, &report);
+            if report.restore_equal {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
         }
     }
 }

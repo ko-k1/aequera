@@ -6,6 +6,7 @@ version = 4
 name = "aequera"
 version = "0.1.0"
 dependencies = [
+ "aequera-core",
  "clap",
  "serde",
  "serde_json",
