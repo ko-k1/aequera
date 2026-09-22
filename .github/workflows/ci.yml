@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    name: smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # PR CI proves reproducibility without a multi-hour Firefox build.
+      # No fetch/checkout/apply here: those need GBs of upstream objects and
+      # belong to the nightly full-build pipeline (see tools/ci/README.md).
+      - name: Smoke (Windows)
+        if: runner.os == 'Windows'
+        run: tools/ci/smoke.ps1
+        shell: pwsh
+
+      - name: Smoke (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: tools/ci/smoke.sh
+        shell: bash
