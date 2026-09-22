@@ -9,19 +9,22 @@ favicons/history exist only to make the shell testable.
 
 Open `prototype/shell/index.html` directly (double-click / `file://`).
 No server, no build, no dependencies, no network requests. Everything,
-including favicons, is generated locally.
+including favicons, is generated locally. Append `#expanded` to the URL to
+open with the sidebar pinned (testing aid).
 
 ## What it proves (your spec, item by item)
 
 - **Top address bar, vertical tabs** — the address bar is horizontal across
   the top (traffic lights, nav, unified input); tabs live vertically on the
   left, minimized to a favicon-only rail, revealed on hover.
-- **Seamless connected surface** — top bar, rail, and expander share one
-  glass-token recipe, so bar and tab rail read as a single continuous
-  surface instead of separate boxes.
-- **Address bar with 3-button cluster** — macOS-style traffic lights
-  (close / collapse / pin-open) beside nav buttons, with the full
-  address+command input centered in the bar.
+- **Seamless connected surface** — the rail runs full height and the top bar
+  starts exactly at its right edge, so rail + bar meet in a single clean L
+  edge around the content with no T-junction seam. All three layers share one
+  glass-token recipe on top of that geometry.
+- **Address bar with macOS 3-button cluster** — red/yellow/green traffic
+  lights in macOS order sit atop the rail (close is decorative here, yellow
+  collapses, green pins); nav buttons and the full address+command input run
+  horizontally in the top bar.
 - **Blur material overall** — one `backdrop-filter` recipe (blur + saturate)
   on both layers; the animated expander never touches blur radius, width, or
   background (those would break layer caching).

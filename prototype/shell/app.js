@@ -28,7 +28,7 @@ const store = {
     {
       id: 4, name: "Research",
       tabs: [mkTab("https://example.org/papers", "Reading list")],
-      activeTab: 5, closed: [],
+      activeTab: 3, closed: [],
     },
   ],
 };
@@ -507,5 +507,10 @@ function meter(now) {
 }
 
 applyTune();
+// Testing aid: index.html#expanded opens the sidebar pinned (shareable state).
+if (location.hash === "#expanded") {
+  document.body.classList.add("expanded", "pinned");
+  syncPin();
+}
 render();
 requestAnimationFrame(meter);

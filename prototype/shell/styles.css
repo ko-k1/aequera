@@ -83,7 +83,7 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
 
 #rail {
   position: fixed;
-  left: 0; top: var(--top-h); bottom: 0;
+  left: 0; top: 0; bottom: 0;
   width: var(--rail-w);
   z-index: 30;
   display: flex;
@@ -93,8 +93,10 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
   padding: 10px 0;
 }
 
-/* Traffic lights: Aequera's take on the 3-button cluster. Green pins. */
-.traffic { display: flex; gap: 7px; padding: 2px 0 6px; }
+/* Traffic lights: macOS trio (red/yellow/green), macOS order and size.
+   Green pins the sidebar. Sized by --tl for testing; 12px is the default. */
+.traffic { display: flex; gap: 7px; padding: 6px 0; justify-content: center; }
+#topbar .traffic { padding: 0 2px; }
 .tl {
   width: var(--tl); height: var(--tl);
   border-radius: 50%;
@@ -127,7 +129,7 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
    so bar + rail read as one seamless connected surface. */
 #topbar {
   position: fixed;
-  left: 0; top: 0; right: 0;
+  left: var(--rail-w); top: 0; right: 0;
   height: var(--top-h);
   z-index: 40;
   display: flex;
@@ -136,6 +138,7 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
   padding: 0 12px;
   border-right: 0;
   border-bottom: 1px solid var(--stroke);
+  border-left: 0; /* meets the rail's right border: one L edge, no T seam */
 }
 #topbar .traffic { padding: 0 2px; }
 .addr-wrap {
@@ -205,10 +208,11 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
 /* Expander: compositor-only show/hide. Never animates width or blur. */
 #expander {
   position: fixed;
-  left: 0; top: var(--top-h); bottom: 0;
+  left: 0; top: 0; bottom: 0;
   width: var(--panel-w);
   z-index: 20;
-  padding: 10px 12px 12px calc(var(--rail-w) + 2px);
+  /* Top padding clears the top bar (the panel slides fully under it). */
+  padding: calc(var(--top-h) + 10px) 12px 12px calc(var(--rail-w) + 2px);
   display: flex;
   flex-direction: column;
   gap: 8px;
