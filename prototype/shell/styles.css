@@ -18,6 +18,7 @@
   --sat: 1.5;
   --surface: rgba(15, 17, 23, 0.58);
   --surface-strong: rgba(15, 17, 23, 0.78);
+  --solid: #181b22;
   --stroke: rgba(255, 255, 255, 0.09);
   --text: #e9ebf2;
   --text-dim: #9aa1b5;
@@ -34,6 +35,7 @@
   :root {
     --surface: rgba(255, 255, 255, 0.62);
     --surface-strong: rgba(255, 255, 255, 0.82);
+    --solid: #e7eaf1;
     --stroke: rgba(20, 25, 40, 0.1);
     --text: #191d27;
     --text-dim: #5b6274;
@@ -199,7 +201,16 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
   font-size: 16px;
 }
 
-#ws-rail { position: relative; display: flex; margin-top: auto; }
+#ws-rail {
+  position: relative;
+  margin-top: auto;
+  /* Solid dock behind the dots: no blurred glass here. The switcher reads
+     as its own grounded control instead of floating on the rail blur. */
+  background: var(--solid);
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  padding: 8px 5px;
+}
 #ws-dots { display: flex; flex-direction: column; gap: 6px; }
 #ws-dots button {
   width: 10px; height: 10px;
