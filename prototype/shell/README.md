@@ -35,9 +35,10 @@ open with the sidebar pinned (testing aid).
 - **Unified address/command surface** — typing filters tabs across all
   workspaces, workspace switches, and commands (new tab/workspace/restore)
   in one list; `Enter` runs, `Esc` backs out.
-- **Keyboard-first** — `Ctrl/⌘ K` focuses, `↑/↓` + `Enter` selects,
-  `1–9` switches tabs, `Esc` collapses. Reduced-motion users get zero
-  transitions with all state information intact.
+- **Workspace dots with gliding active indicator** — collapsed shows dots
+  in a solid dock (no blur); switching glides the accent dot on transform
+  only. Expanded, the dock stretches and dots morph into named session rows
+  (dot + name + tab count) with the active row highlighted.
 
 ## Tuning (your feedback loop)
 

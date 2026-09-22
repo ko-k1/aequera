@@ -130,7 +130,9 @@ function renderTabs() {
     + `</button></li>`).join("");
   $("#ws-dots").innerHTML = store.workspaces.map((x) =>
     `<button data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
-    + ` aria-label="${esc(x.name)}" title="${esc(x.name)}"></button>`).join("");
+    + ` aria-label="${esc(x.name)}, ${x.tabs.length} tabs" title="${esc(x.name)}">`
+    + `<span class="wdot"></span><span class="wname">${esc(x.name)}</span>`
+    + `<span class="wn">${x.tabs.length}</span></button>`).join("");
   positionWsIndicator();
 }
 

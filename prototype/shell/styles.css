@@ -115,9 +115,9 @@ body.expanded #sidebar,
 
 /* Traffic lights: macOS trio (red/yellow/green), macOS order and size.
    Green pins the sidebar. Sized by --tl for testing; 12px is the default. */
-.traffic { display: flex; gap: 7px; padding: 6px 0; justify-content: center; }
-body.expanded .traffic,
-#sidebar:focus-within .traffic { justify-content: flex-start; padding-left: 16px; }
+/* Traffic trio stays pinned over the favicon column in both states: left-
+   aligning it on expand would slide the third light under the address bar. */
+.traffic { display: flex; gap: 7px; padding: 6px 0; justify-content: center; width: 56px; }
 #topbar .traffic { padding: 0 2px; }
 .tl {
   width: var(--tl); height: var(--tl);
@@ -221,14 +221,63 @@ body.expanded #newtab-rail .lb,
   border-radius: 12px;
   padding: 8px 5px;
 }
-#ws-dots { display: flex; flex-direction: column; gap: 6px; }
+body.expanded #ws-rail,
+#sidebar:focus-within #ws-rail {
+  align-self: stretch;
+  margin-left: 6px;
+  margin-right: 6px;
+  padding: 6px;
+}
+#ws-dots { display: flex; flex-direction: column; gap: 6px; align-items: center; }
 #ws-dots button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--text-dim);
+}
+#ws-dots .wdot {
   width: 10px; height: 10px;
   border-radius: 50%;
-  padding: 0;
   background: var(--text-dim);
   opacity: 0.45;
+  flex: none;
 }
+#ws-dots button[aria-selected="true"] .wdot { opacity: 1; background: var(--accent); }
+#ws-dots .wname, #ws-dots .wn { display: none; }
+/* Expanded: dots morph into named session rows (dot + name + tab count).
+   The dock pill stretches with the bar; labels fade in after the widen. */
+body.expanded #ws-dots,
+#sidebar:focus-within #ws-dots { align-items: stretch; gap: 2px; }
+body.expanded #ws-dots button,
+#sidebar:focus-within #ws-dots button { padding: 6px 8px; }
+body.expanded #ws-dots .wname,
+#sidebar:focus-within #ws-dots .wname {
+  display: inline;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: wfade 120ms var(--snap) 30ms backwards;
+}
+body.expanded #ws-dots .wn,
+#sidebar:focus-within #ws-dots .wn {
+  display: inline;
+  margin-left: auto;
+  font-size: 11px;
+  animation: wfade 120ms var(--snap) 30ms backwards;
+}
+body.expanded #ws-dots button[aria-selected="true"],
+#sidebar:focus-within #ws-dots button[aria-selected="true"] {
+  background: rgba(127, 140, 170, 0.2);
+  color: var(--text);
+}
+@keyframes wfade { from { opacity: 0; } }
+/* The gliding dot indicator only exists in the collapsed dock; expanded
+   rows carry selection themselves. */
+body.expanded #ws-indicator,
+#sidebar:focus-within #ws-indicator { display: none; }
 /* Active-workspace indicator: one accent dot gliding between positions on
    transform only — the switch itself is the animation, interruptible by
    the next switch (a new transform supersedes the running one). */
