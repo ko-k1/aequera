@@ -359,16 +359,17 @@ body.expanded #ws-indicator,
   contain: layout paint;
 }
 /* Collapsed: icon-sized rows — the wash hugs the icon like a plain icon
-   button, identical for tabs and New Tab. Expanded: full rows. */
+   button, identical for tabs and New Tab. Icons top-pin at --row-py so the
+   widen never bobs them vertically; only width changes between states. */
 .tab-row {
   display: grid;
   grid-template-columns: 22px;
   justify-content: center;
-  align-items: center;
+  align-items: start;
   width: var(--ctl);
   min-height: var(--ctl);
   margin: 0 auto;
-  padding: 0;
+  padding: var(--row-py) 0;
   text-align: left;
   border-radius: var(--radius);
   overflow: hidden;
@@ -402,16 +403,30 @@ body.expanded .tab-row,
 #newtab-rail:hover { color: var(--text); }
 /* In-place reveal: icons never move; titles + URLs wipe in via the bar's
    own widening (clipped) plus a short fade. */
+/* Titles wipe in with the widen (max-width) plus a short fade — smooth in
+   both directions, no display pop. Collapsed they take zero space. */
 .tab-row .t {
-  display: none;
+  display: block;
+  max-width: 0;
   opacity: 0;
+  font-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: opacity 80ms var(--snap);
+  transition:
+    max-width var(--dur) var(--snap),
+    opacity 100ms var(--snap);
 }
+.tab-row .t small { display: block; font-size: 0; }
 body.expanded .tab-row .t,
-#sidebar:focus-within .tab-row .t { display: block; opacity: 1; transition-delay: 30ms; }
+#sidebar:focus-within .tab-row .t {
+  max-width: 240px;
+  opacity: 1;
+  font-size: 12px;
+  transition-delay: 30ms;
+}
+body.expanded .tab-row .t small,
+#sidebar:focus-within .tab-row .t small { font-size: 11px; }
 .tab-row img { width: 16px; height: 16px; border-radius: 4px; flex: none; }
 .tab-row .t small { display: block; color: var(--text-dim); font-size: 11px; }
 .tab-row.pinned img { outline: 1px dashed var(--text-dim); outline-offset: 2px; }
