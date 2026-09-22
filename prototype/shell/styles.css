@@ -6,6 +6,7 @@
 :root {
   /* Basement tokens: every value below is user-editable in the Tune panel.
      Profiles (minus/default/plus) apply deltas over this single source. */
+  --top-h: 52px;    /* top address bar height */
   --rail-w: 56px;
   --panel-w: 272px;
   --ctl: 34px;      /* rail control size */
@@ -82,7 +83,7 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
 
 #rail {
   position: fixed;
-  left: 0; top: 0; bottom: 0;
+  left: 0; top: var(--top-h); bottom: 0;
   width: var(--rail-w);
   z-index: 30;
   display: flex;
@@ -114,7 +115,7 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
 .tl.max { background: var(--ok); }
 .tl.max[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
 
-.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav { display: flex; flex-direction: row; gap: 2px; }
 .nav button {
   width: var(--ctl); height: var(--ctl);
   color: var(--text-dim);
@@ -122,20 +123,36 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
 }
 .nav button:hover { color: var(--text); }
 
-#addr-pill {
-  width: var(--ctl); height: var(--ctl);
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
-  color: var(--text-dim);
-  font-size: 11px;
+/* Top address bar: horizontal, full width. Same glass recipe as the rail,
+   so bar + rail read as one seamless connected surface. */
+#topbar {
+  position: fixed;
+  left: 0; top: 0; right: 0;
+  height: var(--top-h);
+  z-index: 40;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 2px;
-  overflow: hidden;
-  white-space: nowrap;
+  gap: 8px;
+  padding: 0 12px;
+  border-right: 0;
+  border-bottom: 1px solid var(--stroke);
 }
-#addr-pill-host { font-size: 9px; max-width: 0; overflow: hidden; }
+#topbar .traffic { padding: 0 2px; }
+.addr-wrap {
+  position: relative;
+  flex: 1;
+  max-width: 680px;
+  margin: 0 auto;
+}
+#tune-toggle {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  color: var(--text-dim);
+  font-size: 12px;
+  flex: none;
+}
+#tune-toggle[aria-expanded="true"] { color: var(--text); border-color: var(--accent); }
 
 #tab-rail {
   list-style: none;
@@ -188,7 +205,7 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
 /* Expander: compositor-only show/hide. Never animates width or blur. */
 #expander {
   position: fixed;
-  left: 0; top: 0; bottom: 0;
+  left: 0; top: var(--top-h); bottom: 0;
   width: var(--panel-w);
   z-index: 20;
   padding: 10px 12px 12px calc(var(--rail-w) + 2px);
@@ -222,7 +239,7 @@ body.expanded #expander,
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
   padding: 4px 4px 4px 10px;
-  margin-top: 34px; /* clears the traffic-light row beneath the rail */
+  height: var(--ctl);
 }
 #lock { width: 12px; height: 12px; color: var(--text-dim); flex: none; }
 #addr {
@@ -236,6 +253,10 @@ body.expanded #expander,
 #addr-row button { color: var(--text-dim); font-size: 16px; width: 28px; }
 
 #results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; right: 0;
+  z-index: 60;
   background: var(--surface-strong);
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
@@ -310,18 +331,14 @@ body.expanded #expander,
 #ws-list .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
 #ws-list .n { margin-left: auto; font-size: 11px; }
 
-/* Tune panel: first-class customization controls for user testing. */
-#tune-bar { display: flex; }
-#tune-toggle {
-  flex: 1;
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
-  padding: 6px;
-  color: var(--text-dim);
-  font-size: 12px;
-}
-#tune-toggle[aria-expanded="true"] { color: var(--text); border-color: var(--accent); }
+/* Tune popover: first-class customization controls, anchored under the
+   top bar. Same glass recipe keeps it on the seamless surface. */
 #tune {
+  position: fixed;
+  top: calc(var(--top-h) + 8px);
+  right: 12px;
+  width: 296px;
+  z-index: 50;
   background: var(--surface-strong);
   border: 1px solid var(--stroke);
   border-radius: var(--radius);
@@ -330,7 +347,7 @@ body.expanded #expander,
   flex-direction: column;
   gap: 8px;
   font-size: 12px;
-  max-height: 46vh;
+  max-height: calc(100vh - var(--top-h) - 24px);
   overflow-y: auto;
 }
 #tune[hidden] { display: none; }
@@ -373,7 +390,7 @@ body.expanded #expander,
   color: var(--text);
 }
 
-#content { margin-left: var(--rail-w); height: 100%; position: relative; }
+#content { margin: var(--top-h) 0 0 var(--rail-w); height: calc(100% - var(--top-h)); position: relative; }
 #page {
   height: 100%;
   display: grid;

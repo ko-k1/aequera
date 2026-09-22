@@ -9,73 +9,77 @@
 <body>
 <div id="wallpaper" aria-hidden="true"></div>
 
-<div id="sidebar">
-  <!-- Collapsed rail: traffic lights, nav, address pill, favicon tabs, workspaces.
-       Always visible, fixed width. Expands purely by revealing #expander. -->
-  <div id="rail" class="glass">
-    <div class="traffic" role="toolbar" aria-label="Window controls">
-      <button class="tl close" data-act="win-close" aria-label="Close (decorative in prototype)"><span aria-hidden="true">×</span></button>
-      <button class="tl min" data-act="win-min" aria-label="Collapse sidebar"><span aria-hidden="true">–</span></button>
-      <button class="tl max" data-act="win-pin" aria-label="Pin sidebar open" aria-pressed="false"><span aria-hidden="true">+</span></button>
-    </div>
-    <div class="nav" role="toolbar" aria-label="Navigation">
-      <button data-act="back" aria-label="Back">←</button>
-      <button data-act="fwd" aria-label="Forward">→</button>
-      <button data-act="reload" aria-label="Reload">⟳</button>
-    </div>
-    <button id="addr-pill" aria-label="Address and search">
-      <span aria-hidden="true">⌕</span><span id="addr-pill-host"></span>
-    </button>
-    <ul id="tab-rail" role="tablist" aria-label="Tabs"></ul>
-    <button id="newtab-rail" data-act="newtab" aria-label="New tab">+</button>
-    <div id="ws-rail" role="tablist" aria-label="Workspaces"></div>
+<!-- Top address bar: traffic lights, nav, unified address/command input.
+     Horizontal, full width, same glass recipe as the rail (one surface). -->
+<header id="topbar" class="glass">
+  <div class="traffic" role="toolbar" aria-label="Window controls">
+    <button class="tl close" data-act="win-close" aria-label="Close (decorative in prototype)"><span aria-hidden="true">×</span></button>
+    <button class="tl min" data-act="win-min" aria-label="Collapse sidebar"><span aria-hidden="true">–</span></button>
+    <button class="tl max" data-act="win-pin" aria-label="Pin sidebar open" aria-pressed="false"><span aria-hidden="true">+</span></button>
   </div>
-
-  <!-- Expander: full address bar + titled tabs + workspaces. One seamless
-       blurred surface with the rail (shared tokens, overlapping layers).
-       Shown/hidden with compositor-only properties (opacity + transform). -->
-  <div id="expander" class="glass" aria-hidden="true">
+  <div class="nav" role="toolbar" aria-label="Navigation">
+    <button data-act="back" aria-label="Back">←</button>
+    <button data-act="fwd" aria-label="Forward">→</button>
+    <button data-act="reload" aria-label="Reload">⟳</button>
+  </div>
+  <div class="addr-wrap">
     <div id="addr-row">
       <svg id="lock" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" opacity=".7"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
       <input id="addr" type="text" role="combobox" aria-expanded="false" aria-controls="results" aria-label="Address, search tabs, commands and workspaces" placeholder="Search tabs, commands, or type an address" autocomplete="off" spellcheck="false">
       <button data-act="newtab" aria-label="New tab">+</button>
     </div>
     <div id="results" role="listbox" aria-label="Matches" hidden></div>
+  </div>
+  <button id="tune-toggle" aria-expanded="false" aria-controls="tune">Tune</button>
+</header>
+
+<section id="tune" hidden aria-label="Interface tuning">
+  <div class="tune-row seg" role="group" aria-label="Profile">
+    <button data-profile="minus" aria-pressed="false" title="Basement minus deltas">− Minus</button>
+    <button data-profile="default" aria-pressed="true" title="Basement values">Default</button>
+    <button data-profile="plus" aria-pressed="false" title="Basement plus deltas">+ Plus</button>
+  </div>
+  <label class="tune-row">Motion
+    <input id="t-dur" type="range" min="0" max="400" step="10" value="140">
+    <output id="t-dur-v" for="t-dur">140ms</output>
+  </label>
+  <label class="tune-row">Easing
+    <select id="t-ease">
+      <option value="snappy">Snappy</option>
+      <option value="smooth">Smooth</option>
+      <option value="swift">Swift</option>
+    </select>
+  </label>
+  <div class="tune-row"><button id="t-replay">Replay expand</button></div>
+  <label class="tune-row">Top bar <input id="t-top" type="number" min="36" max="80" step="2"> px</label>
+  <label class="tune-row">Rail <input id="t-rail" type="number" min="32" max="120" step="2"> px</label>
+  <label class="tune-row">Panel <input id="t-panel" type="number" min="180" max="420" step="4"> px</label>
+  <label class="tune-row">Buttons <input id="t-ctl" type="number" min="20" max="56" step="2"> px</label>
+  <label class="tune-row">Tab rows <input id="t-row" type="number" min="24" max="64" step="2"> px</label>
+  <label class="tune-row">Spacing <input id="t-gap" type="number" min="0" max="20" step="1"> px</label>
+  <label class="tune-row">Radius <input id="t-rad" type="number" min="0" max="20" step="1"> px</label>
+  <label class="tune-row">Blur <input id="t-blur" type="number" min="0" max="60" step="1"> px</label>
+  <label class="tune-row">Saturation <input id="t-sat" type="number" min="0" max="3" step="0.1"> ×</label>
+  <label class="tune-row">Font <input id="t-fs" type="number" min="10" max="18" step="1"> px</label>
+  <label class="tune-row">Lights <input id="t-tl" type="number" min="8" max="20" step="1"> px</label>
+  <div class="tune-row"><button id="t-reset">Reset</button><span class="t-note">accent border = custom override · saved on this machine only</span></div>
+</section>
+
+<div id="sidebar">
+  <!-- Collapsed rail: favicon tabs + workspaces. Fixed width, full height
+       below the top bar. Expands purely by revealing #expander. -->
+  <div id="rail" class="glass">
+    <ul id="tab-rail" role="tablist" aria-label="Tabs"></ul>
+    <button id="newtab-rail" data-act="newtab" aria-label="New tab">+</button>
+    <div id="ws-rail" role="tablist" aria-label="Workspaces"></div>
+  </div>
+
+  <!-- Expander: titled tabs + workspaces. One seamless blurred surface with
+       the rail and top bar (shared tokens, overlapping layers). Shown/hidden
+       with compositor-only properties (opacity + transform). -->
+  <div id="expander" class="glass" aria-hidden="true">
     <ul id="tab-list" aria-label="Tabs in this workspace"></ul>
     <div id="ws-list" aria-label="Workspaces"></div>
-    <div id="tune-bar">
-      <button id="tune-toggle" aria-expanded="false" aria-controls="tune">Tune</button>
-    </div>
-    <section id="tune" hidden aria-label="Interface tuning">
-      <div class="tune-row seg" role="group" aria-label="Profile">
-        <button data-profile="minus" aria-pressed="false" title="Basement minus deltas">− Minus</button>
-        <button data-profile="default" aria-pressed="true" title="Basement values">Default</button>
-        <button data-profile="plus" aria-pressed="false" title="Basement plus deltas">+ Plus</button>
-      </div>
-      <label class="tune-row">Motion
-        <input id="t-dur" type="range" min="0" max="400" step="10" value="140">
-        <output id="t-dur-v" for="t-dur">140ms</output>
-      </label>
-      <label class="tune-row">Easing
-        <select id="t-ease">
-          <option value="snappy">Snappy</option>
-          <option value="smooth">Smooth</option>
-          <option value="swift">Swift</option>
-        </select>
-      </label>
-      <div class="tune-row"><button id="t-replay">Replay expand</button></div>
-      <label class="tune-row">Rail <input id="t-rail" type="number" min="32" max="120" step="2"> px</label>
-      <label class="tune-row">Panel <input id="t-panel" type="number" min="180" max="420" step="4"> px</label>
-      <label class="tune-row">Buttons <input id="t-ctl" type="number" min="20" max="56" step="2"> px</label>
-      <label class="tune-row">Tab rows <input id="t-row" type="number" min="24" max="64" step="2"> px</label>
-      <label class="tune-row">Spacing <input id="t-gap" type="number" min="0" max="20" step="1"> px</label>
-      <label class="tune-row">Radius <input id="t-rad" type="number" min="0" max="20" step="1"> px</label>
-      <label class="tune-row">Blur <input id="t-blur" type="number" min="0" max="60" step="1"> px</label>
-      <label class="tune-row">Saturation <input id="t-sat" type="number" min="0" max="3" step="0.1"> ×</label>
-      <label class="tune-row">Font <input id="t-fs" type="number" min="10" max="18" step="1"> px</label>
-      <label class="tune-row">Lights <input id="t-tl" type="number" min="8" max="20" step="1"> px</label>
-      <div class="tune-row"><button id="t-reset">Reset</button><span class="t-note">accent border = custom override · saved on this machine only</span></div>
-    </section>
   </div>
 </div>
 

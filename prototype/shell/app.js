@@ -46,14 +46,21 @@ function tabOf(w, id) { return w.tabs.find((t) => t.id === id); }
 
 /* Favicons are generated locally (letter + hostname hash). No network. */
 function fav(url) {
+  if (/^aequera:/i.test(url)) {
+    return faviconSvg("A", 220);
+  }
   let host = url;
   try { host = new URL(url).hostname.replace(/^www\./, ""); }
-  catch { /* custom schemes like aequera:start keep the raw string */ }
+  catch { /* custom schemes keep the raw string */ }
   const letter = (host[0] || "?").toUpperCase();
   let h = 0;
   for (const ch of host) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return faviconSvg(letter, h);
+}
+
+function faviconSvg(letter, hue) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">`
-    + `<rect width="32" height="32" rx="7" fill="hsl(${h},55%,42%)"/>`
+    + `<rect width="32" height="32" rx="7" fill="hsl(${hue},55%,42%)"/>`
     + `<text x="16" y="22" font-size="17" text-anchor="middle" fill="white"`
     + ` font-family="sans-serif" font-weight="bold">${letter}</text></svg>`;
   return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
@@ -107,18 +114,7 @@ function esc(s) {
 }
 
 function render() {
-  renderRail(); renderExpander(); renderPill(); renderPage();
-}
-
-function renderPill() {
-  const w = activeWs();
-  const t = w && tabOf(w, w.activeTab);
-  $("#addr-pill-host").textContent = t ? shortHost(t.url) : "";
-}
-
-function shortHost(url) {
-  try { return new URL(url).hostname.replace(/^www\./, ""); }
-  catch { return url; }
+  renderRail(); renderExpander(); renderPage();
 }
 
 function renderRail() {
@@ -314,11 +310,6 @@ document.addEventListener("click", (ev) => {
     actions[act.dataset.act]();
     return;
   }
-  if (ev.target.closest("#addr-pill")) {
-    expand();
-    addr.focus();
-    addr.select();
-  }
 });
 
 sidebar.addEventListener("mouseenter", expand);
@@ -394,13 +385,13 @@ document.addEventListener("keydown", (ev) => {
    Persisted to localStorage — this machine only. */
 const TUNE_KEY = "aequera-proto-tune-v2";
 const BASEMENT = {
-  rail: 56, panel: 272, ctl: 34, row: 38, gap: 6, rad: 10,
+  top: 52, rail: 56, panel: 272, ctl: 34, row: 38, gap: 6, rad: 10,
   blur: 24, sat: 1.5, dur: 140, fs: 13, tl: 12, easing: "snappy",
 };
 const PROFILE_DELTA = {
-  minus:   { rail: -8, panel: -32, ctl: -6, row: -8, gap: -2, rad: -2, fs: -1 },
+  minus:   { top: -6, rail: -8, panel: -32, ctl: -6, row: -8, gap: -2, rad: -2, fs: -1 },
   default: {},
-  plus:    { rail: 12, panel: 32, ctl: 8, row: 8, gap: 2, rad: 2, fs: 1 },
+  plus:    { top: 6, rail: 12, panel: 32, ctl: 8, row: 8, gap: 2, rad: 2, fs: 1 },
 };
 const EASINGS = {
   snappy: "cubic-bezier(0.2,0.9,0.25,1)",
@@ -409,7 +400,7 @@ const EASINGS = {
 };
 /* input id, token key, unit, decimals */
 const TUNE_FIELDS = [
-  ["t-rail", "rail"], ["t-panel", "panel"], ["t-ctl", "ctl"], ["t-row", "row"],
+  ["t-top", "top"], ["t-rail", "rail"], ["t-panel", "panel"], ["t-ctl", "ctl"], ["t-row", "row"],
   ["t-gap", "gap"], ["t-rad", "rad"], ["t-blur", "blur"], ["t-sat", "sat"],
   ["t-fs", "fs"], ["t-tl", "tl"],
 ];
@@ -443,6 +434,7 @@ function applyTune() {
   const root = document.documentElement.style;
   root.setProperty("--dur", eff("dur") + "ms");
   root.setProperty("--snap", EASINGS[tune.easing] || EASINGS.snappy);
+  root.setProperty("--top-h", eff("top") + "px");
   root.setProperty("--rail-w", eff("rail") + "px");
   root.setProperty("--panel-w", eff("panel") + "px");
   root.setProperty("--ctl", eff("ctl") + "px");

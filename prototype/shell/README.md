@@ -13,14 +13,15 @@ including favicons, is generated locally.
 
 ## What it proves (your spec, item by item)
 
-- **Vertical tabs, minimized by default** — a 56px rail shows favicons only;
-  hovering the sidebar (or focusing it by keyboard) reveals the titled panel.
-- **Seamless connected surface** — rail and expander share one glass-token
-  recipe and overlap as layers, so tab bar and address bar read as a single
-  continuous surface instead of two boxes.
+- **Top address bar, vertical tabs** — the address bar is horizontal across
+  the top (traffic lights, nav, unified input); tabs live vertically on the
+  left, minimized to a favicon-only rail, revealed on hover.
+- **Seamless connected surface** — top bar, rail, and expander share one
+  glass-token recipe, so bar and tab rail read as a single continuous
+  surface instead of separate boxes.
 - **Address bar with 3-button cluster** — macOS-style traffic lights
-  (close / collapse / pin-open) above nav buttons, with the full
-  address+command input in the expanded panel.
+  (close / collapse / pin-open) beside nav buttons, with the full
+  address+command input centered in the bar.
 - **Blur material overall** — one `backdrop-filter` recipe (blur + saturate)
   on both layers; the animated expander never touches blur radius, width, or
   background (those would break layer caching).
@@ -37,7 +38,8 @@ including favicons, is generated locally.
 
 ## Tuning (your feedback loop)
 
-Open the sidebar and press **Tune** at the bottom of the expanded panel.
+Open the sidebar and press **Tune** in the top bar. The panel anchors below
+it as a popover on the same glass surface.
 Every settable value is editable — that is the explicit first test:
 
 - **Profiles — Minus / Default / Plus.** One basement value set
