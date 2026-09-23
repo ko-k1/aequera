@@ -172,7 +172,12 @@ function libCount(kind) {
   return recentClosed().length;
 }
 function renderLibrary() {
-  $("#lib-list").innerHTML = LIB_DEFS.map((d) =>
+  const tuneOpen = !$("#tune").hidden;
+  $("#lib-list").innerHTML =
+    `<button class="tab-row" data-act="settings" data-tune-toggle aria-label="Settings" aria-expanded="${tuneOpen}" title="Settings">`
+    + `<span class="nic" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.4v2.1M8 12.5v2.1M1.4 8h2.1M12.5 8h2.1M3.3 3.3l1.5 1.5M11.2 11.2l1.5 1.5M12.7 3.3l-1.5 1.5M4.8 11.2l-1.5 1.5"/></g></svg></span><span class="t">Settings</span>`
+    + `</button>`
+    + LIB_DEFS.map((d) =>
       `<button class="tab-row" data-lib="${d.kind}" aria-selected="${libraryView === d.kind}"`
       + ` aria-label="${d.label}, ${libCount(d.kind)} items" title="${d.label}">`
       + `<span class="nic" aria-hidden="true">${d.icon}</span>`

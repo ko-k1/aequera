@@ -420,10 +420,10 @@ body.expanded #ws-indicator,
   gap: var(--gap);
 }
 #lib-list .tab-row { position: relative; }
-#lib-list .wn { display: none; }
-#lib-list [data-lib] { display: none; }
-body.expanded #lib-list [data-lib],
-#sidebar:focus-within #lib-list [data-lib] { display: grid; }
+#lib-list > .tab-row { display: none; }
+#lib-list > [data-act="settings"] { display: grid; }
+body.expanded #lib-list > .tab-row,
+#sidebar:focus-within #lib-list > .tab-row { display: grid; }
 body.expanded #lib-list,
 #sidebar:focus-within #lib-list {
   flex-direction: row;
