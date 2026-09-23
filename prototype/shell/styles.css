@@ -228,6 +228,13 @@ body.expanded #ws-rail,
   overflow-y: auto;
   scrollbar-width: none;
 }
+/* Scroll affordance: with scrollbars hidden by design, a soft edge fade
+   marks a layer as scrollable. Applied only when content overflows (JS
+   toggles .scrollable by comparing scrollHeight to clientHeight). */
+.ws-layer .scroll.scrollable {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 10px, black calc(100% - 10px), transparent);
+  mask-image: linear-gradient(to bottom, transparent 0, black 10px, black calc(100% - 10px), transparent);
+}
 #ws-dots .scroll::-webkit-scrollbar,
 #ws-rows .scroll::-webkit-scrollbar { display: none; }
 #ws-dots .scroll {

@@ -43,7 +43,9 @@ open with the sidebar pinned (testing aid).
   landing on named session rows that reuse tab-row geometry exactly, plus a
   New workspace row. Each layer shows at most 5 workspaces, then scrolls
   (the active one is always scrolled into view); the hidden rows layer takes
-  zero width so the collapsed dock never stretches.
+  zero width so the collapsed dock never stretches. Scrollbars stay hidden
+  by design, so an overflowing layer gets a soft edge fade instead — scroll
+  with the wheel over the dock.
 - **Keyboard-first** — `Ctrl/⌘ K` focuses, `↑/↓` + `Enter` selects,
   `1–9` switches tabs, `Esc` collapses. Reduced-motion users get zero
   transitions with all state information intact.

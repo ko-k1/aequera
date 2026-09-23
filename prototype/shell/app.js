@@ -159,11 +159,13 @@ function renderTabs() {
 }
 
 /* Keep the active workspace inside its scroll window (both layers cap at
-   5 visible). No-op when everything fits. */
+   5 visible). No-op when everything fits. Also marks overflowing layers so
+   CSS can hint scrollability (scrollbars stay hidden by design). */
 function revealActive(layerSel) {
   const sc = document.querySelector(layerSel + " .scroll");
   const btn = sc && sc.querySelector(`[data-ws="${store.activeWs}"]`);
   if (!sc || !btn) return;
+  sc.classList.toggle("scrollable", sc.scrollHeight > sc.clientHeight + 1);
   const top = btn.offsetTop - sc.offsetTop;
   if (top < sc.scrollTop) sc.scrollTop = top;
   else if (top + btn.offsetHeight > sc.scrollTop + sc.clientHeight) {
