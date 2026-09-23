@@ -420,6 +420,7 @@ body.expanded .tab-row .t,
   max-width: 240px;
   opacity: 1;
   font-size: 12px;
+  line-height: 16px; /* title block exactly matches the 16px icon: rows never change height */
   transition-delay: 30ms;
 }
 .tab-row img { width: 16px; height: 16px; border-radius: 4px; flex: none; }
@@ -428,9 +429,13 @@ body.expanded .tab-row .t,
 body.expanded .tab-row:hover .x,
 body.expanded .tab-row:focus-visible .x,
 #sidebar:focus-within .tab-row:hover .x {
-  display: block;
+  /* 22px wide for the pointer, 16px tall like the icon, self-centered:
+     appearing never stretches the row (that 22px height was the growth). */
+  display: grid;
+  place-items: center;
+  align-self: center;
   color: var(--text-dim);
-  width: 22px; height: 22px;
+  width: 22px; height: 16px;
   font-size: 13px;
   flex: none;
 }
