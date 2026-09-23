@@ -400,9 +400,9 @@ body.expanded .tab-row,
   color: var(--text-dim);
   flex: none;
 }
-/* New Tab stays a centered square in both states: the stable anchor below
-   the rows, never stretched full-width. ID specificity beats both state
-   rules, so this holds collapsed and expanded alike. */
+/* New Tab stays centered in both states: a centered square collapsed, a
+   full-width row with a centered glyph expanded. Size follows the bar;
+   position never leaves the center. */
 #newtab-rail {
   width: var(--ctl);
   margin-left: auto;
@@ -411,6 +411,10 @@ body.expanded .tab-row,
   grid-template-columns: 22px;
   justify-content: center;
   justify-items: center;
+}
+body.expanded #newtab-rail,
+#sidebar:focus-within #newtab-rail {
+  width: 100%;
 }
 /* In-place reveal: icons never move; titles wipe in with the bar's own
    widening (clipped) plus a short fade. Collapsed titles take zero space. */
