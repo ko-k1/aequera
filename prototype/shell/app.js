@@ -282,15 +282,38 @@ function toast(msg) {
 }
 
 function expand() {
+  cancelHoverTimers();
   document.body.classList.add("expanded");
   // The dots lay out differently per state; reposition for the live one.
   positionWsIndicator();
 }
 function maybeCollapse() {
+  cancelHoverTimers();
   if (document.body.classList.contains("pinned")) return;
   if (sidebar.contains(document.activeElement)) return;
   document.body.classList.remove("expanded");
   positionWsIndicator();
+}
+/* Hover hysteresis: boundary jitter must never oscillate the bar. Expand is
+   quick (a beat, to debounce single-frame flicker); collapse lingers so
+   pointer travel to content, tune, or results never whiplashes. Either timer
+   cancels the other, and explicit intents (focus, pin, replay) bypass both
+   by calling expand()/maybeCollapse() directly. */
+let expandTimer = 0;
+let collapseTimer = 0;
+function cancelHoverTimers() {
+  clearTimeout(expandTimer);
+  clearTimeout(collapseTimer);
+}
+function scheduleExpand() {
+  clearTimeout(collapseTimer);
+  clearTimeout(expandTimer);
+  expandTimer = setTimeout(expand, 40);
+}
+function scheduleCollapse() {
+  clearTimeout(expandTimer);
+  clearTimeout(collapseTimer);
+  collapseTimer = setTimeout(maybeCollapse, 150);
 }
 
 const actions = {
@@ -358,8 +381,8 @@ document.addEventListener("click", (ev) => {
   }
 });
 
-sidebar.addEventListener("mouseenter", expand);
-sidebar.addEventListener("mouseleave", maybeCollapse);
+sidebar.addEventListener("mouseenter", scheduleExpand);
+sidebar.addEventListener("mouseleave", scheduleCollapse);
 addr.addEventListener("focus", () => { expand(); renderResults(); });
 addr.addEventListener("blur", () => setTimeout(() => { collapseResults(); maybeCollapse(); }, 120));
 addr.addEventListener("input", renderResults);
