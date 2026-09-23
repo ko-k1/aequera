@@ -18,7 +18,7 @@ open with the sidebar pinned (testing aid).
   (traffic lights, nav, unified input) sits above everything, so a hovering
   tab bar can never overlap it, by construction. Tabs live vertically below
   the bar: minimized to favicons, revealed in place on hover as the bar
-  itself widens, icons never moving, titles + URLs appearing beside them.
+  itself widens, icons never moving, titles appearing beside them.
 - **Seamless connected surface** — bar, rail, and content share one
   glass-token recipe; the bar's bottom edge and the content's left edge meet
   in a single clean L with no divider cutting the top strip.

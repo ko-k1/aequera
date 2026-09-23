@@ -125,7 +125,7 @@ function renderTabs() {
     `<li><button class="tab-row${t.pinned ? " pinned" : ""}" role="tab" data-tab="${t.id}"`
     + ` aria-selected="${t.id === w.activeTab}" aria-label="${esc(t.title)}">`
     + `<img src="${t.fav}" alt="">`
-    + `<span class="t">${esc(t.title)}<small>${esc(t.url)}</small></span>`
+    + `<span class="t">${esc(t.title)}</span>`
     + `<span class="x" role="button" tabindex="-1" data-close="${t.id}" aria-label="Close ${esc(t.title)}">×</span>`
     + `</button></li>`).join("")
     // New tab speaks the same row language: same container, same grid,

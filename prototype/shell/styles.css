@@ -418,7 +418,6 @@ body.expanded .tab-row,
     max-width var(--dur) var(--snap),
     opacity 100ms var(--snap);
 }
-.tab-row .t small { display: block; font-size: 0; }
 body.expanded .tab-row .t,
 #sidebar:focus-within .tab-row .t {
   max-width: 240px;
@@ -426,8 +425,6 @@ body.expanded .tab-row .t,
   font-size: 12px;
   transition-delay: 30ms;
 }
-body.expanded .tab-row .t small,
-#sidebar:focus-within .tab-row .t small { font-size: 11px; }
 .tab-row img { width: 16px; height: 16px; border-radius: 4px; flex: none; }
 .tab-row.pinned img { outline: 1px dashed var(--text-dim); outline-offset: 2px; }
 .tab-row .x { display: none; }
