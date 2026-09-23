@@ -403,14 +403,14 @@ document.addEventListener("keydown", (ev) => {
    Persisted to localStorage — this machine only. */
 const TUNE_KEY = "aequera-proto-tune-v2";
 const BASEMENT = {
-  top: 52, rail: 56, panel: 272, ctl: 34, row: 38, rgap: 2, rpy: 6, rpx: 8,
+  top: 52, rail: 56, panel: 272, ctl: 34, row: 38, rpy: 6, rpx: 8,
   gap: 6, rad: 10,
   blur: 24, sat: 1.5, dur: 140, fs: 13, tl: 12, easing: "snappy",
 };
 const PROFILE_DELTA = {
-  minus:   { top: -6, rail: -8, panel: -32, ctl: -6, row: -8, rgap: -2, rpy: -2, rpx: -2, gap: -2, rad: -2, fs: -1 },
+  minus:   { top: -6, rail: -8, panel: -32, ctl: -6, row: -8, rpy: -2, rpx: -2, gap: -2, rad: -2, fs: -1 },
   default: {},
-  plus:    { top: 6, rail: 12, panel: 32, ctl: 8, row: 8, rgap: 2, rpy: 2, rpx: 2, gap: 2, rad: 2, fs: 1 },
+  plus:    { top: 6, rail: 12, panel: 32, ctl: 8, row: 8, rpy: 2, rpx: 2, gap: 2, rad: 2, fs: 1 },
 };
 const EASINGS = {
   snappy: "cubic-bezier(0.2,0.9,0.25,1)",
@@ -420,7 +420,7 @@ const EASINGS = {
 /* input id, token key, unit, decimals */
 const TUNE_FIELDS = [
   ["t-top", "top"], ["t-rail", "rail"], ["t-panel", "panel"], ["t-ctl", "ctl"], ["t-row", "row"],
-  ["t-rgap", "rgap"], ["t-rpy", "rpy"], ["t-rpx", "rpx"],
+  ["t-rpy", "rpy"], ["t-rpx", "rpx"],
   ["t-gap", "gap"], ["t-rad", "rad"], ["t-blur", "blur"], ["t-sat", "sat"],
   ["t-fs", "fs"], ["t-tl", "tl"],
 ];
@@ -459,7 +459,6 @@ function applyTune() {
   root.setProperty("--panel-w", eff("panel") + "px");
   root.setProperty("--ctl", eff("ctl") + "px");
   root.setProperty("--row-h", eff("row") + "px");
-  root.setProperty("--row-gap", eff("rgap") + "px");
   root.setProperty("--row-py", eff("rpy") + "px");
   root.setProperty("--row-px", eff("rpx") + "px");
   root.setProperty("--gap", eff("gap") + "px");

@@ -12,10 +12,9 @@
   --panel-w: 272px;
   --ctl: 34px;      /* rail control size */
   --row-h: 38px;    /* expanded tab row height */
-  --row-gap: 2px;   /* margin between tab rows */
   --row-py: 6px;    /* tab row vertical padding */
   --row-px: 8px;    /* tab row horizontal padding (left adds icon inset) */
-  --gap: 6px;       /* rail + chrome spacing */
+  --gap: 6px;       /* spacing everywhere: rail, between rows, icon to label */
   --fs: 13px;       /* base font size */
   --tl: 12px;       /* traffic-light diameter (macOS convention default) */
   --blur: 24px;
@@ -196,7 +195,7 @@ body.expanded #sidebar,
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--row-gap);
+  gap: var(--gap);
   overflow-y: auto;
   scrollbar-width: none;
   contain: layout paint;
@@ -351,7 +350,7 @@ body.expanded #ws-indicator,
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--row-gap);
+  gap: var(--gap);
   overflow-y: auto;
   contain: layout paint;
 }
@@ -383,7 +382,7 @@ body.expanded .tab-row,
   justify-content: stretch;
   justify-items: start;
   grid-template-columns: 22px 1fr auto;
-  gap: 8px;
+  gap: var(--gap);
   padding: var(--row-py) var(--row-px) var(--row-py) calc(var(--row-px) + 4px);
 }
 /* One row language for tabs and New Tab alike: transparent rows, subtle
