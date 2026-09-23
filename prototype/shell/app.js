@@ -128,10 +128,10 @@ function renderTabs() {
     + `<span class="t">${esc(t.title)}</span>`
     + `<span class="x" role="button" tabindex="-1" data-close="${t.id}" aria-label="Close ${esc(t.title)}">×</span>`
     + `</button></li>`).join("")
-    // New tab speaks the same row language: same container, same grid,
-    // icon box aligned with favicons, label revealed with titles.
+    // New tab speaks the same row language: icon box only, no label —
+    // it aligns with favicons in every state by sharing .tab-row geometry.
     + `<li><button class="tab-row" data-act="newtab" aria-label="New tab">`
-    + `<span class="nic" aria-hidden="true">+</span><span class="t">New tab</span>`
+    + `<span class="nic" aria-hidden="true">+</span>`
     + `</button></li>`;
   $("#ws-dots").innerHTML = store.workspaces.map((x) =>
     `<button data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
