@@ -52,8 +52,9 @@ open with the sidebar pinned (testing aid).
 
 ## Tuning (your feedback loop)
 
-Open the sidebar and press **Tune** in the top bar. The panel anchors below
-it as a popover on the same glass surface.
+Open the sidebar and press **Tune** in the top bar (or the **Settings** row
+at the rail bottom — same row language as History and Bookmarks). The panel
+anchors below it as a popover on the same glass surface.
 Every settable value is editable — that is the explicit first test:
 
 - **Profiles — Minus / Default / Plus.** One basement value set

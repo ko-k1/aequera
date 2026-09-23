@@ -404,6 +404,25 @@ body.expanded #ws-indicator,
   flex: 1 1 auto;
   min-height: 0;
 }
+#tab-list::-webkit-scrollbar { display: none; }
+#tab-list li { min-width: 0; }
+/* Library section: History / Bookmarks / Recently closed. Same container
+   metrics as the tab list so rows align in both states; rows reuse
+   .tab-row (wipe, wash, icon box) with count dressing like workspaces. */
+#lib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+#lib-list .wn { font-size: 11px; color: var(--text-dim); flex: none; }
+/* Library content view: header + entries reusing .result; entries open in
+   the active workspace (fresh tab when it is empty). */
+.lib-card { max-width: 560px; width: 100%; }
+.lib-list { display: flex; flex-direction: column; gap: 2px; margin: 12px 0; max-height: 40vh; overflow-y: auto; }
+.lib-card [data-lib-back] { color: var(--text-dim); }
 /* STATE 1 — default (collapsed): icon rows anchored LEFT at the exact
    inset expanded rows use. The button origin never moves: expand extends
    rightward to full width, collapse shrinks back the identical path.
@@ -506,22 +525,13 @@ body.expanded .tab-row:focus-visible .x,
   flex: none;
 }
 
-/* Settings gear: bottom of the rail, same icon-box language as the row
-   icons. Toggles the same Tune panel as the top-bar button. */
-#settings-rail {
-  width: var(--ctl); height: var(--ctl);
-  margin: 0 auto;
-  display: grid;
-  place-items: center;
-  color: var(--text-dim);
-  border-radius: var(--radius);
-  flex: none;
-}
-#settings-rail:hover { color: var(--text); }
-#settings-rail[aria-expanded="true"] {
-  color: var(--text);
-  background: rgba(127, 140, 170, 0.2);
-}
+/* Settings rail button: the same .tab-row geometry as tabs, history, and
+   bookmarks — icon box collapsed, labeled row expanded. Only its outer
+   margins differ (it sits directly in #rail, outside any padded list). */
+#settings-rail { margin-left: 6px; }
+body.expanded #settings-rail,
+#sidebar:focus-within #settings-rail { margin: 0 6px; }
+#settings-rail[aria-expanded="true"] { background: rgba(127, 140, 170, 0.2); }
 /* Tune popover: first-class customization controls, anchored under the
    top bar. Same glass recipe keeps it on the seamless surface. */
 #tune {

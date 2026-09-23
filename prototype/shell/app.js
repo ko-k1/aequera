@@ -34,6 +34,30 @@ const store = {
 };
 nextId = 6;
 
+/* Library data: history is live-logged by navigate(); bookmarks are curated
+   seeds; recently-closed derives from every workspace's closed stack. */
+store.history = [
+  { url: "https://developer.mozilla.org", title: "MDN Web Docs", at: 3 },
+  { url: "https://example.org/papers", title: "Reading list", at: 2 },
+  { url: "https://firefox-source-docs.mozilla.org", title: "Firefox Source Docs", at: 1 },
+];
+store.bookmarks = [
+  { url: "https://developer.mozilla.org", title: "MDN Web Docs" },
+  { url: "https://example.org/papers", title: "Reading list" },
+  { url: "aequera:start", title: "Aequera Start" },
+];
+let libraryView = null; // null | "history" | "bookmarks" | "closed"
+
+function recentClosed() {
+  const all = [];
+  for (const w of store.workspaces) {
+    for (let i = w.closed.length - 1; i >= 0; i--) {
+      all.push({ ws: w.name, tab: w.closed[i].tab });
+    }
+  }
+  return all.slice(0, 20);
+}
+
 function mkTab(url, title) {
   const id = nid();
   return { id, url, title, pinned: false, fav: fav(url),
@@ -72,6 +96,7 @@ function openTab(w, url, title) {
               hist: [{ url, title }], hi: 0 };
   w.tabs.push(t);
   w.activeTab = t.id;
+  libraryView = null;
   return t.id;
 }
 function closeTab(w, id) {
@@ -108,6 +133,12 @@ function navigate(t, raw) {
   t.hist.push({ url, title });
   t.hi = t.hist.length - 1;
   t.url = url; t.title = title; t.fav = fav(url);
+  libraryView = null;
+  // Live history: newest first, deduped consecutively, capped.
+  if (!store.history.length || store.history[0].url !== url) {
+    store.history.unshift({ url, title, at: Date.now() });
+    store.history = store.history.slice(0, 50);
+  }
 }
 function histGo(t, dir) {
   const hi = t.hi + dir;
@@ -122,7 +153,28 @@ function esc(s) {
 }
 
 function render() {
-  renderTabs(); renderPage();
+  renderTabs(); renderLibrary(); renderPage();
+}
+
+/* Library section: History / Bookmarks / Recently closed as tab-geometry
+   rows (icons alone collapsed, labels wiped in expanded). Counts live. */
+const LIB_DEFS = [
+  { kind: "history", label: "History", icon: "◷" },
+  { kind: "bookmarks", label: "Bookmarks", icon: "★" },
+  { kind: "closed", label: "Recently closed", icon: "↺" },
+];
+function libCount(kind) {
+  if (kind === "history") return store.history.length;
+  if (kind === "bookmarks") return store.bookmarks.length;
+  return recentClosed().length;
+}
+function renderLibrary() {
+  $("#lib-list").innerHTML = LIB_DEFS.map((d) =>
+    `<button class="tab-row" data-lib="${d.kind}" aria-selected="${libraryView === d.kind}"`
+    + ` aria-label="${d.label}, ${libCount(d.kind)} items">`
+    + `<span class="nic" aria-hidden="true">${d.icon}</span>`
+    + `<span class="t">${d.label}</span><span class="wn">${libCount(d.kind)}</span>`
+    + `</button>`).join("");
 }
 
 /* One list for both states: collapsed shows favicons (CSS clips the rest),
@@ -196,9 +248,13 @@ function positionWsIndicator() {
 }
 
 function renderPage() {
+  const page = $("#page");
+  if (libraryView) {
+    renderLibraryView(page);
+    return;
+  }
   const w = activeWs();
   const t = w && tabOf(w, w.activeTab);
-  const page = $("#page");
   if (!t) {
     page.innerHTML = `<div class="page-card"><h1>No tab open</h1>`
       + `<p>Press <kbd>+</kbd> for a new tab.</p></div>`;
@@ -209,6 +265,39 @@ function renderPage() {
     + `<p>history ${t.hi + 1} of ${t.hist.length} · ${esc(w.name)}</p>`
     + `<p><kbd>Ctrl/⌘ K</kbd> address &amp; commands · <kbd>1–9</kbd> switch tab ·`
     + ` <kbd>Esc</kbd> close</p></div>`;
+}
+
+/* Library content view: click an entry to open it in the active workspace
+   (or a fresh tab when the workspace is empty). Back returns to the page. */
+function libraryItems() {
+  if (libraryView === "history") {
+    return store.history.map((h) => ({ title: h.title, sub: h.url, url: h.url }));
+  }
+  if (libraryView === "bookmarks") {
+    return store.bookmarks.map((b) => ({ title: b.title, sub: b.url, url: b.url }));
+  }
+  return recentClosed().map((c) => ({
+    title: c.tab.title, sub: `${c.tab.url} · ${c.ws}`, url: c.tab.url,
+  }));
+}
+function renderLibraryView(page) {
+  const def = LIB_DEFS.find((d) => d.kind === libraryView);
+  const items = libraryItems();
+  page.innerHTML = `<div class="page-card lib-card"><h1>${def ? esc(def.label) : "Library"}</h1>`
+    + `<p>${items.length} item${items.length === 1 ? "" : "s"}</p>`
+    + `<div class="lib-list">` + items.map((it, i) =>
+      `<button class="result" data-lib-open="${i}" role="listitem">`
+      + `<span class="kind">${esc(def ? def.label : "")}</span>`
+      + `<span><span>${esc(it.title)}</span><span class="sub">${esc(it.sub)}</span></span></button>`
+      ).join("") + `</div>`
+    + `<p><button data-lib-back>← Back to page</button></p></div>`;
+}
+function openOrNavigate(url, title) {
+  const w = activeWs();
+  const t = w && tabOf(w, w.activeTab);
+  if (t) navigate(t, url);
+  else openTab(w, url, title);
+  render();
 }
 
 /* ---------------- unified address/command surface ---------------- */
@@ -226,6 +315,26 @@ function candidates(q) {
     if (!q || w.name.toLowerCase().includes(q)) {
       items.push({ kind: "Workspace", title: w.name, sub: `${w.tabs.length} tabs`,
                    run: () => { store.activeWs = w.id; } });
+    }
+  }
+  const matchText = (title, url) =>
+    !q || title.toLowerCase().includes(q) || url.toLowerCase().includes(q);
+  for (const h of store.history) {
+    if (matchText(h.title, h.url)) {
+      items.push({ kind: "History", title: h.title, sub: h.url,
+                   run: () => openOrNavigate(h.url, h.title) });
+    }
+  }
+  for (const b of store.bookmarks) {
+    if (matchText(b.title, b.url)) {
+      items.push({ kind: "Bookmark", title: b.title, sub: b.url,
+                   run: () => openOrNavigate(b.url, b.title) });
+    }
+  }
+  for (const c of recentClosed()) {
+    if (matchText(c.tab.title, c.tab.url)) {
+      items.push({ kind: "Closed", title: c.tab.title, sub: `${c.tab.url} · ${c.ws}`,
+                   run: () => openOrNavigate(c.tab.url, c.tab.title) });
     }
   }
   const cmds = [
@@ -371,12 +480,34 @@ document.addEventListener("click", (ev) => {
   if (tab) {
     const w = activeWs();
     w.activeTab = Number(tab.dataset.tab);
+    libraryView = null;
+    render();
+    return;
+  }
+  // Library rows/items/back must precede the generic .result branch: library
+  // items reuse .result styling but carry data-lib-open instead of data-i.
+  const libRow = ev.target.closest("[data-lib]");
+  if (libRow) {
+    libraryView = libRow.dataset.lib;
+    render();
+    return;
+  }
+  const libOpen = ev.target.closest("[data-lib-open]");
+  if (libOpen) {
+    const items = libraryItems();
+    const it = items[Number(libOpen.dataset.libOpen)];
+    if (it) openOrNavigate(it.url, it.title);
+    return;
+  }
+  if (ev.target.closest("[data-lib-back]")) {
+    libraryView = null;
     render();
     return;
   }
   const wsel = ev.target.closest("[data-ws]");
   if (wsel) {
     store.activeWs = Number(wsel.dataset.ws);
+    libraryView = null;
     collapseResults();
     render();
     return;
@@ -461,7 +592,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key >= "1" && ev.key <= "9") {
     const w = activeWs();
     const t = w.tabs[Number(ev.key) - 1];
-    if (t) { w.activeTab = t.id; render(); }
+    if (t) { w.activeTab = t.id; libraryView = null; render(); }
   } else if (ev.key === "Escape") {
     scheduleCollapse();
   }
