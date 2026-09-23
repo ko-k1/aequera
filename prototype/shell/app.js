@@ -585,12 +585,15 @@ $("#t-reset").addEventListener("click", () => {
   applyTune(); saveTune();
   toast("Tuning reset to basement default profile.");
 });
-$("#tune-toggle").addEventListener("click", () => {
+function toggleTune() {
   const panel = $("#tune");
   const show = panel.hidden;
   panel.hidden = !show;
   $("#tune-toggle").setAttribute("aria-expanded", String(show));
-});
+  $("#settings-rail").setAttribute("aria-expanded", String(show));
+}
+$("#tune-toggle").addEventListener("click", toggleTune);
+$("#settings-rail").addEventListener("click", toggleTune);
 
 /* ---------------- frame meter (local only) ---------------- */
 let last = performance.now(), ema = 16.7, frames = 0, lastPaint = performance.now();

@@ -506,6 +506,22 @@ body.expanded .tab-row:focus-visible .x,
   flex: none;
 }
 
+/* Settings gear: bottom of the rail, same icon-box language as the row
+   icons. Toggles the same Tune panel as the top-bar button. */
+#settings-rail {
+  width: var(--ctl); height: var(--ctl);
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  border-radius: var(--radius);
+  flex: none;
+}
+#settings-rail:hover { color: var(--text); }
+#settings-rail[aria-expanded="true"] {
+  color: var(--text);
+  background: rgba(127, 140, 170, 0.2);
+}
 /* Tune popover: first-class customization controls, anchored under the
    top bar. Same glass recipe keeps it on the seamless surface. */
 #tune {
