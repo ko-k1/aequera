@@ -406,10 +406,11 @@ body.expanded #ws-indicator,
 }
 #tab-list::-webkit-scrollbar { display: none; }
 #tab-list li { min-width: 0; }
-/* Library: ONE overview row containing Settings / History / Bookmarks /
-   Recently closed as an inline sub-list — never split rows. Collapsed shows
-   the overview icon only; expanded reveals the contained rows, which reuse
-   .tab-row geometry (wipe, wash, counts) exactly like tab buttons. */
+/* Library: History / Bookmarks / Recently closed, always shown directly —
+   no folding, no accordion. Stacked icon boxes collapsed; ONE centered
+   horizontal icon line expanded. Counts become badges; labels retire for
+   this strip (tooltips carry names). Settings lives separately at the rail
+   bottom. */
 #lib-list {
   list-style: none;
   margin: 0;
@@ -418,18 +419,16 @@ body.expanded #ws-indicator,
   flex-direction: column;
   gap: var(--gap);
 }
-#lib-list .wn { font-size: 11px; color: var(--text-dim); flex: none; }
-/* Contained items share ONE horizontal icon line (never stacked rows).
-   Specificity beats .tab-row state rules via #lib-list .lib-sub. */
-#lib-list .lib-sub { display: none; }
-#lib-list .lib-sub.open {
-  display: flex;
+#lib-list .tab-row { position: relative; }
+#lib-list .wn { display: none; }
+body.expanded #lib-list,
+#sidebar:focus-within #lib-list {
   flex-direction: row;
   justify-content: center;
-  gap: var(--gap);
+  padding: 0;
 }
-#lib-list .lib-sub .tab-row {
-  position: relative;
+body.expanded #lib-list .tab-row,
+#sidebar:focus-within #lib-list .tab-row {
   width: var(--ctl);
   margin: 0;
   padding: var(--row-py) 0;
@@ -437,8 +436,10 @@ body.expanded #ws-indicator,
   justify-content: center;
   justify-items: center;
 }
-#lib-list .lib-sub .t { display: none; }
-#lib-list .lib-sub .wn {
+body.expanded #lib-list .t,
+#sidebar:focus-within #lib-list .t { display: none; }
+body.expanded #lib-list .wn,
+#sidebar:focus-within #lib-list .wn {
   display: block;
   position: absolute;
   top: -2px; right: -2px;
@@ -557,7 +558,8 @@ body.expanded .tab-row:focus-visible .x,
 }
 
 /* Bottom settings button: a centered icon square in both states, below the
-   workspace dock. Toggles the same Tune panel; state synced by toggleTune. */
+   workspace dock (the strip above holds History / Bookmarks / Closed).
+   Toggles the same Tune panel; state synced by toggleTune. */
 #settings-rail {
   width: var(--ctl);
   margin-left: auto;
@@ -567,7 +569,6 @@ body.expanded .tab-row:focus-visible .x,
   justify-content: center;
   justify-items: center;
 }
-#settings-rail svg { display: block; }
 /* Tune popover: first-class customization controls, anchored under the
    top bar. Same glass recipe keeps it on the seamless surface. */
 #tune {
