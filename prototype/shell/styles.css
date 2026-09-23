@@ -189,20 +189,6 @@ body.expanded #sidebar,
 }
 #tune-toggle[aria-expanded="true"] { color: var(--text); border-color: var(--accent); }
 
-#tab-list {
-  list-style: none;
-  margin: 0;
-  padding: 0 6px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-  overflow-y: auto;
-  scrollbar-width: none;
-  contain: layout paint;
-}
-#tab-list::-webkit-scrollbar { display: none; }
-#tab-list li { min-width: 0; }
-
 #ws-rail {
   position: relative;
   margin-top: auto;
@@ -346,12 +332,13 @@ body.expanded #ws-indicator,
 
 #tab-list {
   list-style: none;
-  margin: 0;
+  margin: 0 0 6px;
   padding: 0 6px;
   display: flex;
   flex-direction: column;
   gap: var(--gap);
   overflow-y: auto;
+  scrollbar-width: none;
   contain: layout paint;
 }
 /* STATE 1 — default (collapsed): icon rows anchored LEFT at the exact
@@ -397,6 +384,7 @@ body.expanded .tab-row,
   display: grid;
   place-items: center;
   font-size: 16px;
+  line-height: 1;
   color: var(--text-dim);
   flex: none;
 }
