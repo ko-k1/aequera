@@ -193,6 +193,8 @@ body.expanded #sidebar,
   position: relative;
   margin-top: auto;
   align-self: center;
+  /* Never squeezed by rail overflow: sizes to content, scrolls within caps. */
+  flex: none;
   /* Solid dock behind the dots when collapsed; transparent wrapper around
      rows when expanded, so expanded rows share tab buttons' exact margins. */
   background: var(--solid);
@@ -245,6 +247,10 @@ body.expanded #ws-rail,
   display: flex; flex-direction: column; gap: var(--gap);
   max-height: 164px;
 }
+/* Scroll children must never flex-shrink: squeezed rows would compress to
+   fit instead of overflowing into scroll (seen live past five workspaces).
+   Excess becomes scroll, always. */
+#ws-dots .scroll > *, #ws-rows .scroll > * { flex: none; }
 #ws-rows {
   grid-template-rows: 0fr;
   opacity: 0;
@@ -385,7 +391,7 @@ body.expanded #ws-indicator,
 
 #tab-list {
   list-style: none;
-  margin: 0 0 6px;
+  margin: 0;
   padding: 0 6px;
   display: flex;
   flex-direction: column;
@@ -393,6 +399,10 @@ body.expanded #ws-indicator,
   overflow-y: auto;
   scrollbar-width: none;
   contain: layout paint;
+  /* Fill free rail space and scroll inside it: without flex sizing, tall
+     content crushes the workspace rail instead of scrolling. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 /* STATE 1 — default (collapsed): icon rows anchored LEFT at the exact
    inset expanded rows use. The button origin never moves: expand extends
@@ -407,7 +417,7 @@ body.expanded #ws-indicator,
   align-items: start;
   width: var(--ctl);
   margin: 0;
-  padding: var(--row-py) 0 var(--row-py) calc(var(--row-px) + 4px);
+  padding: var(--row-py) 0 var(--row-py) calc(var(--row-px));
   text-align: left;
   border-radius: var(--radius);
   overflow: hidden;
@@ -423,7 +433,7 @@ body.expanded .tab-row,
   justify-items: start;
   grid-template-columns: 22px 1fr auto;
   gap: var(--gap);
-  padding: var(--row-py) var(--row-px) var(--row-py) calc(var(--row-px) + 4px);
+  padding: var(--row-py) var(--row-px) var(--row-py) calc(var(--row-px));
 }
 /* One row language for tabs and New Tab alike: transparent rows, subtle
    wash on hover, slightly stronger wash for the active tab — in every

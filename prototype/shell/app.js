@@ -187,7 +187,11 @@ function positionWsIndicator() {
     return;
   }
   ind.style.opacity = "1";
-  const y = active.offsetTop + (active.offsetHeight - INDICATOR_SIZE) / 2;
+  // offsetTop is layout position; subtract the scroller offset so the dot
+  // tracks the VISIBLE button when the dock is scrolled.
+  const scroller = document.querySelector("#ws-dots .scroll");
+  const scrolled = scroller ? scroller.scrollTop : 0;
+  const y = active.offsetTop - scrolled + (active.offsetHeight - INDICATOR_SIZE) / 2;
   ind.style.transform = `translateY(${y}px)`;
 }
 
