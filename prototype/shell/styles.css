@@ -367,7 +367,6 @@ body.expanded #ws-indicator,
   justify-items: start;
   align-items: start;
   width: var(--ctl);
-  min-height: var(--ctl);
   margin: 0;
   padding: var(--row-py) 0 var(--row-py) calc(var(--row-px) + 4px);
   text-align: left;
