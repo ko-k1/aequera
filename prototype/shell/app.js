@@ -285,16 +285,27 @@ function toast(msg) {
   toast._t = setTimeout(() => { el.hidden = true; }, 1800);
 }
 
+/* Expansion state machine: expanded while PINNED, hovered, address-focused,
+   or keyboard-focused inside the bar — collapsed only when all are false.
+   expansionIntent() reads live state at decision time, so a click that moves
+   focus into the bar never collapses it out from under the user. */
+let hoverSide = false;
+function expansionIntent() {
+  return (
+    document.body.classList.contains("pinned") ||
+    hoverSide ||
+    sidebar.contains(document.activeElement) ||
+    document.activeElement === addr
+  );
+}
 function expand() {
   cancelHoverTimers();
   document.body.classList.add("expanded");
   // The dots lay out differently per state; reposition for the live one.
   positionWsIndicator();
 }
-function maybeCollapse() {
+function collapse() {
   cancelHoverTimers();
-  if (document.body.classList.contains("pinned")) return;
-  if (sidebar.contains(document.activeElement)) return;
   document.body.classList.remove("expanded");
   positionWsIndicator();
 }
@@ -302,7 +313,7 @@ function maybeCollapse() {
    quick (a beat, to debounce single-frame flicker); collapse lingers so
    pointer travel to content, tune, or results never whiplashes. Either timer
    cancels the other, and explicit intents (focus, pin, replay) bypass both
-   by calling expand()/maybeCollapse() directly. */
+   by calling expand()/collapse() directly. */
 let expandTimer = 0;
 let collapseTimer = 0;
 function cancelHoverTimers() {
@@ -312,12 +323,16 @@ function cancelHoverTimers() {
 function scheduleExpand() {
   clearTimeout(collapseTimer);
   clearTimeout(expandTimer);
-  expandTimer = setTimeout(expand, 40);
+  expandTimer = setTimeout(() => {
+    if (expansionIntent()) expand();
+  }, 40);
 }
 function scheduleCollapse() {
   clearTimeout(expandTimer);
   clearTimeout(collapseTimer);
-  collapseTimer = setTimeout(maybeCollapse, 150);
+  collapseTimer = setTimeout(() => {
+    if (!expansionIntent()) collapse();
+  }, 150);
 }
 
 const actions = {
@@ -331,7 +346,7 @@ const actions = {
   "newtab": () => { openTab(activeWs(), "aequera:newtab", "New Tab"); expand(); addr.focus(); addr.select(); render(); renderResults(); },
   "new-workspace": () => { createWorkspace(); render(); },
   "win-close": () => toast("Prototype — window controls are decorative."),
-  "win-min": () => { document.body.classList.remove("expanded", "pinned"); syncPin(); },
+  "win-min": () => { document.body.classList.remove("pinned"); collapse(); syncPin(); },
   "win-pin": () => {
     document.body.classList.toggle("pinned");
     if (document.body.classList.contains("pinned")) expand();
@@ -385,10 +400,12 @@ document.addEventListener("click", (ev) => {
   }
 });
 
-sidebar.addEventListener("mouseenter", scheduleExpand);
-sidebar.addEventListener("mouseleave", scheduleCollapse);
+sidebar.addEventListener("mouseenter", () => { hoverSide = true; scheduleExpand(); });
+sidebar.addEventListener("mouseleave", () => { hoverSide = false; scheduleCollapse(); });
+sidebar.addEventListener("focusin", scheduleExpand);
+sidebar.addEventListener("focusout", scheduleCollapse);
 addr.addEventListener("focus", () => { expand(); renderResults(); });
-addr.addEventListener("blur", () => setTimeout(() => { collapseResults(); maybeCollapse(); }, 120));
+addr.addEventListener("blur", () => setTimeout(() => { collapseResults(); scheduleCollapse(); }, 120));
 addr.addEventListener("input", renderResults);
 addr.addEventListener("keydown", (ev) => {
   if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
@@ -417,7 +434,7 @@ addr.addEventListener("keydown", (ev) => {
     addr.value = "";
     collapseResults();
     addr.blur();
-    maybeCollapse();
+    collapse();
   }
 });
 function renderResultsKeepQuery() {
@@ -446,7 +463,7 @@ document.addEventListener("keydown", (ev) => {
     const t = w.tabs[Number(ev.key) - 1];
     if (t) { w.activeTab = t.id; render(); }
   } else if (ev.key === "Escape") {
-    maybeCollapse();
+    scheduleCollapse();
   }
 });
 
@@ -558,6 +575,7 @@ for (const [id, key] of TUNE_FIELDS) {
 }
 $("#t-replay").addEventListener("click", () => {
   // Collapse and re-expand so the current duration can be felt in isolation.
+  cancelHoverTimers();
   document.body.classList.remove("expanded");
   void sidebar.offsetWidth;
   expand();
