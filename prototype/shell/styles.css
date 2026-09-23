@@ -560,9 +560,8 @@ body.expanded .tab-row:focus-visible .x,
   flex: none;
 }
 
-/* Bottom settings button: a centered icon square in both states, below the
-   workspace dock (the strip above holds History / Bookmarks / Closed).
-   Toggles the same Tune panel; state synced by toggleTune. */
+/* Bottom settings button: icon-only centered square, visible collapsed;
+   hidden expanded (the strip carries its own gear there). Toggles Tune. */
 #settings-rail {
   width: var(--ctl);
   margin-left: auto;
@@ -572,6 +571,15 @@ body.expanded .tab-row:focus-visible .x,
   justify-content: center;
   justify-items: center;
 }
+#settings-rail svg { display: block; }
+body.expanded #settings-rail,
+#sidebar:focus-within #settings-rail { display: none; }
+/* Library strip (expanded): Settings / History / Bookmarks / Closed share
+   ONE centered horizontal icon line. Hidden collapsed (bottom gear covers
+   that state). Counts become badges. */
+#lib-list > .tab-row { display: none; }
+body.expanded #lib-list > .tab-row,
+#sidebar:focus-within #lib-list > .tab-row { display: grid; }
 /* Tune popover: first-class customization controls, anchored under the
    top bar. Same glass recipe keeps it on the seamless surface. */
 #tune {
