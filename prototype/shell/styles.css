@@ -400,9 +400,20 @@ body.expanded .tab-row,
   color: var(--text-dim);
   flex: none;
 }
+/* New Tab stays a centered square in both states: the stable anchor below
+   the rows, never stretched full-width. ID specificity beats both state
+   rules, so this holds collapsed and expanded alike. */
+#newtab-rail {
+  width: var(--ctl);
+  margin-left: auto;
+  margin-right: auto;
+  padding: var(--row-py) 0;
+  grid-template-columns: 22px;
+  justify-content: center;
+  justify-items: center;
+}
 /* In-place reveal: icons never move; titles wipe in with the bar's own
-   widening (clipped) plus a short fade — smooth both directions, no pop.
-   Collapsed titles take zero space. */
+   widening (clipped) plus a short fade. Collapsed titles take zero space. */
 .tab-row .t {
   display: block;
   max-width: 0;

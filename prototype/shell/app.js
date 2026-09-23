@@ -130,7 +130,7 @@ function renderTabs() {
     + `</button></li>`).join("")
     // New tab speaks the same row language: icon box only, no label —
     // it aligns with favicons in every state by sharing .tab-row geometry.
-    + `<li><button class="tab-row" data-act="newtab" aria-label="New tab">`
+    + `<li><button id="newtab-rail" class="tab-row" data-act="newtab" aria-label="New tab">`
     + `<span class="nic" aria-hidden="true">+</span>`
     + `</button></li>`;
   $("#ws-dots").innerHTML = store.workspaces.map((x) =>
