@@ -221,14 +221,32 @@ body.expanded #ws-rail,
     opacity 120ms var(--snap),
     visibility 0s;
 }
-.ws-layer > .clip { overflow: hidden; min-height: 0; }
-#ws-dots .clip { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.ws-layer > .clip { overflow: hidden; min-height: 0; min-width: 0; }
+/* Scroll windows: at most 5 workspaces visible per layer, then scroll.
+   Dots: 5×10px + 4×6px gaps = 74px. Rows: ≈5 content-hugged rows. */
+#ws-dots .scroll, #ws-rows .scroll {
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+#ws-dots .scroll::-webkit-scrollbar,
+#ws-rows .scroll::-webkit-scrollbar { display: none; }
+#ws-dots .scroll {
+  display: flex; flex-direction: column; gap: 6px; align-items: center;
+  max-height: 74px;
+}
+#ws-rows .scroll {
+  display: flex; flex-direction: column; gap: var(--gap);
+  max-height: 164px;
+}
 #ws-rows {
   grid-template-rows: 0fr;
   opacity: 0;
   visibility: hidden;
+  /* Zero width too: invisible rows must not stretch the collapsed dock. */
+  max-width: 0;
   transition:
     grid-template-rows var(--dur) var(--snap),
+    max-width var(--dur) var(--snap),
     opacity 120ms var(--snap),
     visibility 0s linear var(--dur);
 }
@@ -238,8 +256,10 @@ body.expanded #ws-rows,
   grid-template-rows: 1fr;
   opacity: 1;
   visibility: visible;
+  max-width: 320px;
   transition:
     grid-template-rows var(--dur) var(--snap),
+    max-width var(--dur) var(--snap),
     opacity 120ms var(--snap);
 }
 body.expanded #ws-dots,

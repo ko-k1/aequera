@@ -41,7 +41,9 @@ open with the sidebar pinned (testing aid).
   only. Expanding morphs for real: the dots layer collapses height while
   the rows layer opens (0fr/1fr grid + crossfade, interruptible mid-flight),
   landing on named session rows that reuse tab-row geometry exactly, plus a
-  New workspace row.
+  New workspace row. Each layer shows at most 5 workspaces, then scrolls
+  (the active one is always scrolled into view); the hidden rows layer takes
+  zero width so the collapsed dock never stretches.
 - **Keyboard-first** — `Ctrl/⌘ K` focuses, `↑/↓` + `Enter` selects,
   `1–9` switches tabs, `Esc` collapses. Reduced-motion users get zero
   transitions with all state information intact.

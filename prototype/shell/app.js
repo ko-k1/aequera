@@ -141,19 +141,34 @@ function renderTabs() {
     + `<li><button id="newtab-rail" class="tab-row" data-act="newtab" aria-label="New tab">`
     + `<span class="nic" aria-hidden="true">+</span>`
     + `</button></li>`;
-  $("#ws-dots .clip").innerHTML = store.workspaces.map((x) =>
+  $("#ws-dots .clip").innerHTML = `<div class="scroll">` + store.workspaces.map((x) =>
     `<button data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
     + ` aria-label="${esc(x.name)}, ${x.tabs.length} tabs" title="${esc(x.name)}">`
-    + `<span class="wdot"></span></button>`).join("");
-  $("#ws-rows .clip").innerHTML = store.workspaces.map((x) =>
+    + `<span class="wdot"></span></button>`).join("") + `</div>`;
+  $("#ws-rows .clip").innerHTML = `<div class="scroll">` + store.workspaces.map((x) =>
     `<button class="tab-row" data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
     + ` aria-label="${esc(x.name)}, ${x.tabs.length} tabs">`
     + `<span class="wdot"></span><span class="t">${esc(x.name)}</span>`
     + `<span class="wn">${x.tabs.length}</span></button>`).join("")
     + `<button class="tab-row" data-act="new-workspace" aria-label="New workspace">`
     + `<span class="nic" aria-hidden="true">+</span><span class="t">New workspace</span>`
-    + `</button>`;
+    + `</button></div>`;
+  revealActive("#ws-dots");
+  revealActive("#ws-rows");
   positionWsIndicator();
+}
+
+/* Keep the active workspace inside its scroll window (both layers cap at
+   5 visible). No-op when everything fits. */
+function revealActive(layerSel) {
+  const sc = document.querySelector(layerSel + " .scroll");
+  const btn = sc && sc.querySelector(`[data-ws="${store.activeWs}"]`);
+  if (!sc || !btn) return;
+  const top = btn.offsetTop - sc.offsetTop;
+  if (top < sc.scrollTop) sc.scrollTop = top;
+  else if (top + btn.offsetHeight > sc.scrollTop + sc.clientHeight) {
+    sc.scrollTop = top + btn.offsetHeight - sc.clientHeight;
+  }
 }
 
 /* Glide the active-workspace dot to its new home. Pure transform, so a
