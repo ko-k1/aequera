@@ -37,10 +37,11 @@ open with the sidebar pinned (testing aid).
   workspaces, workspace switches, history, bookmarks, closed tabs, and
   commands (new tab/workspace/restore) in one list; `Enter` runs, `Esc`
   backs out.
-- **Library as one row** — Settings, History, Bookmarks, and Recently
-  closed show directly with no folding: stacked icon boxes collapsed, one
-  centered horizontal icon line with count badges expanded. Entries reopen
-  in the active workspace.
+- **Library as one row** — History, Bookmarks, and Recently closed show
+  directly with no folding: hidden collapsed (dock + gear only), one
+  centered horizontal icon line with count badges expanded. A gear button
+  sits below the workspace dock as the bottom anchor. Entries reopen in
+  the active workspace.
 - **Workspace dots with gliding active indicator** — collapsed shows dots
   in a solid dock (no blur); switching glides the accent dot on transform
   only. Expanding morphs for real: the dots layer collapses height while

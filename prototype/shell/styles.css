@@ -407,10 +407,10 @@ body.expanded #ws-indicator,
 #tab-list::-webkit-scrollbar { display: none; }
 #tab-list li { min-width: 0; }
 /* Library: History / Bookmarks / Recently closed, always shown directly —
-   no folding, no accordion. Stacked icon boxes collapsed; ONE centered
-   horizontal icon line expanded. Counts become badges; labels retire for
-   this strip (tooltips carry names). Settings lives separately at the rail
-   bottom. */
+   no folding, no accordion. Collapsed shows dock + gear only (kind rows
+   hide); expanded adds ONE centered horizontal icon line. Counts become
+   badges; labels retire for this strip (tooltips carry names). Settings
+   lives separately at the rail bottom. */
 #lib-list {
   list-style: none;
   margin: 0;
@@ -421,6 +421,9 @@ body.expanded #ws-indicator,
 }
 #lib-list .tab-row { position: relative; }
 #lib-list .wn { display: none; }
+#lib-list [data-lib] { display: none; }
+body.expanded #lib-list [data-lib],
+#sidebar:focus-within #lib-list [data-lib] { display: grid; }
 body.expanded #lib-list,
 #sidebar:focus-within #lib-list {
   flex-direction: row;
