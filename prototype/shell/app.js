@@ -84,6 +84,14 @@ function closeTab(w, id) {
     w.activeTab = next ? next.id : null;
   }
 }
+function createWorkspace() {
+  const id = nid();
+  store.workspaces.push({ id, name: `Workspace ${store.workspaces.length + 1}`,
+                          tabs: [], activeTab: null, closed: [] });
+  store.activeWs = id;
+  return id;
+}
+
 function restoreClosed(w) {
   const c = w.closed.pop();
   if (!c) return;
@@ -133,11 +141,18 @@ function renderTabs() {
     + `<li><button id="newtab-rail" class="tab-row" data-act="newtab" aria-label="New tab">`
     + `<span class="nic" aria-hidden="true">+</span>`
     + `</button></li>`;
-  $("#ws-dots").innerHTML = store.workspaces.map((x) =>
+  $("#ws-dots .clip").innerHTML = store.workspaces.map((x) =>
     `<button data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
     + ` aria-label="${esc(x.name)}, ${x.tabs.length} tabs" title="${esc(x.name)}">`
-    + `<span class="wdot"></span><span class="wname">${esc(x.name)}</span>`
-    + `<span class="wn">${x.tabs.length}</span></button>`).join("");
+    + `<span class="wdot"></span></button>`).join("");
+  $("#ws-rows .clip").innerHTML = store.workspaces.map((x) =>
+    `<button class="tab-row" data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
+    + ` aria-label="${esc(x.name)}, ${x.tabs.length} tabs">`
+    + `<span class="wdot"></span><span class="t">${esc(x.name)}</span>`
+    + `<span class="wn">${x.tabs.length}</span></button>`).join("")
+    + `<button class="tab-row" data-act="new-workspace" aria-label="New workspace">`
+    + `<span class="nic" aria-hidden="true">+</span><span class="t">New workspace</span>`
+    + `</button>`;
   positionWsIndicator();
 }
 
@@ -194,12 +209,7 @@ function candidates(q) {
   }
   const cmds = [
     { title: "New tab", run: () => openTab(activeWs(), "aequera:newtab", "New Tab") },
-    { title: "New workspace", run: () => {
-        const id = nid();
-        store.workspaces.push({ id, name: `Workspace ${store.workspaces.length + 1}`,
-                                tabs: [], activeTab: null, closed: [] });
-        store.activeWs = id;
-    } },
+    { title: "New workspace", run: () => { createWorkspace(); } },
     { title: "Restore closed tab",
       run: () => restoreClosed(activeWs()),
       enabled: () => activeWs().closed.length > 0 },
@@ -275,6 +285,7 @@ const actions = {
     setTimeout(() => page.classList.remove("flash"), 130);
   },
   "newtab": () => { openTab(activeWs(), "aequera:newtab", "New Tab"); expand(); addr.focus(); addr.select(); render(); renderResults(); },
+  "new-workspace": () => { createWorkspace(); render(); },
   "win-close": () => toast("Prototype — window controls are decorative."),
   "win-min": () => { document.body.classList.remove("expanded", "pinned"); syncPin(); },
   "win-pin": () => {

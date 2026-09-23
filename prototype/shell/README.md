@@ -38,8 +38,10 @@ open with the sidebar pinned (testing aid).
   in one list; `Enter` runs, `Esc` backs out.
 - **Workspace dots with gliding active indicator** — collapsed shows dots
   in a solid dock (no blur); switching glides the accent dot on transform
-  only. Expanded, the dock stretches and dots morph into named session rows
-   (dot + name + tab count) with the active row highlighted.
+  only. Expanding morphs for real: the dots layer collapses height while
+  the rows layer opens (0fr/1fr grid + crossfade, interruptible mid-flight),
+  landing on named session rows that reuse tab-row geometry exactly, plus a
+  New workspace row.
 - **Keyboard-first** — `Ctrl/⌘ K` focuses, `↑/↓` + `Enter` selects,
   `1–9` switches tabs, `Esc` collapses. Reduced-motion users get zero
   transitions with all state information intact.

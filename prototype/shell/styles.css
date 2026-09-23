@@ -193,8 +193,8 @@ body.expanded #sidebar,
   position: relative;
   margin-top: auto;
   align-self: center;
-  /* Solid dock behind the dots: no blurred glass here. The switcher reads
-     as its own grounded control instead of floating on the rail blur. */
+  /* Solid dock behind the dots when collapsed; transparent wrapper around
+     rows when expanded, so expanded rows share tab buttons' exact margins. */
   background: var(--solid);
   border: 1px solid var(--stroke);
   border-radius: 12px;
@@ -206,12 +206,55 @@ body.expanded #ws-rail,
   margin-left: 6px;
   margin-right: 6px;
   padding: 6px;
+  background: transparent;
+  border-color: transparent;
 }
-#ws-dots { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+/* Layer morph: dots and rows crossfade while the rail swaps height between
+   them via the 0fr/1fr grid trick — a real height animation, interruptible
+   mid-flight, dead under reduced motion like every transition here. */
+.ws-layer {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows var(--dur) var(--snap),
+    opacity 120ms var(--snap),
+    visibility 0s;
+}
+.ws-layer > .clip { overflow: hidden; min-height: 0; }
+#ws-dots .clip { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+#ws-rows {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--dur) var(--snap),
+    opacity 120ms var(--snap),
+    visibility 0s linear var(--dur);
+}
+#ws-rows .clip { display: flex; flex-direction: column; gap: var(--gap); }
+body.expanded #ws-rows,
+#sidebar:focus-within #ws-rows {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    grid-template-rows var(--dur) var(--snap),
+    opacity 120ms var(--snap);
+}
+body.expanded #ws-dots,
+#sidebar:focus-within #ws-dots {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--dur) var(--snap),
+    opacity 120ms var(--snap),
+    visibility 0s linear var(--dur);
+}
 #ws-dots button {
   display: flex;
   align-items: center;
-  gap: 8px;
   padding: 0;
   border-radius: 8px;
   color: var(--text-dim);
@@ -223,36 +266,19 @@ body.expanded #ws-rail,
   opacity: 0.45;
   flex: none;
 }
-#ws-dots button[aria-selected="true"] .wdot { opacity: 1; background: var(--accent); }
-#ws-dots .wname, #ws-dots .wn { display: none; }
-/* Expanded: dots morph into named session rows (dot + name + tab count).
-   The dock pill stretches with the bar; labels fade in after the widen. */
-body.expanded #ws-dots,
-#sidebar:focus-within #ws-dots { align-items: stretch; gap: 2px; }
-body.expanded #ws-dots button,
-#sidebar:focus-within #ws-dots button { padding: 6px 8px; }
-body.expanded #ws-dots .wname,
-#sidebar:focus-within #ws-dots .wname {
-  display: inline;
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  animation: wfade 120ms var(--snap) 30ms backwards;
+/* Expanded rows reuse .tab-row geometry (margins, padding, wash, wipe);
+   only the dot/count dressing differs. */
+#ws-rows .wdot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  opacity: 0.45;
+  flex: none;
+  align-self: center;
 }
-body.expanded #ws-dots .wn,
-#sidebar:focus-within #ws-dots .wn {
-  display: inline;
-  margin-left: auto;
-  font-size: 11px;
-  animation: wfade 120ms var(--snap) 30ms backwards;
-}
-body.expanded #ws-dots button[aria-selected="true"],
-#sidebar:focus-within #ws-dots button[aria-selected="true"] {
-  background: rgba(127, 140, 170, 0.2);
-  color: var(--text);
-}
-@keyframes wfade { from { opacity: 0; } }
+#ws-rows button[aria-selected="true"] .wdot { opacity: 1; background: var(--accent); }
+#ws-rows .wn { font-size: 11px; color: var(--text-dim); flex: none; }
+#ws-rows button[aria-selected="true"] { color: var(--text); }
 /* The gliding dot indicator only exists in the collapsed dock; expanded
    rows carry selection themselves. */
 body.expanded #ws-indicator,
