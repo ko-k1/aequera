@@ -406,8 +406,9 @@ body.expanded #ws-indicator,
 }
 #tab-list::-webkit-scrollbar { display: none; }
 #tab-list li { min-width: 0; }
-/* Library strip: Settings / History / Bookmarks / Recently closed.
-   Stacked icon boxes collapsed; ONE centered horizontal icon line expanded.
+/* Library: ONE overview button collapsed; Settings / History / Bookmarks /
+   Recently closed share ONE centered horizontal icon line expanded.
+   Collapsed strip buttons hide entirely; the overview hides on expand.
    Counts become badges; labels retire for this strip (tooltips carry names).
    Specificity beats both .tab-row state rules by including #lib-list. */
 #lib-list {
@@ -420,14 +421,16 @@ body.expanded #ws-indicator,
 }
 #lib-list .tab-row { position: relative; }
 #lib-list .wn { display: none; }
+#lib-list .strip-btn { display: none; }
 body.expanded #lib-list,
 #sidebar:focus-within #lib-list {
   flex-direction: row;
   justify-content: center;
   padding: 0;
 }
-body.expanded #lib-list .tab-row,
-#sidebar:focus-within #lib-list .tab-row {
+body.expanded #lib-list .strip-btn,
+#sidebar:focus-within #lib-list .strip-btn {
+  display: grid;
   width: var(--ctl);
   margin: 0;
   padding: var(--row-py) 0;
@@ -435,6 +438,8 @@ body.expanded #lib-list .tab-row,
   justify-content: center;
   justify-items: center;
 }
+body.expanded #lib-list .lib-overview,
+#sidebar:focus-within #lib-list .lib-overview { display: none; }
 body.expanded #lib-list .t,
 #sidebar:focus-within #lib-list .t { display: none; }
 body.expanded #lib-list .wn,
@@ -556,6 +561,18 @@ body.expanded .tab-row:focus-visible .x,
   flex: none;
 }
 
+/* Bottom settings button: a centered icon square in both states, below the
+   workspace dock. Toggles the same Tune panel; state synced by toggleTune. */
+#settings-rail {
+  width: var(--ctl);
+  margin-left: auto;
+  margin-right: auto;
+  padding: var(--row-py) 0;
+  grid-template-columns: 22px;
+  justify-content: center;
+  justify-items: center;
+}
+#settings-rail svg { display: block; }
 /* Tune popover: first-class customization controls, anchored under the
    top bar. Same glass recipe keeps it on the seamless surface. */
 #tune {
