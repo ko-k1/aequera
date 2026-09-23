@@ -192,7 +192,7 @@ body.expanded #sidebar,
 #tab-list {
   list-style: none;
   margin: 4px 0;
-  padding: 0;
+  padding: 0 0 0 6px;
   display: flex;
   flex-direction: column;
   gap: var(--gap);
@@ -376,14 +376,16 @@ body.expanded #ws-indicator,
 }
 body.expanded .tab-row,
 #sidebar:focus-within .tab-row {
-  width: 100%;
-  margin: 0;
+  /* Bleed 6px back to the bar edge so expanded rows stay zero-margin while
+     icons keep the exact collapsed inset (6px list pad + 12px row pad). */
+  width: calc(100% + 6px);
+  margin: 0 0 0 -6px;
   min-height: var(--row-h);
   justify-content: stretch;
   justify-items: start;
   grid-template-columns: 22px 1fr auto;
   gap: var(--gap);
-  padding: var(--row-py) var(--row-px) var(--row-py) calc(var(--row-px) + 4px);
+  padding: var(--row-py) var(--row-px) var(--row-py) calc(var(--row-px) + 10px);
 }
 /* One row language for tabs and New Tab alike: transparent rows, subtle
    wash on hover, slightly stronger wash for the active tab — in every
