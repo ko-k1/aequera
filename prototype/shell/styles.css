@@ -406,9 +406,10 @@ body.expanded #ws-indicator,
 }
 #tab-list::-webkit-scrollbar { display: none; }
 #tab-list li { min-width: 0; }
-/* Library section: History / Bookmarks / Recently closed. Same container
-   metrics as the tab list so rows align in both states; rows reuse
-   .tab-row (wipe, wash, icon box) with count dressing like workspaces. */
+/* Library strip: Settings / History / Bookmarks / Recently closed.
+   Stacked icon boxes collapsed; ONE centered horizontal icon line expanded.
+   Counts become badges; labels retire for this strip (tooltips carry names).
+   Specificity beats both .tab-row state rules by including #lib-list. */
 #lib-list {
   list-style: none;
   margin: 0;
@@ -417,7 +418,37 @@ body.expanded #ws-indicator,
   flex-direction: column;
   gap: var(--gap);
 }
-#lib-list .wn { font-size: 11px; color: var(--text-dim); flex: none; }
+#lib-list .tab-row { position: relative; }
+#lib-list .wn { display: none; }
+body.expanded #lib-list,
+#sidebar:focus-within #lib-list {
+  flex-direction: row;
+  justify-content: center;
+  padding: 0;
+}
+body.expanded #lib-list .tab-row,
+#sidebar:focus-within #lib-list .tab-row {
+  width: var(--ctl);
+  margin: 0;
+  padding: var(--row-py) 0;
+  grid-template-columns: 22px;
+  justify-content: center;
+  justify-items: center;
+}
+body.expanded #lib-list .t,
+#sidebar:focus-within #lib-list .t { display: none; }
+body.expanded #lib-list .wn,
+#sidebar:focus-within #lib-list .wn {
+  display: block;
+  position: absolute;
+  top: -2px; right: -2px;
+  font-size: 9px;
+  line-height: 1.5;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(127, 140, 170, 0.35);
+  color: var(--text);
+}
 /* Library content view: header + entries reusing .result; entries open in
    the active workspace (fresh tab when it is empty). */
 .lib-card { max-width: 560px; width: 100%; }
@@ -525,13 +556,6 @@ body.expanded .tab-row:focus-visible .x,
   flex: none;
 }
 
-/* Settings rail button: the same .tab-row geometry as tabs, history, and
-   bookmarks — icon box collapsed, labeled row expanded. Only its outer
-   margins differ (it sits directly in #rail, outside any padded list). */
-#settings-rail { margin-left: 6px; }
-body.expanded #settings-rail,
-#sidebar:focus-within #settings-rail { margin: 0 6px; }
-#settings-rail[aria-expanded="true"] { background: rgba(127, 140, 170, 0.2); }
 /* Tune popover: first-class customization controls, anchored under the
    top bar. Same glass recipe keeps it on the seamless surface. */
 #tune {
