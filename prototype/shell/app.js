@@ -163,23 +163,31 @@ const LIB_DEFS = [
   { kind: "bookmarks", label: "Bookmarks", icon: "★" },
   { kind: "closed", label: "Recently closed", icon: "↺" },
 ];
+let libraryOpen = false;
 function libCount(kind) {
   if (kind === "history") return store.history.length;
   if (kind === "bookmarks") return store.bookmarks.length;
   return recentClosed().length;
 }
 const LIB_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1.2"/><rect x="9" y="2" width="5" height="5" rx="1.2"/><rect x="2" y="9" width="5" height="5" rx="1.2"/><rect x="9" y="9" width="5" height="5" rx="1.2"/></g></svg>`;
+const GEAR_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.4v2.1M8 12.5v2.1M1.4 8h2.1M12.5 8h2.1M3.3 3.3l1.5 1.5M11.2 11.2l1.5 1.5M12.7 3.3l-1.5 1.5M4.8 11.2l-1.5 1.5"/></g></svg>`;
 function renderLibrary() {
+  const tuneOpen = !$("#tune").hidden;
   $("#lib-list").innerHTML =
-    `<button class="tab-row lib-overview" data-act="library" aria-label="Library" title="Library">`
-    + `<span class="nic" aria-hidden="true">${LIB_SVG}</span>`
+    `<button class="tab-row lib-overview" data-act="library" aria-label="Library" aria-expanded="${libraryOpen}" title="Library">`
+    + `<span class="nic" aria-hidden="true">${LIB_SVG}</span><span class="t">Library</span>`
+    + `</button>`
+    + `<div class="lib-sub${libraryOpen ? " open" : ""}">`
+    + `<button class="tab-row" data-act="settings" data-tune-toggle aria-label="Settings" aria-expanded="${tuneOpen}" title="Settings">`
+    + `<span class="nic" aria-hidden="true">${GEAR_SVG}</span><span class="t">Settings</span>`
     + `</button>`
     + LIB_DEFS.map((d) =>
-      `<button class="tab-row strip-btn" data-lib="${d.kind}" aria-selected="${libraryView === d.kind}"`
+      `<button class="tab-row" data-lib="${d.kind}" aria-selected="${libraryView === d.kind}"`
       + ` aria-label="${d.label}, ${libCount(d.kind)} items" title="${d.label}">`
       + `<span class="nic" aria-hidden="true">${d.icon}</span>`
       + `<span class="t">${d.label}</span><span class="wn">${libCount(d.kind)}</span>`
-      + `</button>`).join("");
+      + `</button>`).join("")
+    + `</div>`;
 }
 
 /* One list for both states: collapsed shows favicons (CSS clips the rest),
@@ -460,7 +468,7 @@ const actions = {
   "newtab": () => { openTab(activeWs(), "aequera:newtab", "New Tab"); expand(); addr.focus(); addr.select(); render(); renderResults(); },
   "new-workspace": () => { createWorkspace(); render(); },
   "settings": () => toggleTune(),
-  "library": () => expand(),
+  "library": () => { libraryOpen = !libraryOpen; expand(); render(); },
   "win-close": () => toast("Prototype — window controls are decorative."),
   "win-min": () => { document.body.classList.remove("pinned"); collapse(); syncPin(); },
   "win-pin": () => {

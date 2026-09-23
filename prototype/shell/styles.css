@@ -406,11 +406,10 @@ body.expanded #ws-indicator,
 }
 #tab-list::-webkit-scrollbar { display: none; }
 #tab-list li { min-width: 0; }
-/* Library: ONE overview button collapsed; Settings / History / Bookmarks /
-   Recently closed share ONE centered horizontal icon line expanded.
-   Collapsed strip buttons hide entirely; the overview hides on expand.
-   Counts become badges; labels retire for this strip (tooltips carry names).
-   Specificity beats both .tab-row state rules by including #lib-list. */
+/* Library: ONE overview row containing Settings / History / Bookmarks /
+   Recently closed as an inline sub-list — never split rows. Collapsed shows
+   the overview icon only; expanded reveals the contained rows, which reuse
+   .tab-row geometry (wipe, wash, counts) exactly like tab buttons. */
 #lib-list {
   list-style: none;
   margin: 0;
@@ -419,18 +418,18 @@ body.expanded #ws-indicator,
   flex-direction: column;
   gap: var(--gap);
 }
-#lib-list .tab-row { position: relative; }
-#lib-list .wn { display: none; }
-#lib-list .strip-btn { display: none; }
-body.expanded #lib-list,
-#sidebar:focus-within #lib-list {
+#lib-list .wn { font-size: 11px; color: var(--text-dim); flex: none; }
+/* Contained items share ONE horizontal icon line (never stacked rows).
+   Specificity beats .tab-row state rules via #lib-list .lib-sub. */
+#lib-list .lib-sub { display: none; }
+#lib-list .lib-sub.open {
+  display: flex;
   flex-direction: row;
   justify-content: center;
-  padding: 0;
+  gap: var(--gap);
 }
-body.expanded #lib-list .strip-btn,
-#sidebar:focus-within #lib-list .strip-btn {
-  display: grid;
+#lib-list .lib-sub .tab-row {
+  position: relative;
   width: var(--ctl);
   margin: 0;
   padding: var(--row-py) 0;
@@ -438,12 +437,8 @@ body.expanded #lib-list .strip-btn,
   justify-content: center;
   justify-items: center;
 }
-body.expanded #lib-list .lib-overview,
-#sidebar:focus-within #lib-list .lib-overview { display: none; }
-body.expanded #lib-list .t,
-#sidebar:focus-within #lib-list .t { display: none; }
-body.expanded #lib-list .wn,
-#sidebar:focus-within #lib-list .wn {
+#lib-list .lib-sub .t { display: none; }
+#lib-list .lib-sub .wn {
   display: block;
   position: absolute;
   top: -2px; right: -2px;

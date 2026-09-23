@@ -34,8 +34,13 @@ open with the sidebar pinned (testing aid).
   and a local FPS meter (bottom-right) makes frame cost visible while you
   interact.
 - **Unified address/command surface** — typing filters tabs across all
-  workspaces, workspace switches, and commands (new tab/workspace/restore)
-  in one list; `Enter` runs, `Esc` backs out.
+  workspaces, workspace switches, history, bookmarks, closed tabs, and
+  commands (new tab/workspace/restore) in one list; `Enter` runs, `Esc`
+  backs out.
+- **Library as one row** — a single Library overview contains Settings,
+  History, Bookmarks, and Recently closed as ONE horizontal icon line with
+  count badges (never split rows, never stacked). Collapsed shows the
+  overview icon; entries reopen in the active workspace.
 - **Workspace dots with gliding active indicator** — collapsed shows dots
   in a solid dock (no blur); switching glides the accent dot on transform
   only. Expanding morphs for real: the dots layer collapses height while
@@ -52,9 +57,9 @@ open with the sidebar pinned (testing aid).
 
 ## Tuning (your feedback loop)
 
-Open the sidebar and press **Tune** in the top bar (or the **Settings** row
-at the rail bottom — same row language as History and Bookmarks). The panel
-anchors below it as a popover on the same glass surface.
+Open the sidebar and press **Tune** in the top bar (or open the Library row
+and press its **Settings** entry). The panel anchors below it as a popover
+on the same glass surface.
 Every settable value is editable — that is the explicit first test:
 
 - **Profiles — Minus / Default / Plus.** One basement value set
