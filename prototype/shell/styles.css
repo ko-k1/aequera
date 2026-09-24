@@ -203,7 +203,7 @@ body.expanded #sidebar,
   background: var(--solid);
   border: 1px solid var(--stroke);
   border-radius: 12px;
-  padding: 8px 12px;
+  padding: 8px 6px 8px 12px;
 }
 body.expanded #ws-rail,
 #sidebar:focus-within #ws-rail {
