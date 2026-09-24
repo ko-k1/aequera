@@ -204,7 +204,7 @@ body.expanded #sidebar,
   background: var(--solid);
   border: 1px solid var(--stroke);
   border-radius: 12px;
-  padding: 8px 6px 8px 12px;
+  padding: 8px;
 }
 body.expanded #ws-rail,
 #sidebar:focus-within #ws-rail {
@@ -329,7 +329,7 @@ body.expanded #ws-indicator,
    the next switch (a new transform supersedes the running one). */
 #ws-indicator {
   position: absolute;
-  left: 12px;
+  left: 8px;
   top: 0;
   width: 10px; height: 10px;
   border-radius: 50%;
@@ -479,7 +479,7 @@ body.expanded #lib-list .wn,
   width: var(--ctl);
   margin: 0;
   /* Single shared icon inset (both states + dots column): one origin. */
-  padding: var(--row-py) 0 var(--row-py) calc(var(--row-px) + 4px);
+  padding: var(--row-py) 0 var(--row-py) var(--row-px);
   text-align: left;
   border-radius: var(--radius);
   overflow: hidden;
@@ -495,7 +495,7 @@ body.expanded .tab-row,
   justify-items: start;
   grid-template-columns: 22px 1fr auto;
   gap: var(--gap);
-  padding: var(--row-py) var(--row-px) var(--row-py) calc(var(--row-px) + 4px);
+  padding: var(--row-py) var(--row-px) var(--row-py) var(--row-px);
 }
 /* One row language for tabs and New Tab alike: transparent rows, subtle
    wash on hover, slightly stronger wash for the active tab — in every
