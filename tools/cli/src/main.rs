@@ -414,17 +414,21 @@ fn patch_apply(json: bool) -> ExitCode {
             ExitCode::FAILURE
         }
         Ok(report) => {
-            let human = if report.already_applied {
+            let patches = if report.already_applied {
                 format!(
-                    "Patch apply\n-----------\nAlready applied and verified ({} entries) @ {}\n{}",
-                    report.entries_applied, report.base_sha, report.worktree_dir
+                    "Already applied and verified ({} entries) @ {}",
+                    report.entries_applied, report.base_sha
                 )
             } else {
                 format!(
-                    "Patch apply\n-----------\nApplied {} entries onto {}\n{}",
-                    report.entries_applied, report.base_sha, report.worktree_dir
+                    "Applied {} entries onto {}",
+                    report.entries_applied, report.base_sha
                 )
             };
+            let human = format!(
+                "Patch apply\n-----------\n{patches}\nSynced {} overlays ({} files)\n{}",
+                report.overlays_synced, report.overlay_files, report.worktree_dir
+            );
             output::emit(json, &human, &report);
             ExitCode::SUCCESS
         }

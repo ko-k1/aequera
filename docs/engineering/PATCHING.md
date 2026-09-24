@@ -105,6 +105,27 @@ full build/test/bench
 
 Conflict resolution should be incremental rather than deferring every conflict to the end.
 
+## Overlays: Aequera Source in the Build
+
+Aequera-owned code that Firefox's build must compile or package (window
+stylesheets, chrome scripts, default prefs) is not transported as patches.
+It lives in Aequera source and is declared as an **overlay** in
+`patches/manifest.yaml`:
+
+```yaml
+overlays:
+  - id: shell-chrome
+    source: aequera/shell/firefox   # Aequera source of truth
+    dest: browser/aequera           # generated copy in worktree/firefox
+```
+
+`aequera patch apply` replaces each `dest` with a fresh copy of `source` on
+every run (edits and deletions propagate). An overlay may only add new
+directories: `dest` is refused if it contains any upstream-tracked file, and
+paths must be plain relative paths. The patch series then carries only the
+hooks that make Firefox build and load the overlay (for Stage 1:
+`patches/browser/shell-hooks`, 4 lines).
+
 ## Patch vs Aequera Source
 
 Use a patch only when the Firefox source boundary must be crossed.

@@ -4,6 +4,9 @@
 //! - `check`: dry-run applicability of every series entry (read-only).
 //! - `apply`: generate `worktree/firefox/` from the locked SHA and apply the
 //!   ordered series. Idempotent: re-apply verifies instead of duplicating.
+//!   Then sync overlays: Aequera-owned source copied into NEW directories of
+//!   the worktree (never over upstream-tracked paths), so product code stays
+//!   ordinary Aequera source and patches carry only the hooks that load it.
 //!
 //! Textual application is necessary but never sufficient proof of an update:
 //! applies cleanly != builds != behaves correctly != passes quality gates.
@@ -25,6 +28,8 @@ pub struct PatchManifest {
     pub base: ManifestBase,
     #[serde(default)]
     pub patches: Vec<PatchEntry>,
+    #[serde(default)]
+    pub overlays: Vec<OverlayEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,11 +50,24 @@ pub struct PatchEntry {
     pub series: String,
 }
 
+/// Aequera-owned source copied into the worktree. `source` is relative to
+/// the repo root; `dest` is relative to the worktree and must not contain
+/// any upstream-tracked file. `dest` is fully owned: it is replaced on every
+/// sync, so deletions in `source` propagate.
+#[derive(Debug, Deserialize)]
+pub struct OverlayEntry {
+    pub id: String,
+    pub source: String,
+    pub dest: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct AppliedState {
     base_sha: String,
     manifest_version: u32,
     applied: Vec<String>,
+    #[serde(default)]
+    overlays: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -86,6 +104,8 @@ pub struct ApplyReport {
     pub worktree_dir: String,
     pub entries_applied: usize,
     pub already_applied: bool,
+    pub overlays_synced: usize,
+    pub overlay_files: usize,
 }
 
 /// Load and minimally validate the patchset manifest named by the lock.
@@ -118,12 +138,8 @@ pub fn status(root: &Path, lock: &LockFile) -> Result<StatusReport, String> {
         .map(|s| {
             s.base_sha == lock.upstream.revision.git
                 && s.manifest_version == manifest.manifest_version
-                && s.applied
-                    == manifest
-                        .patches
-                        .iter()
-                        .map(|p| p.id.clone())
-                        .collect::<Vec<_>>()
+                && s.applied == patch_ids(&manifest)
+                && s.overlays == overlay_ids(&manifest)
         });
     Ok(StatusReport {
         manifest_path: lock.patchset.manifest.clone(),
@@ -172,7 +188,12 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
     let manifest = load_manifest(root, lock)?;
     require_base_matches(&manifest, lock)?;
     let wt = ensure_worktree_shell(root, lock)?;
-    let want: Vec<String> = manifest.patches.iter().map(|p| p.id.clone()).collect();
+    let want = patch_ids(&manifest);
+    // Validate overlay targets before touching the tree, so a bad manifest
+    // fails with the worktree unchanged.
+    for overlay in &manifest.overlays {
+        validate_overlay(root, &wt, overlay)?;
+    }
 
     // Idempotency: identical state + reverse-check proof means "already applied".
     if let Ok(state) = read_state(&wt)
@@ -192,11 +213,15 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
                     })?;
             }
         }
+        let overlay_files = sync_overlays(root, &wt, &manifest)?;
+        write_state(&wt, &state_for(lock, &manifest))?;
         return Ok(ApplyReport {
             base_sha: lock.upstream.revision.git.clone(),
             worktree_dir: wt.display().to_string(),
             entries_applied: want.len(),
             already_applied: true,
+            overlays_synced: manifest.overlays.len(),
+            overlay_files,
         });
     }
 
@@ -215,20 +240,111 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
         }
         applied.push(entry.id.clone());
     }
-    write_state(
-        &wt,
-        &AppliedState {
-            base_sha: lock.upstream.revision.git.clone(),
-            manifest_version: manifest.manifest_version,
-            applied: want.clone(),
-        },
-    )?;
+    let overlay_files = sync_overlays(root, &wt, &manifest)?;
+    write_state(&wt, &state_for(lock, &manifest))?;
     Ok(ApplyReport {
         base_sha: lock.upstream.revision.git.clone(),
         worktree_dir: wt.display().to_string(),
         entries_applied: want.len(),
         already_applied: false,
+        overlays_synced: manifest.overlays.len(),
+        overlay_files,
     })
+}
+
+fn patch_ids(manifest: &PatchManifest) -> Vec<String> {
+    manifest.patches.iter().map(|p| p.id.clone()).collect()
+}
+
+fn overlay_ids(manifest: &PatchManifest) -> Vec<String> {
+    manifest.overlays.iter().map(|o| o.id.clone()).collect()
+}
+
+fn state_for(lock: &LockFile, manifest: &PatchManifest) -> AppliedState {
+    AppliedState {
+        base_sha: lock.upstream.revision.git.clone(),
+        manifest_version: manifest.manifest_version,
+        applied: patch_ids(manifest),
+        overlays: overlay_ids(manifest),
+    }
+}
+
+/// A manifest path must stay inside its base: relative, no `..`, no root or
+/// drive prefix, not empty.
+fn plain_relative(field: &str, id: &str, value: &str) -> Result<PathBuf, String> {
+    use std::path::Component;
+    let path = PathBuf::from(value);
+    let plain = !value.is_empty() && path.components().all(|c| matches!(c, Component::Normal(_)));
+    if !plain {
+        return Err(format!(
+            "overlay {id:?}: {field} {value:?} must be a plain relative path (no '..', no root)"
+        ));
+    }
+    Ok(path)
+}
+
+fn validate_overlay(root: &Path, wt: &Path, overlay: &OverlayEntry) -> Result<(), String> {
+    let source = root.join(plain_relative("source", &overlay.id, &overlay.source)?);
+    plain_relative("dest", &overlay.id, &overlay.dest)?;
+    if !source.is_dir() {
+        return Err(format!(
+            "overlay {:?}: source directory {} missing",
+            overlay.id,
+            source.display()
+        ));
+    }
+    // Overlays add Aequera-owned directories; changing Firefox files is what
+    // patches are for. Any tracked path at or under dest is a hard refusal.
+    let tracked = upstream::git(wt, &["ls-files", "--", &overlay.dest])
+        .map_err(|e| format!("overlay {:?}: git ls-files failed: {e}", overlay.id))?;
+    if !tracked.trim().is_empty() {
+        return Err(format!(
+            "overlay {:?}: dest {} is tracked by upstream Firefox; overlays may only add new directories (use a patch to change Firefox files)",
+            overlay.id, overlay.dest
+        ));
+    }
+    Ok(())
+}
+
+/// Replace every overlay dest with a fresh copy of its source. Returns the
+/// number of files copied across all overlays.
+fn sync_overlays(root: &Path, wt: &Path, manifest: &PatchManifest) -> Result<usize, String> {
+    let mut total = 0;
+    for overlay in &manifest.overlays {
+        let source = root.join(&overlay.source);
+        let dest = wt.join(&overlay.dest);
+        if dest.exists() {
+            std::fs::remove_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+        }
+        total += copy_tree(&source, &dest)?;
+    }
+    Ok(total)
+}
+
+fn copy_tree(from: &Path, to: &Path) -> Result<usize, String> {
+    std::fs::create_dir_all(to).map_err(|e| format!("{}: {e}", to.display()))?;
+    let mut count = 0;
+    for entry in std::fs::read_dir(from).map_err(|e| format!("{}: {e}", from.display()))? {
+        let entry = entry.map_err(|e| format!("{}: {e}", from.display()))?;
+        let kind = entry
+            .file_type()
+            .map_err(|e| format!("{}: {e}", entry.path().display()))?;
+        let target = to.join(entry.file_name());
+        if kind.is_dir() {
+            count += copy_tree(&entry.path(), &target)?;
+        } else if kind.is_file() {
+            std::fs::copy(entry.path(), &target)
+                .map_err(|e| format!("{}: {e}", entry.path().display()))?;
+            count += 1;
+        } else {
+            // Symlinks could point outside the overlay; refuse rather than follow.
+            return Err(format!(
+                "overlay source {} is not a regular file or directory",
+                entry.path().display()
+            ));
+        }
+    }
+    Ok(count)
 }
 
 fn require_base_matches(manifest: &PatchManifest, lock: &LockFile) -> Result<(), String> {
@@ -480,6 +596,87 @@ mod tests {
 
         let again = apply(&root, &lock).expect("re-apply");
         assert!(again.already_applied);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    fn write_manifest_with_overlays(root: &Path, base_sha: &str, overlays_yaml: &str) {
+        write_manifest(
+            root,
+            base_sha,
+            &format!(" []\n\noverlays:\n{overlays_yaml}"),
+        );
+    }
+
+    #[test]
+    fn overlay_syncs_source_into_worktree_and_resyncs_on_reapply() {
+        let (root, lock, sha) = baseline("overlay");
+        let src = root.join("aequera/shell/firefox");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        std::fs::write(src.join("a.css"), "one\n").unwrap();
+        std::fs::write(src.join("sub/b.js"), "two\n").unwrap();
+        write_manifest_with_overlays(
+            &root,
+            &sha,
+            "  - id: shell\n    source: aequera/shell/firefox\n    dest: browser/aequera\n",
+        );
+
+        let first = apply(&root, &lock).expect("apply");
+        assert_eq!(first.overlays_synced, 1);
+        assert_eq!(first.overlay_files, 2);
+        let dest = root.join(WORKTREE_RELATIVE).join("browser/aequera");
+        let read = |rel: &str| std::fs::read_to_string(dest.join(rel)).unwrap();
+        assert_eq!(read("a.css"), "one\n");
+        assert_eq!(read("sub/b.js"), "two\n");
+
+        // Source edits and deletions propagate even when the patch state is
+        // unchanged: the overlay is live Aequera source, not a one-shot copy.
+        std::fs::write(src.join("a.css"), "changed\n").unwrap();
+        std::fs::remove_file(src.join("sub/b.js")).unwrap();
+        let again = apply(&root, &lock).expect("re-apply");
+        assert!(again.already_applied);
+        assert_eq!(again.overlay_files, 1);
+        assert_eq!(read("a.css"), "changed\n");
+        assert!(
+            !dest.join("sub/b.js").exists(),
+            "stale overlay file must be removed"
+        );
+
+        let st = status(&root, &lock).expect("status");
+        assert_eq!(st.applied_state_matches, Some(true));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn overlay_refuses_dest_tracked_by_upstream() {
+        let (root, lock, sha) = baseline("overlay-tracked");
+        let src = root.join("aequera/shell/firefox");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("a.css"), "x\n").unwrap();
+        // base.txt is Firefox-tracked: an overlay must never clobber upstream.
+        write_manifest_with_overlays(
+            &root,
+            &sha,
+            "  - id: bad\n    source: aequera/shell/firefox\n    dest: base.txt\n",
+        );
+        let err = apply(&root, &lock).expect_err("tracked dest must fail");
+        assert!(err.contains("tracked by upstream"), "got: {err}");
+        let base = std::fs::read_to_string(root.join(WORKTREE_RELATIVE).join("base.txt")).unwrap();
+        // Line endings follow the host's core.autocrlf; content must not change.
+        assert_eq!(base.trim_end(), "base", "upstream file must be untouched");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn overlay_rejects_path_traversal() {
+        let (root, lock, sha) = baseline("overlay-traversal");
+        std::fs::create_dir_all(root.join("aequera/shell/firefox")).unwrap();
+        write_manifest_with_overlays(
+            &root,
+            &sha,
+            "  - id: bad\n    source: aequera/shell/firefox\n    dest: ../escape\n",
+        );
+        let err = apply(&root, &lock).expect_err("traversal must fail");
+        assert!(err.contains("must be a plain relative path"), "got: {err}");
         std::fs::remove_dir_all(&root).ok();
     }
 
