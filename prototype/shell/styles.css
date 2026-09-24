@@ -192,10 +192,11 @@ body.expanded #sidebar,
 #ws-rail {
   position: relative;
   margin-top: auto;
-  /* Centered symmetric dock (compact 20px pill). Centering reads better than
-     left-anchoring here; the morph crossfade masks the small offset to the
-     left-anchored rows. */
-  align-self: center;
+  /* Bottom-left anchored like tab rows (same 6px list inset): the dock,
+     the dots, the rows, and the indicator all share one static origin, so
+     the morph grows rightward and upward from that corner — never drifts. */
+  align-self: flex-start;
+  margin-left: 6px;
   /* Never squeezed by rail overflow: sizes to content, scrolls within caps. */
   flex: none;
   /* Solid dock behind the dots when collapsed; transparent wrapper around
@@ -203,7 +204,7 @@ body.expanded #sidebar,
   background: var(--solid);
   border: 1px solid var(--stroke);
   border-radius: 12px;
-  padding: 8px 5px;
+  padding: 8px 6px 8px 12px;
 }
 body.expanded #ws-rail,
 #sidebar:focus-within #ws-rail {
@@ -227,6 +228,10 @@ body.expanded #ws-rail,
     visibility 0s;
 }
 .ws-layer > .clip { overflow: hidden; min-height: 0; min-width: 0; }
+/* Bottom-anchored morph content: tracks open upward from the dock corner
+   and close back into it, instead of dropping from the top. No-op at rest
+   (tracks fit content exactly); only shapes the animation phase. */
+#ws-dots .clip, #ws-rows .clip { display: flex; flex-direction: column; justify-content: flex-end; }
 /* Scroll windows: at most 5 workspaces visible per layer, then scroll.
    Dots: 5×10px + 4×6px gaps = 74px. Rows: ≈5 content-hugged rows. */
 #ws-dots .scroll, #ws-rows .scroll {
@@ -243,7 +248,7 @@ body.expanded #ws-rail,
 #ws-dots .scroll::-webkit-scrollbar,
 #ws-rows .scroll::-webkit-scrollbar { display: none; }
 #ws-dots .scroll {
-  display: flex; flex-direction: column; gap: 6px; align-items: center;
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
   max-height: 74px;
 }
 #ws-rows .scroll {
@@ -324,10 +329,9 @@ body.expanded #ws-indicator,
    the next switch (a new transform supersedes the running one). */
 #ws-indicator {
   position: absolute;
-  left: 50%;
+  left: 12px;
   top: 0;
   width: 10px; height: 10px;
-  margin-left: -5px;
   border-radius: 50%;
   background: var(--accent);
   pointer-events: none;
@@ -474,7 +478,8 @@ body.expanded #lib-list .wn,
   align-items: start;
   width: var(--ctl);
   margin: 0;
-  padding: var(--row-py) 0 var(--row-py) calc(var(--row-px));
+  /* Single shared icon inset (both states + dots column): one origin. */
+  padding: var(--row-py) 0 var(--row-py) calc(var(--row-px) + 4px);
   text-align: left;
   border-radius: var(--radius);
   overflow: hidden;
@@ -490,7 +495,7 @@ body.expanded .tab-row,
   justify-items: start;
   grid-template-columns: 22px 1fr auto;
   gap: var(--gap);
-  padding: var(--row-py) var(--row-px) var(--row-py) calc(var(--row-px));
+  padding: var(--row-py) var(--row-px) var(--row-py) calc(var(--row-px) + 4px);
 }
 /* One row language for tabs and New Tab alike: transparent rows, subtle
    wash on hover, slightly stronger wash for the active tab — in every
