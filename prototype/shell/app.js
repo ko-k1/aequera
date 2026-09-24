@@ -158,8 +158,8 @@ function render() {
 
 /* Bookmark toolbar: horizontal strip under the top bar, Firefox-style
    visibility modes. Hidden by default — hovering (or tabbing into) the top
-   bar reveals it as a seamless glass drawer over the content, exactly like
-   the rail widens over content: no layout shift, no reserved space.
+   bar reveals it on the shared frame as the page card yields, exactly like
+   the rail widens: no layout shift, no reserved space.
    Never is the full opt-out; Always pins it (content shifts, like
    Firefox's pinned toolbar); New tab only pins it on new-tab pages. */
 const BBMODES = ["hover", "always", "newtab", "never"];
@@ -189,8 +189,8 @@ function renderBookmarkbar() {
     + `<img src="${fav(b.url)}" alt=""><span>${esc(b.title)}</span></button>`).join("");
   updateBBVisibility();
 }
-/* Open/close is a class flip only: CSS grows the bar's glass over the strip
-   and wipes the chips in (see styles.css). Closed, the strip is inert so it
+/* Open/close is a class flip only: CSS clips the page card back to uncover
+   the frame and wipes the chips in (see styles.css). Closed, the strip is inert so it
    takes no hits, focus, or AT attention while it animates out. */
 function updateBBVisibility() {
   const show = bbShown();

@@ -77,14 +77,17 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
     #0b0d12;
 }
 
-/* One shared blurred-surface recipe: top bar, rail, and content read as one
-   seamless surface. */
+/* One blurred-surface recipe, applied ONCE: the #frame. */
 .glass {
   background: var(--surface);
   -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--sat));
   backdrop-filter: blur(var(--blur)) saturate(var(--sat));
-  border-right: 1px solid var(--stroke);
 }
+/* Frame model (Zen/Arc): a single full-window glass layer behind all chrome.
+   Top bar, rail, and bookmark row are transparent on it, so their material
+   is identical by construction — there is no second blur to drift in tint
+   or edge sampling. It never resizes or animates: blur is paid once. */
+#frame { position: fixed; inset: 0; z-index: 0; }
 
 /* Self-expanding sidebar: the bar itself widens on hover; favicons stay
    fixed while titles + URLs reveal in place (clipped wipe + fade).
@@ -99,31 +102,15 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
   z-index: 30;
   overflow: hidden;
   transition: width var(--dur) var(--snap);
-  border-right: 0;
-}
-/* The sidebar draws the vertical edge itself, so the line rides its right
-   side as it widens instead of staying behind at the rail. It starts below
-   the bookmark row (when open) so rail and row stay one uncut surface. */
-#sidebar::after {
-  content: "";
-  position: absolute;
-  right: 0; top: 0; bottom: 0;
-  width: 1px;
-  z-index: 1;
-  background: var(--stroke);
-  pointer-events: none;
-  clip-path: inset(var(--bb-h) 0 0 0);
-  transition: clip-path var(--dur) var(--snap);
 }
 body.expanded #sidebar,
 #sidebar:focus-within {
   width: var(--panel-w);
 }
-/* Current sidebar width, shared by every edge that must meet it: the bar's
-   hairline, the bar glass cut-out, and the bookmark row all track it with
-   the sidebar's own --dur/--snap, so the L corner never splits mid-widen. */
-body { --side-w: var(--rail-w); --bb-h: 0px; }
-body.bb-open { --bb-h: var(--ctl); }
+/* Current sidebar width and peeked bookmark-row height: the page card
+   yields exactly this much frame (see #page), in step with the widen. */
+body { --side-w: var(--rail-w); --bb-peek: 0px; }
+body.bb-open:not(.has-bb) { --bb-peek: var(--ctl); }
 body.expanded,
 body:has(#sidebar:focus-within) { --side-w: var(--panel-w); }
 #rail {
@@ -183,9 +170,9 @@ body:has(#sidebar:focus-within) { --side-w: var(--panel-w); }
 #topbar.pinning #addr-row { border-color: var(--accent); }
 
 /* Bookmark toolbar: a second row of the top bar, not a surface of its own.
-   It carries no glass — the bar's own glass layer (#topbar::before) grows
-   down to cover it, so bar + strip are one uncut surface with the single
-   hairline riding the bar's new bottom edge. Motion mirrors the rail widen:
+   It sits on the frame; when it peeks, the page card clips back from the
+   top to uncover that frame, so bar + row are one surface. Motion mirrors
+   the rail widen:
    same --dur/--snap, chips wipe (clip) + fade in place. Everything animates
    on clip-path / transform / opacity only — no layout, never blocks input,
    dead under reduced motion. Closed it is inert: no hits, no focus, no AT. */
@@ -236,16 +223,13 @@ body.bb-open #bookmarkbar {
 .bb-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bb-chip:hover { color: var(--text); }
 /* Pinned (Always / New tab) the strip pushes content down like Firefox's
-   toolbar. The rail never moves: the grown bar glass stops at the sidebar's
-   right edge, so the rail itself continues up to meet the bar — the L-edge
-   contract (bar + rail + content, one surface) holds in every mode. */
+   toolbar. The rail never moves; it simply continues on the frame. */
 body.has-bb #content {
   margin-top: calc(var(--top-h) + var(--ctl));
   height: calc(100% - var(--top-h) - var(--ctl));
 }
 
-/* Top address bar: horizontal, full width. Same glass recipe as the rail,
-   so bar + rail read as one seamless connected surface. */
+/* Top address bar: horizontal, full width, transparent on the frame. */
 #topbar {
   position: fixed;
   left: 0; top: 0; right: 0;
@@ -255,50 +239,6 @@ body.has-bb #content {
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  border-right: 0;
-  border-bottom: 0; /* the edge is drawn by ::after, starting past the rail */
-  /* The glass lives on ::before so it can grow over the bookmark row
-     without the bar's box (and its layout) changing size. */
-  background: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-/* Bar glass: one layer sized for bar + bookmark row, clipped to the bar row
-   when closed. Opening un-clips the row right of the rail (the rail's own
-   glass already covers the left of it), so nothing is ever double-glazed
-   and no seam appears. clip-path interpolates on the compositor path. */
-#topbar::before {
-  content: "";
-  position: absolute;
-  left: 0; top: 0; right: 0;
-  height: calc(var(--top-h) + var(--ctl));
-  z-index: -1;
-  pointer-events: none;
-  background: var(--surface);
-  -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--sat));
-  backdrop-filter: blur(var(--blur)) saturate(var(--sat));
-  clip-path: polygon(0 0, 100% 0, 100% var(--top-h), var(--side-w) var(--top-h), var(--side-w) var(--top-h), 0 var(--top-h));
-  transition: clip-path var(--dur) var(--snap);
-}
-body.bb-open #topbar::before {
-  clip-path: polygon(0 0, 100% 0, 100% 100%, var(--side-w) 100%, var(--side-w) var(--top-h), 0 var(--top-h));
-}
-/* The single hairline separating chrome from content starts exactly at the
-   sidebar's right edge — never drawn over the rail or the widened tab bar,
-   so bar and sidebar stay one uncut surface. Tracks --side-w (and so
-   --rail-w / --panel-w through tuning) in step with the widen, meeting the
-   sidebar's own edge line in one L corner. */
-#topbar::after {
-  content: "";
-  position: absolute;
-  left: calc(var(--side-w) - 1px); right: 0; bottom: 0;
-  height: 1px;
-  background: var(--stroke);
-  pointer-events: none;
-  transform: translateY(var(--bb-h));
-  transition:
-    left var(--dur) var(--snap),
-    transform var(--dur) var(--snap);
 }
 #topbar .traffic { width: auto; padding: 0 2px; }
 .addr-wrap {
@@ -775,13 +715,29 @@ body.expanded #lib-list > .tab-row,
   color: var(--text);
 }
 
-#content { margin: var(--top-h) 0 0 var(--rail-w); height: calc(100% - var(--top-h)); position: relative; }
+/* Page card inset in the frame; the frame's margin is the only separator
+   (no hairlines). When the tab bar widens or the bookmark row peeks, the
+   card does not move or relayout: it clips back (compositor clip-path, same
+   --dur/--snap) to uncover the frame beneath, so the chrome "grows" in the
+   one true frame material. Clipping #page (not #content) keeps the fps
+   meter and toast unclipped. */
+#content {
+  margin: var(--top-h) var(--gap) 0 var(--rail-w);
+  height: calc(100% - var(--top-h) - var(--gap));
+  position: relative;
+  z-index: 1;
+}
 #page {
   height: 100%;
   display: grid;
   place-items: center;
   background: rgba(10, 12, 17, 0.55);
-  transition: opacity 120ms var(--snap);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  clip-path: inset(var(--bb-peek) 0 0 calc(var(--side-w) - var(--rail-w)) round var(--radius));
+  transition:
+    clip-path var(--dur) var(--snap),
+    opacity 120ms var(--snap);
 }
 #page.flash { opacity: 0.25; }
 .page-card { text-align: center; max-width: 460px; padding: 24px; }

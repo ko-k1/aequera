@@ -8,10 +8,14 @@
 </head>
 <body>
 <div id="wallpaper" aria-hidden="true"></div>
+<!-- The frame: the ONE glass layer behind all chrome (Zen/Arc model). Top
+     bar, rail, and bookmark row are transparent on top of it, so they are
+     the same material by construction; the page is a card inset in it. -->
+<div id="frame" class="glass" aria-hidden="true"></div>
 
 <!-- Top address bar: full width, so a hovering tab bar can never overlap it.
-     Traffic trio, nav, unified address/command input share one glass. -->
-<header id="topbar" class="glass">
+     Transparent: it sits on the shared frame material. -->
+<header id="topbar">
   <div class="traffic" role="toolbar" aria-label="Window controls">
     <button class="tl close" data-act="win-close" aria-label="Close (decorative in prototype)"><span aria-hidden="true">×</span></button>
     <button class="tl min" data-act="win-min" aria-label="Collapse sidebar"><span aria-hidden="true">–</span></button>
@@ -35,7 +39,7 @@
   </div>
   <button id="tune-toggle" data-tune-toggle aria-expanded="false" aria-controls="tune">Tune</button>
   <!-- Bookmark toolbar: a second row of the top bar itself, drawn on the
-       bar's own glass (no surface of its own), revealed by the bar growing.
+       frame (no surface of its own), revealed as the page card yields.
        Opt-out via Tune (Always / New tab only / Never); closed it is inert. -->
   <div id="bookmarkbar" inert aria-label="Bookmarks"></div>
 </header>
@@ -82,7 +86,7 @@
   <div class="tune-row"><button id="t-reset">Reset</button><span class="t-note">accent border = custom override · double-click a field to clear it · saved on this machine only</span></div>
 </section>
 
-<div id="sidebar" class="glass">
+<div id="sidebar">
   <!-- Self-expanding bar below the full-width address bar: collapsed shows
        favicons only; on hover the bar itself widens and titles + URLs appear
        next to stable icons. Never overlaps the address bar (own region). -->

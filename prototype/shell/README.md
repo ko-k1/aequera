@@ -19,18 +19,20 @@ open with the sidebar pinned (testing aid).
   tab bar can never overlap it, by construction. Tabs live vertically below
   the bar: minimized to favicons, revealed in place on hover as the bar
   itself widens, icons never moving, titles appearing beside them.
-- **Seamless connected surface** — bar, rail, and content share one
-  glass-token recipe; the bar's bottom edge and the sidebar's right edge meet
-  in a single clean L with no divider cutting the top strip. The L follows
-  the sidebar as it widens on hover (same duration and curve), so the
-  expanded tab bar is never cut by the bar's hairline.
+- **Seamless connected surface (frame model, à la Zen/Arc)** — one
+  full-window glass layer (`#frame`) sits behind all chrome; top bar, rail,
+  and bookmark row are transparent on it, so they are the same material by
+  construction. The page is a rounded card inset in the frame — the margin
+  is the only separator, no hairlines. When the tab bar widens or the
+  bookmark row peeks, the card doesn't move: it clips back (same duration
+  and curve) to uncover the frame, so the chrome grows in the one material.
 - **Address bar with macOS 3-button cluster** — red/yellow/green traffic
   lights in macOS order sit atop the rail (close is decorative here, yellow
   collapses, green pins); nav buttons and the full address+command input run
   horizontally in the top bar.
-- **Blur material overall** — one `backdrop-filter` recipe (blur + saturate)
-  on both layers; blur radius and backgrounds never animate (those would
-  break layer caching).
+- **Blur material overall** — one `backdrop-filter` (blur + saturate) on
+  one layer, the frame, which never resizes; blur radius and backgrounds
+  never animate (those would break layer caching).
 - **Cache + performance process** — the widening transition is short and
   interruptible, tab rows are `contain: layout paint`, lists never animate,
   and a local FPS meter (bottom-right) makes frame cost visible while you
@@ -59,10 +61,10 @@ open with the sidebar pinned (testing aid).
   new rows); drag the pill back to the sidebar to unpin, and the last
   unpin reclaims the space entirely. Click a pill to jump to its tab.
 - **Bookmark toolbar with opt-out** — hidden by default; hovering (or
-  tabbing into) the top bar grows the bar itself down by one row of
-  bookmark chips — the strip has no surface of its own, it is drawn on the
-  bar's glass, and the single hairline rides the bar's new bottom edge, so
-  bar + strip + rail stay one uncut surface. Motion mirrors the rail
+  tabbing into) the top bar reveals one row of bookmark chips under it —
+  the strip has no surface of its own; the page card clips back from the
+  top to uncover the frame, so bar + strip + rail stay one uncut surface.
+  Motion mirrors the rail
   widen (same Motion duration and curve, chips wipe + fade in place) but
   runs on clip-path/transform/opacity only; it takes no space and shifts
   no layout. Clicking a chip opens it in the active tab. Tune modes:
