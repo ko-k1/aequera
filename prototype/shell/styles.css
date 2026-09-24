@@ -206,7 +206,7 @@ body.expanded #sidebar,
   border-radius: 12px;
   /* Left padding holds dots at the shared origin (4 + 10 + 1 border = 15,
      matching tabs); right stays tight. */
-  padding: 8px 8px 8px 10px;
+  padding: 6px 4px 6px 10px;
 }
 body.expanded #ws-rail,
 #sidebar:focus-within #ws-rail {
