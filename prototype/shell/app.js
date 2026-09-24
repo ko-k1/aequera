@@ -153,7 +153,31 @@ function esc(s) {
 }
 
 function render() {
-  renderTabs(); renderLibrary(); renderPage();
+  renderTabs(); renderLibrary(); renderPinbar(); renderPage();
+}
+
+/* Pinned pills: one icon button per pinned tab across all workspaces.
+   Created only by drag-to-pin; the bar reclaims the space on last unpin. */
+function findTab(id) {
+  const num = Number(id);
+  for (const w of store.workspaces) {
+    const tab = w.tabs.find((t) => t.id === num);
+    if (tab) return { ws: w, tab };
+  }
+  return null;
+}
+function renderPinbar() {
+  const pins = [];
+  for (const w of store.workspaces) {
+    for (const t of w.tabs) {
+      if (t.pinned) pins.push({ ws: w, tab: t });
+    }
+  }
+  $("#pinbar").innerHTML = pins.map(({ ws, tab }) =>
+    `<button class="pinpill" draggable="true" data-pinpill="${tab.id}"`
+    + ` aria-selected="${ws.id === store.activeWs && tab.id === ws.activeTab}"`
+    + ` aria-label="${esc(tab.title)} · ${esc(ws.name)} (pinned)" title="${esc(tab.title)} · ${esc(ws.name)} — drag back to unpin">`
+    + `<img src="${tab.fav}" alt=""></button>`).join("");
 }
 
 /* Library section: History / Bookmarks / Recently closed as tab-geometry
@@ -190,8 +214,8 @@ function renderLibrary() {
 function renderTabs() {
   const w = activeWs();
   $("#tab-list").innerHTML = w.tabs.map((t) =>
-    `<li><button class="tab-row${t.pinned ? " pinned" : ""}" role="tab" data-tab="${t.id}"`
-    + ` aria-selected="${t.id === w.activeTab}" aria-label="${esc(t.title)}">`
+    `<li><button class="tab-row${t.pinned ? " pinned" : ""}" role="tab" data-tab="${t.id}" draggable="true"`
+    + ` aria-selected="${t.id === w.activeTab}" aria-label="${esc(t.title)}" title="Drag to the top bar to pin">`
     + `<img src="${t.fav}" alt="">`
     + `<span class="t">${esc(t.title)}</span>`
     + `<span class="x" role="button" tabindex="-1" data-close="${t.id}" aria-label="Close ${esc(t.title)}">×</span>`
@@ -493,6 +517,17 @@ document.addEventListener("click", (ev) => {
     render();
     return;
   }
+  const pill = ev.target.closest("[data-pinpill]");
+  if (pill) {
+    const found = findTab(pill.dataset.pinpill);
+    if (found) {
+      store.activeWs = found.ws.id;
+      found.ws.activeTab = found.tab.id;
+      libraryView = null;
+      render();
+    }
+    return;
+  }
   // Library rows/items/back must precede the generic .result branch: library
   // items reuse .result styling but carry data-lib-open instead of data-i.
   const libRow = ev.target.closest("[data-lib]");
@@ -538,6 +573,54 @@ document.addEventListener("click", (ev) => {
     actions[act.dataset.act]();
     return;
   }
+});
+
+/* Drag-to-pin: rail tabs carry their id; the top bar accepts the drop and
+   pins (creating a pill); dropping a pill back on the sidebar unpins.
+   Foreign drags (text, files) are ignored via the dataTransfer type gate. */
+function pinDragTypes(dt) {
+  return dt && Array.prototype.slice.call(dt.types || []).indexOf("text/tab-id") >= 0;
+}
+document.addEventListener("dragstart", (ev) => {
+  const pill = ev.target.closest && ev.target.closest("[data-pinpill]");
+  const row = ev.target.closest && ev.target.closest("[data-tab]");
+  const id = pill ? pill.dataset.pinpill : row ? row.dataset.tab : null;
+  if (!id || !ev.dataTransfer) return;
+  ev.dataTransfer.setData("text/tab-id", String(id));
+  if (pill) ev.dataTransfer.setData("text/aequera-unpin", "1");
+  ev.dataTransfer.effectAllowed = "move";
+});
+const topbar = $("#topbar");
+topbar.addEventListener("dragover", (ev) => {
+  if (!pinDragTypes(ev.dataTransfer)) return;
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = "move";
+  topbar.classList.add("pinning");
+});
+topbar.addEventListener("dragleave", () => topbar.classList.remove("pinning"));
+topbar.addEventListener("drop", (ev) => {
+  topbar.classList.remove("pinning");
+  if (!pinDragTypes(ev.dataTransfer)) return;
+  ev.preventDefault();
+  const found = findTab(ev.dataTransfer.getData("text/tab-id"));
+  if (!found || found.tab.pinned) return;
+  found.tab.pinned = true;
+  render();
+  toast(`Pinned “${found.tab.title}”.`);
+});
+sidebar.addEventListener("dragover", (ev) => {
+  if (!pinDragTypes(ev.dataTransfer)) return;
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = "move";
+});
+sidebar.addEventListener("drop", (ev) => {
+  if (!pinDragTypes(ev.dataTransfer)) return;
+  if (Array.prototype.indexOf.call(ev.dataTransfer.types || [], "text/aequera-unpin") < 0) return;
+  ev.preventDefault();
+  const found = findTab(ev.dataTransfer.getData("text/tab-id"));
+  if (!found || !found.tab.pinned) return;
+  found.tab.pinned = false;
+  render();
 });
 
 sidebar.addEventListener("mouseenter", () => { hoverSide = true; scheduleExpand(); });

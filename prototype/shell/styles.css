@@ -147,6 +147,22 @@ body.expanded #sidebar,
 }
 .nav button:hover { color: var(--text); }
 
+/* Pinned pills: created only by dragging a tab in, reclaimed on last unpin.
+   :empty keeps it out of layout entirely — no reserved space by default. */
+#pinbar { display: flex; align-items: center; gap: 4px; max-width: 28vw; overflow-x: auto; scrollbar-width: none; flex: none; }
+#pinbar:empty { display: none; }
+#pinbar::-webkit-scrollbar { display: none; }
+.pinpill {
+  width: 30px; height: 30px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 8px;
+}
+.pinpill img { width: 16px; height: 16px; border-radius: 4px; }
+.pinpill:hover { background: rgba(127, 140, 170, 0.18); }
+.pinpill[aria-selected="true"] { background: rgba(127, 140, 170, 0.22); }
+/* Drop feedback while a tab hovers the top bar. */
+#topbar.pinning #addr-row { border-color: var(--accent); }
+
 /* Top address bar: horizontal, full width. Same glass recipe as the rail,
    so bar + rail read as one seamless connected surface. */
 #topbar {

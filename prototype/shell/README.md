@@ -52,6 +52,10 @@ open with the sidebar pinned (testing aid).
   zero width so the collapsed dock never stretches. Scrollbars stay hidden
   by design, so an overflowing layer gets a soft edge fade instead — scroll
   with the wheel over the dock.
+- **Pin pills on demand** — no top strip is reserved: drag a tab onto the
+  top bar to pin it and a compact pill appears (address squeezes over, no
+  new rows); drag the pill back to the sidebar to unpin, and the last
+  unpin reclaims the space entirely. Click a pill to jump to its tab.
 - **Keyboard-first** — `Ctrl/⌘ K` focuses, `↑/↓` + `Enter` selects,
   `1–9` switches tabs, `Esc` collapses. Reduced-motion users get zero
   transitions with all state information intact.
