@@ -196,7 +196,7 @@ body.expanded #sidebar,
      the dots, the rows, and the indicator all share one static origin, so
      the morph grows rightward and upward from that corner — never drifts. */
   align-self: flex-start;
-  margin-left: 6px;
+  margin-left: 4px;
   /* Never squeezed by rail overflow: sizes to content, scrolls within caps. */
   flex: none;
   /* Solid dock behind the dots when collapsed; transparent wrapper around
@@ -204,7 +204,9 @@ body.expanded #sidebar,
   background: var(--solid);
   border: 1px solid var(--stroke);
   border-radius: 12px;
-  padding: 8px;
+  /* Left padding holds dots at the shared origin (4 + 10 + 1 border = 15,
+     matching tabs); right stays tight. */
+  padding: 8px 8px 8px 10px;
 }
 body.expanded #ws-rail,
 #sidebar:focus-within #ws-rail {
@@ -329,7 +331,7 @@ body.expanded #ws-indicator,
    the next switch (a new transform supersedes the running one). */
 #ws-indicator {
   position: absolute;
-  left: 8px;
+  left: 10px;
   top: 0;
   width: 10px; height: 10px;
   border-radius: 50%;
