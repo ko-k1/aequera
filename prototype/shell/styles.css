@@ -99,14 +99,33 @@ button:hover { background: rgba(127, 140, 170, 0.18); }
   z-index: 30;
   overflow: hidden;
   transition: width var(--dur) var(--snap);
-  /* No right border: it would cut the top strip; the edge below the bar
-     is drawn by #content, meeting the bar in one L. */
   border-right: 0;
+}
+/* The sidebar draws the vertical edge itself, so the line rides its right
+   side as it widens instead of staying behind at the rail. It starts below
+   the bookmark row (when open) so rail and row stay one uncut surface. */
+#sidebar::after {
+  content: "";
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 1px;
+  z-index: 1;
+  background: var(--stroke);
+  pointer-events: none;
+  clip-path: inset(var(--bb-h) 0 0 0);
+  transition: clip-path var(--dur) var(--snap);
 }
 body.expanded #sidebar,
 #sidebar:focus-within {
   width: var(--panel-w);
 }
+/* Current sidebar width, shared by every edge that must meet it: the bar's
+   hairline, the bar glass cut-out, and the bookmark row all track it with
+   the sidebar's own --dur/--snap, so the L corner never splits mid-widen. */
+body { --side-w: var(--rail-w); --bb-h: 0px; }
+body.bb-open { --bb-h: var(--ctl); }
+body.expanded,
+body:has(#sidebar:focus-within) { --side-w: var(--panel-w); }
 #rail {
   height: 100%;
   display: flex;
@@ -172,7 +191,7 @@ body.expanded #sidebar,
    dead under reduced motion. Closed it is inert: no hits, no focus, no AT. */
 #bookmarkbar {
   position: absolute;
-  left: var(--rail-w); right: 0; top: 100%;
+  left: var(--side-w); right: 0; top: 100%;
   height: var(--ctl);
   display: flex;
   align-items: center;
@@ -185,6 +204,7 @@ body.expanded #sidebar,
   transform: translateY(-6px);
   pointer-events: none;
   transition:
+    left var(--dur) var(--snap),
     clip-path var(--dur) var(--snap),
     transform var(--dur) var(--snap),
     opacity 100ms var(--snap);
@@ -196,6 +216,7 @@ body.bb-open #bookmarkbar {
   transform: none;
   pointer-events: auto;
   transition:
+    left var(--dur) var(--snap),
     clip-path var(--dur) var(--snap),
     transform var(--dur) var(--snap),
     opacity 160ms var(--snap);
@@ -215,7 +236,7 @@ body.bb-open #bookmarkbar {
 .bb-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bb-chip:hover { color: var(--text); }
 /* Pinned (Always / New tab) the strip pushes content down like Firefox's
-   toolbar. The rail never moves: the grown bar glass stops at the rail's
+   toolbar. The rail never moves: the grown bar glass stops at the sidebar's
    right edge, so the rail itself continues up to meet the bar — the L-edge
    contract (bar + rail + content, one surface) holds in every mode. */
 body.has-bb #content {
@@ -241,9 +262,7 @@ body.has-bb #content {
   background: none;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  --bb-h: 0px;
 }
-body.bb-open #topbar { --bb-h: var(--ctl); }
 /* Bar glass: one layer sized for bar + bookmark row, clipped to the bar row
    when closed. Opening un-clips the row right of the rail (the rail's own
    glass already covers the left of it), so nothing is ever double-glazed
@@ -258,24 +277,28 @@ body.bb-open #topbar { --bb-h: var(--ctl); }
   background: var(--surface);
   -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--sat));
   backdrop-filter: blur(var(--blur)) saturate(var(--sat));
-  clip-path: polygon(0 0, 100% 0, 100% var(--top-h), var(--rail-w) var(--top-h), var(--rail-w) var(--top-h), 0 var(--top-h));
+  clip-path: polygon(0 0, 100% 0, 100% var(--top-h), var(--side-w) var(--top-h), var(--side-w) var(--top-h), 0 var(--top-h));
   transition: clip-path var(--dur) var(--snap);
 }
 body.bb-open #topbar::before {
-  clip-path: polygon(0 0, 100% 0, 100% 100%, var(--rail-w) 100%, var(--rail-w) var(--top-h), 0 var(--top-h));
+  clip-path: polygon(0 0, 100% 0, 100% 100%, var(--side-w) 100%, var(--side-w) var(--top-h), 0 var(--top-h));
 }
 /* The single hairline separating chrome from content starts exactly at the
-   rail's right edge — never drawn over the rail itself, so bar and rail
-   stay one uncut surface. Tracks --rail-w through tuning. */
+   sidebar's right edge — never drawn over the rail or the widened tab bar,
+   so bar and sidebar stay one uncut surface. Tracks --side-w (and so
+   --rail-w / --panel-w through tuning) in step with the widen, meeting the
+   sidebar's own edge line in one L corner. */
 #topbar::after {
   content: "";
   position: absolute;
-  left: var(--rail-w); right: 0; bottom: 0;
+  left: calc(var(--side-w) - 1px); right: 0; bottom: 0;
   height: 1px;
   background: var(--stroke);
   pointer-events: none;
   transform: translateY(var(--bb-h));
-  transition: transform var(--dur) var(--snap);
+  transition:
+    left var(--dur) var(--snap),
+    transform var(--dur) var(--snap);
 }
 #topbar .traffic { width: auto; padding: 0 2px; }
 .addr-wrap {
@@ -752,7 +775,7 @@ body.expanded #lib-list > .tab-row,
   color: var(--text);
 }
 
-#content { margin: var(--top-h) 0 0 var(--rail-w); height: calc(100% - var(--top-h)); position: relative; border-left: 1px solid var(--stroke); }
+#content { margin: var(--top-h) 0 0 var(--rail-w); height: calc(100% - var(--top-h)); position: relative; }
 #page {
   height: 100%;
   display: grid;

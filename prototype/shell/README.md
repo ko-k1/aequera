@@ -20,8 +20,10 @@ open with the sidebar pinned (testing aid).
   the bar: minimized to favicons, revealed in place on hover as the bar
   itself widens, icons never moving, titles appearing beside them.
 - **Seamless connected surface** — bar, rail, and content share one
-  glass-token recipe; the bar's bottom edge and the content's left edge meet
-  in a single clean L with no divider cutting the top strip.
+  glass-token recipe; the bar's bottom edge and the sidebar's right edge meet
+  in a single clean L with no divider cutting the top strip. The L follows
+  the sidebar as it widens on hover (same duration and curve), so the
+  expanded tab bar is never cut by the bar's hairline.
 - **Address bar with macOS 3-button cluster** — red/yellow/green traffic
   lights in macOS order sit atop the rail (close is decorative here, yellow
   collapses, green pins); nav buttons and the full address+command input run
