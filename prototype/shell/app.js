@@ -628,7 +628,14 @@ sidebar.addEventListener("mouseleave", () => { hoverSide = false; scheduleCollap
 sidebar.addEventListener("focusin", scheduleExpand);
 sidebar.addEventListener("focusout", scheduleCollapse);
 addr.addEventListener("focus", () => { expand(); renderResults(); });
-addr.addEventListener("blur", () => setTimeout(() => { collapseResults(); scheduleCollapse(); }, 120));
+addr.addEventListener("blur", () => {
+  // Results hide on their own click-safe delay; the collapse check starts
+  // immediately in parallel instead of stacking behind it, so deselecting
+  // the address bar answers in ~150ms rather than ~270ms. Both re-verify
+  // intent at fire time, so a focus move into the bar still holds it open.
+  setTimeout(collapseResults, 120);
+  scheduleCollapse();
+});
 addr.addEventListener("input", renderResults);
 addr.addEventListener("keydown", (ev) => {
   if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
