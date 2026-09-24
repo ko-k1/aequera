@@ -192,10 +192,10 @@ body.expanded #sidebar,
 #ws-rail {
   position: relative;
   margin-top: auto;
-  /* Left-anchored like tab rows (same 6px list inset): the dock shares the
-     tab column origin, so the morph travels zero pixels horizontally. */
-  align-self: flex-start;
-  margin-left: 6px;
+  /* Centered symmetric dock (compact 20px pill). Centering reads better than
+     left-anchoring here; the morph crossfade masks the small offset to the
+     left-anchored rows. */
+  align-self: center;
   /* Never squeezed by rail overflow: sizes to content, scrolls within caps. */
   flex: none;
   /* Solid dock behind the dots when collapsed; transparent wrapper around
@@ -203,7 +203,7 @@ body.expanded #sidebar,
   background: var(--solid);
   border: 1px solid var(--stroke);
   border-radius: 12px;
-  padding: 8px 6px 8px 12px;
+  padding: 8px 5px;
 }
 body.expanded #ws-rail,
 #sidebar:focus-within #ws-rail {
@@ -243,7 +243,7 @@ body.expanded #ws-rail,
 #ws-dots .scroll::-webkit-scrollbar,
 #ws-rows .scroll::-webkit-scrollbar { display: none; }
 #ws-dots .scroll {
-  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+  display: flex; flex-direction: column; gap: 6px; align-items: center;
   max-height: 74px;
 }
 #ws-rows .scroll {
@@ -324,11 +324,10 @@ body.expanded #ws-indicator,
    the next switch (a new transform supersedes the running one). */
 #ws-indicator {
   position: absolute;
-  /* Pinned to the shared column origin (pill padding 12px): dots, rows,
-     and indicator all live at the same x in every state. */
-  left: 12px;
+  left: 50%;
   top: 0;
   width: 10px; height: 10px;
+  margin-left: -5px;
   border-radius: 50%;
   background: var(--accent);
   pointer-events: none;
