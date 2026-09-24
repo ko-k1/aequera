@@ -1,0 +1,62 @@
+# Build — run Aequera on real Firefox
+
+Stage 1 shell work is front-end only (CSS, window JS, prefs), so the default
+is an **artifact build**: Mozilla's prebuilt compiled parts for the pinned
+revision plus a local front-end build. Minutes, not hours; no Visual Studio.
+
+## One-time setup (Windows)
+
+1. Install **MozillaBuild** (https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe)
+   to the default `C:\mozilla-build`.
+2. Generate the worktree (any shell):
+
+   ```powershell
+   aequera patch apply
+   ```
+
+   This checks out Firefox at the lock, applies `patches/` in order, and
+   syncs overlays (`aequera/shell/firefox` -> `worktree/firefox/browser/aequera`).
+3. Open `C:\mozilla-build\start-shell.bat`, then:
+
+   ```sh
+   cd /c/src/aequera/worktree/firefox
+   export MOZCONFIG=/c/src/aequera/tools/build/mozconfig.artifact
+   ./mach bootstrap   # choose "Firefox for Desktop Artifact Mode"
+   ```
+
+## Build and run
+
+```sh
+./mach build
+./mach run
+```
+
+`./mach run` uses a throwaway profile under the objdir, so the Aequera
+default prefs (`aequera-prefs.js`) apply as defaults, exactly as on a fresh
+install.
+
+## Edit loop
+
+1. Edit Aequera source in `aequera/shell/firefox/` (never in the worktree:
+   the overlay copy is replaced on every apply).
+2. `aequera patch apply` — re-syncs the overlay; patches stay verified.
+3. In the MozillaBuild shell: `./mach build faster && ./mach run`
+   (`build faster` repackages front-end files only; seconds).
+
+## Stage 1 acceptance
+
+- Tabs render in the vertical rail; hovering the rail widens it after
+  ~40ms over 250ms.
+- While widened, the rail is the same material as when collapsed (no
+  second opaque panel, no divider), and the page's left edge clips back
+  in step with the rail. The page itself does not reflow.
+- Fullscreen shows the page unclipped.
+- Browser Console (`Ctrl+Shift+J`) shows no `aequera-shell` errors.
+- `about:config`: the six prefs in `aequera-prefs.js` show as defaults.
+
+## If artifact download fails
+
+Artifacts exist only for revisions Mozilla's CI built. If `mach build`
+cannot find artifacts for the pinned release revision, switch to a full
+build: drop `--enable-artifact-builds` from a copy of the mozconfig and
+install Visual Studio 2022 with C++ (see `tools/bootstrap/windows.md`).

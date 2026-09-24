@@ -1,0 +1,45 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Aequera shell chrome, Stage 1: the prototype's frame model on native
+ * Firefox chrome. Loaded last from browser.xhtml
+ * (patches/browser/shell-hooks), so equal-specificity rules here win.
+ *
+ * Frame model (prototype/shell, "single-frame chrome material"): all chrome
+ * sits on ONE backdrop and the page is a card inset in it. When the hover
+ * launcher widens over the page, Firefox paints it a second, opaque
+ * surface; here the launcher keeps its collapsed paint and the page card
+ * clips back instead, so the widened tab rail is the same material as the
+ * collapsed one, with no seam and no page relayout. */
+
+/* 1. The widened launcher paints exactly what the collapsed one does: no
+ *    opaque backdrop layer and no divider line against the page. */
+:root[sidebar-expand-on-hover]
+  #sidebar-container:is([sidebar-launcher-expanded], [sidebar-ongoing-animations]) {
+  background-image: none;
+  background-color: var(--sidebar-launcher-surface-color);
+  border-inline-width: 0 !important;
+}
+
+/* 2. The page card yields exactly the launcher's extra width.
+ *    --aequera-launcher-width is the launcher's live width, mirrored every
+ *    frame by aequera-shell.js from a ResizeObserver, so the clip edge
+ *    follows Firefox's own launcher animation with no second timeline to
+ *    drift. Collapsed, the difference is 0 and the clip is a no-op.
+ *    clip-path is compositor-applied: no layout, no reflow of the page. */
+:root[sidebar-expand-on-hover] #tabbrowser-tabbox {
+  --aequera-launcher-extra: max(
+    0px,
+    var(--aequera-launcher-width, 0px) - var(--sidebar-launcher-collapsed-width, 0px)
+  );
+  clip-path: inset(0 0 0 var(--aequera-launcher-extra) round var(--border-radius-medium) 0 0 0);
+}
+:root[sidebar-expand-on-hover] #tabbrowser-tabbox[sidebar-positionend] {
+  clip-path: inset(0 var(--aequera-launcher-extra) 0 0 round 0 var(--border-radius-medium) 0 0);
+}
+
+/* Fullscreen shows the page edge to edge: never clip it. */
+:root:is([inDOMFullscreen], [inFullscreen]) #tabbrowser-tabbox {
+  clip-path: none;
+}

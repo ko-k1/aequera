@@ -1,7 +1,8 @@
-# Aequera patchset manifest, version 0.
+# Aequera patchset manifest.
 #
-# Empty series against the locked baseline: proves the apply pipeline
-# end to end before any real divergence exists.
+# patches:  ordered Firefox changes (git apply, in order).
+# overlays: Aequera-owned source copied into NEW worktree directories on
+#           every apply; refused if dest holds any upstream-tracked file.
 #
 # Rules (docs/engineering/PATCHING.md):
 # - one logical concern per commit; Git order is authoritative;
@@ -17,4 +18,16 @@ base:
     version: "156.0"
     revision: "3bf8f468258c2181f455e23d4ffcd6acb8f4cdb1"
 
-patches: []
+patches:
+  # Hooks that build and load the shell-chrome overlay (4 lines). Rationale,
+  # validation, and upstream risk are in the patch header.
+  - id: shell-hooks
+    series: browser/shell-hooks
+
+overlays:
+  # Stage 1 shell: frame-model stylesheet, launcher-width glue, default
+  # prefs (vertical hover rail, 250ms motion, Mica). Source of truth:
+  # aequera/shell/firefox; the worktree copy is generated.
+  - id: shell-chrome
+    source: aequera/shell/firefox
+    dest: browser/aequera

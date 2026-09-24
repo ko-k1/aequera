@@ -1,0 +1,5 @@
+# Aequera shell chrome resources -> chrome://browser/content/aequera/
+
+browser.jar:
+    content/browser/aequera/aequera-shell.css    (aequera-shell.css)
+    content/browser/aequera/aequera-shell.js     (aequera-shell.js)

@@ -1,0 +1,15 @@
+# Aequera artifact build (front-end only).
+#
+# Downloads Mozilla's prebuilt compiled parts (C++/Rust) for the pinned
+# revision and builds only JS/CSS/XHTML/prefs locally: minutes, no MSVC.
+# Suits all shell work (aequera/shell, browser patches without C++).
+# Any C++/Rust/Gecko patch needs a full build instead.
+#
+# Use from the MozillaBuild shell, inside worktree/firefox:
+#   export MOZCONFIG=/c/src/aequera/tools/build/mozconfig.artifact
+
+ac_add_options --enable-project=browser
+ac_add_options --enable-artifact-builds
+
+# Keep build output inside the generated worktree, away from Aequera source.
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-aequera-artifact

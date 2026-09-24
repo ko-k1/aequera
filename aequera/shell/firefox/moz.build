@@ -1,0 +1,17 @@
+# Aequera-owned browser shell, Stage 1 (docs/SOURCE_LAYOUT.md: aequera/shell).
+#
+# Copied into worktree/firefox/browser/aequera/ by `aequera patch apply`
+# (overlay "shell-chrome" in patches/manifest.yaml). The only Firefox-side
+# change is patches/browser/shell-hooks, which lists this directory in
+# browser/moz.build and loads the stylesheet + glue from browser.xhtml.
+# DIST_SUBDIR "browser" is inherited from browser/moz.build.
+
+JAR_MANIFESTS += ["jar.mn"]
+
+# Installs to browser/defaults/preferences/. Default-pref files load in
+# reverse-alphabetical order, so "aequera-prefs.js" is read after
+# "firefox.js" and its defaults win (the firefox-branding.js mechanism).
+JS_PREFERENCE_FILES += ["aequera-prefs.js"]
+
+with Files("**"):
+    BUG_COMPONENT = ("Firefox", "General")
