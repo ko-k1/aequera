@@ -1,4 +1,4 @@
-# shell-chrome — first-party wireup v0 (no Firefox patch)
+# shell-chrome — first-party wireup v0 + unified palette (no Firefox patch)
 
 Proves the prototype tab/workspace/command model against **real Firefox tabs**
 through stable WebExtensions APIs only. Firefox source is untouched:
@@ -8,11 +8,13 @@ through stable WebExtensions APIs only. Firefox source is untouched:
 
 - Layer: `aequera/extensions` + `aequera/integrations` boundary.
 - Kind: **first-party extension + Aequera source**. Not a Firefox patch,
-  not a Gecko patch — `tabs`/`windows`/`sessions`/`storage` suffice, so no
-  `patches/browser` hook is justified yet (SOURCE_LAYOUT.md: do not use a
-  patch as transport for ordinary Aequera code).
+  not a Gecko patch — `tabs`/`windows`/`sessions`/`storage`/`history`/
+  `bookmarks` suffice, so no `patches/browser` hook is justified yet
+  (SOURCE_LAYOUT.md: do not use a patch as transport for ordinary Aequera code).
 - Public API/config impact: none. No new prefs, no schema change, no
-  privileged API. Least privilege: `tabs`, `sessions`, `storage`.
+  privileged API. Least privilege: `tabs`, `sessions`, `storage` (v0 adapter)
+  plus `history`, `bookmarks` (palette slice — read-only search backing the
+  unified address/command surface from the prototype spec; still no remote).
 
 ## Model mapping
 
@@ -21,6 +23,7 @@ through stable WebExtensions APIs only. Firefox source is untouched:
 | workspaces | `listWorkspaces` / `createWorkspace` / `switchWorkspace` | `windows.*` + `sessions.{get,set}WindowValue` (`aequera-workspace`) |
 | open/switch/close/move/pin tab | `openTab` / `switchTab` / `closeTab` / `moveTab` / `togglePin` | `tabs.*` |
 | closed-tab restore | `restoreClosed` | `sessions.getRecentlyClosed` + `sessions.restore` |
+| `candidates(q)` unified filter | `rankCandidates` (`src/palette.js`, pure, prototype parity) + `collectSources` / `searchPalette` / `executeAction` | `windows` + `tabs` + `history.search` + `bookmarks.search` + `sessions.getRecentlyClosed` |
 | `Ctrl/⌘ K` palette focus | `aequera-focus-command` (`Ctrl+Shift+K`, see note) | `commands.onCommand` + `storage.local` timestamp |
 
 `Ctrl+K` is the prototype key; the extension ships `Ctrl+Shift+K` for v0
@@ -36,13 +39,13 @@ the exact chord is a later shell-integration decision, not a silent override.
 ## Acceptance (this slice)
 
 - `cargo test -p aequera-core` green (20 tests).
+- `node --test src/palette.test.js` green (6 tests: order, case-folding, gating, cap).
 - `aequera upstream verify` → verified; `aequera patch status` → base match, applied state matches manifest.
-- `manifest.json` parses; `strict_min_version` == lock version `156.0`; permissions ⊆ {tabs, sessions, storage}.
-- `background.js` contains no `fetch` / `XMLHttpRequest` / `WebSocket`, no `telemetry` string.
+- `manifest.json` parses; `strict_min_version` == lock version `156.0`; permissions ⊆ {tabs, sessions, storage, history, bookmarks}.
+- `background.js` / `palette.js` contain no `fetch(` / `XMLHttpRequest` / `WebSocket` call sites, no telemetry.
 - Temporary load in the pinned build works without errors (manual; full Firefox build is hours — not run in this slice).
 
-## Explicit non-goals (v0)
+## Explicit non-goals (v0 + palette)
 
-Full palette filtering across workspaces/history/bookmarks/commands,
-workspace persistence beyond window values, sidebar UI bundling, exact
+Sidebar/panel UI bundling, workspace persistence beyond window values, exact
 `Ctrl+K` chord, touch/a11y audit — all later Phase 1 slices.
