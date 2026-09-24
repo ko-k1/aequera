@@ -34,7 +34,12 @@
     <div id="results" role="listbox" aria-label="Matches" hidden></div>
   </div>
   <button id="tune-toggle" data-tune-toggle aria-expanded="false" aria-controls="tune">Tune</button>
+  <!-- Bookmark toolbar: a second row of the top bar itself, drawn on the
+       bar's own glass (no surface of its own), revealed by the bar growing.
+       Opt-out via Tune (Always / New tab only / Never); closed it is inert. -->
+  <div id="bookmarkbar" inert aria-label="Bookmarks"></div>
 </header>
+
 
 <section id="tune" hidden aria-label="Interface tuning">
   <div class="tune-row seg" role="group" aria-label="Profile">
@@ -51,6 +56,14 @@
       <option value="snappy">Snappy</option>
       <option value="smooth">Smooth</option>
       <option value="swift" selected>Swift</option>
+    </select>
+  </label>
+  <label class="tune-row">Bookmarks
+    <select id="t-bbmode">
+      <option value="hover">Hover to reveal</option>
+      <option value="always">Always show</option>
+      <option value="newtab">New tab only</option>
+      <option value="never">Never (opt out)</option>
     </select>
   </label>
   <div class="tune-row"><button id="t-replay">Replay expand</button></div>

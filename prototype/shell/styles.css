@@ -163,6 +163,66 @@ body.expanded #sidebar,
 /* Drop feedback while a tab hovers the top bar. */
 #topbar.pinning #addr-row { border-color: var(--accent); }
 
+/* Bookmark toolbar: a second row of the top bar, not a surface of its own.
+   It carries no glass — the bar's own glass layer (#topbar::before) grows
+   down to cover it, so bar + strip are one uncut surface with the single
+   hairline riding the bar's new bottom edge. Motion mirrors the rail widen:
+   same --dur/--snap, chips wipe (clip) + fade in place. Everything animates
+   on clip-path / transform / opacity only — no layout, never blocks input,
+   dead under reduced motion. Closed it is inert: no hits, no focus, no AT. */
+#bookmarkbar {
+  position: absolute;
+  left: var(--rail-w); right: 0; top: 100%;
+  height: var(--ctl);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  opacity: 0;
+  clip-path: inset(0 0 100% 0);
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition:
+    clip-path var(--dur) var(--snap),
+    transform var(--dur) var(--snap),
+    opacity 100ms var(--snap);
+}
+#bookmarkbar::-webkit-scrollbar { display: none; }
+body.bb-open #bookmarkbar {
+  opacity: 1;
+  clip-path: inset(0);
+  transform: none;
+  pointer-events: auto;
+  transition:
+    clip-path var(--dur) var(--snap),
+    transform var(--dur) var(--snap),
+    opacity 160ms var(--snap);
+}
+.bb-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  color: var(--text-dim);
+  font-size: calc(var(--fs) - 1px);
+}
+.bb-chip img { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.bb-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bb-chip:hover { color: var(--text); }
+/* Pinned (Always / New tab) the strip pushes content down like Firefox's
+   toolbar. The rail never moves: the grown bar glass stops at the rail's
+   right edge, so the rail itself continues up to meet the bar — the L-edge
+   contract (bar + rail + content, one surface) holds in every mode. */
+body.has-bb #content {
+  margin-top: calc(var(--top-h) + var(--ctl));
+  height: calc(100% - var(--top-h) - var(--ctl));
+}
+
 /* Top address bar: horizontal, full width. Same glass recipe as the rail,
    so bar + rail read as one seamless connected surface. */
 #topbar {
@@ -176,6 +236,33 @@ body.expanded #sidebar,
   padding: 0 12px;
   border-right: 0;
   border-bottom: 0; /* the edge is drawn by ::after, starting past the rail */
+  /* The glass lives on ::before so it can grow over the bookmark row
+     without the bar's box (and its layout) changing size. */
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  --bb-h: 0px;
+}
+body.bb-open #topbar { --bb-h: var(--ctl); }
+/* Bar glass: one layer sized for bar + bookmark row, clipped to the bar row
+   when closed. Opening un-clips the row right of the rail (the rail's own
+   glass already covers the left of it), so nothing is ever double-glazed
+   and no seam appears. clip-path interpolates on the compositor path. */
+#topbar::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; right: 0;
+  height: calc(var(--top-h) + var(--ctl));
+  z-index: -1;
+  pointer-events: none;
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--sat));
+  backdrop-filter: blur(var(--blur)) saturate(var(--sat));
+  clip-path: polygon(0 0, 100% 0, 100% var(--top-h), var(--rail-w) var(--top-h), var(--rail-w) var(--top-h), 0 var(--top-h));
+  transition: clip-path var(--dur) var(--snap);
+}
+body.bb-open #topbar::before {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, var(--rail-w) 100%, var(--rail-w) var(--top-h), 0 var(--top-h));
 }
 /* The single hairline separating chrome from content starts exactly at the
    rail's right edge — never drawn over the rail itself, so bar and rail
@@ -187,6 +274,8 @@ body.expanded #sidebar,
   height: 1px;
   background: var(--stroke);
   pointer-events: none;
+  transform: translateY(var(--bb-h));
+  transition: transform var(--dur) var(--snap);
 }
 #topbar .traffic { width: auto; padding: 0 2px; }
 .addr-wrap {

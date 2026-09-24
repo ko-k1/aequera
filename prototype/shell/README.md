@@ -56,6 +56,17 @@ open with the sidebar pinned (testing aid).
   top bar to pin it and a compact pill appears (address squeezes over, no
   new rows); drag the pill back to the sidebar to unpin, and the last
   unpin reclaims the space entirely. Click a pill to jump to its tab.
+- **Bookmark toolbar with opt-out** — hidden by default; hovering (or
+  tabbing into) the top bar grows the bar itself down by one row of
+  bookmark chips — the strip has no surface of its own, it is drawn on the
+  bar's glass, and the single hairline rides the bar's new bottom edge, so
+  bar + strip + rail stay one uncut surface. Motion mirrors the rail
+  widen (same Motion duration and curve, chips wipe + fade in place) but
+  runs on clip-path/transform/opacity only; it takes no space and shifts
+  no layout. Clicking a chip opens it in the active tab. Tune modes:
+  **Hover to reveal / Always / New tab only / Never**, persisted per
+  machine; Never is the full opt-out, Always pins the strip (content
+  shifts, Firefox-style). Reduced motion makes the reveal instant.
 - **Keyboard-first** — `Ctrl/⌘ K` focuses, `↑/↓` + `Enter` selects,
   `1–9` switches tabs, `Esc` collapses. Reduced-motion users get zero
   transitions with all state information intact.

@@ -153,7 +153,61 @@ function esc(s) {
 }
 
 function render() {
-  renderTabs(); renderLibrary(); renderPinbar(); renderPage();
+  renderTabs(); renderLibrary(); renderPinbar(); renderBookmarkbar(); renderPage();
+}
+
+/* Bookmark toolbar: horizontal strip under the top bar, Firefox-style
+   visibility modes. Hidden by default — hovering (or tabbing into) the top
+   bar reveals it as a seamless glass drawer over the content, exactly like
+   the rail widens over content: no layout shift, no reserved space.
+   Never is the full opt-out; Always pins it (content shifts, like
+   Firefox's pinned toolbar); New tab only pins it on new-tab pages. */
+const BBMODES = ["hover", "always", "newtab", "never"];
+const BB_DEFAULT = "hover";
+function validBBMode(v) { return BBMODES.includes(v) ? v : BB_DEFAULT; }
+let bbHover = false; // pointer inside topbar-or-strip
+let bbFocus = false; // keyboard focus inside topbar-or-strip
+function bbPinned() {
+  if (tune.bookmarkbar === "always") return true;
+  if (tune.bookmarkbar === "newtab") {
+    const w = activeWs();
+    const t = w && tabOf(w, w.activeTab);
+    return !!t && t.url === "aequera:newtab";
+  }
+  return false;
+}
+function bbShown() {
+  if (tune.bookmarkbar === "never") return false;
+  return bbPinned() || tune.bookmarkbar === "hover" && (bbHover || bbFocus);
+}
+function renderBookmarkbar() {
+  const pinned = bbPinned();
+  document.body.classList.toggle("has-bb", pinned);
+  const bar = $("#bookmarkbar");
+  bar.innerHTML = store.bookmarks.map((b, i) =>
+    `<button class="bb-chip" data-bb="${i}" title="${esc(b.title)} · ${esc(b.url)}">`
+    + `<img src="${fav(b.url)}" alt=""><span>${esc(b.title)}</span></button>`).join("");
+  updateBBVisibility();
+}
+/* Open/close is a class flip only: CSS grows the bar's glass over the strip
+   and wipes the chips in (see styles.css). Closed, the strip is inert so it
+   takes no hits, focus, or AT attention while it animates out. */
+function updateBBVisibility() {
+  const show = bbShown();
+  $("#bookmarkbar").inert = !show;
+  document.body.classList.toggle("bb-open", show);
+}
+/* The strip is a child of the top bar, so one hover/focus region covers
+   both: moving from bar to strip keeps it open; leaving the bar closes it.
+   Focus mirrors hover for keyboard. */
+{
+  const topbar = $("#topbar");
+  topbar.addEventListener("mouseenter", () => { bbHover = true; updateBBVisibility(); });
+  topbar.addEventListener("mouseleave", () => { bbHover = false; updateBBVisibility(); });
+  topbar.addEventListener("focusin", () => { bbFocus = true; updateBBVisibility(); });
+  topbar.addEventListener("focusout", (ev) => {
+    if (!topbar.contains(ev.relatedTarget)) { bbFocus = false; updateBBVisibility(); }
+  });
 }
 
 /* Pinned pills: one icon button per pinned tab across all workspaces.
@@ -548,6 +602,12 @@ document.addEventListener("click", (ev) => {
     render();
     return;
   }
+  const bb = ev.target.closest("[data-bb]");
+  if (bb) {
+    const b = store.bookmarks[Number(bb.dataset.bb)];
+    if (b) openOrNavigate(b.url, b.title);
+    return;
+  }
   const wsel = ev.target.closest("[data-ws]");
   if (wsel) {
     store.activeWs = Number(wsel.dataset.ws);
@@ -734,11 +794,13 @@ let tune = (() => {
       const p = JSON.parse(raw);
       if (p && PROFILE_DELTA[p.profile]) {
         return { profile: p.profile, dur: p.dur ?? BASEMENT.dur,
-                 easing: p.easing ?? BASEMENT.easing, custom: p.custom || {} };
+                 easing: p.easing ?? BASEMENT.easing, custom: p.custom || {},
+                 bookmarkbar: validBBMode(p.bookmarkbar) };
       }
     }
   } catch { /* private mode: tuning stays session-only */ }
-  return { profile: "default", dur: BASEMENT.dur, easing: BASEMENT.easing, custom: {} };
+  return { profile: "default", dur: BASEMENT.dur, easing: BASEMENT.easing, custom: {},
+           bookmarkbar: BB_DEFAULT };
 })();
 
 function saveTune() {
@@ -773,6 +835,7 @@ function applyTune() {
   $("#t-dur").value = eff("dur");
   $("#t-dur-v").textContent = eff("dur") + "ms";
   $("#t-ease").value = tune.easing;
+  $("#t-bbmode").value = tune.bookmarkbar;
   for (const [id, key] of TUNE_FIELDS) {
     const input = $("#" + id);
     input.value = eff(key);
@@ -790,6 +853,12 @@ $("#t-dur").addEventListener("input", (ev) => {
 });
 $("#t-ease").addEventListener("change", (ev) => {
   if (EASINGS[ev.target.value]) { tune.easing = ev.target.value; applyTune(); saveTune(); }
+});
+$("#t-bbmode").addEventListener("change", (ev) => {
+  if (BBMODES.includes(ev.target.value)) {
+    tune.bookmarkbar = ev.target.value;
+    applyTune(); saveTune(); render();
+  }
 });
 for (const [id, key] of TUNE_FIELDS) {
   const input = $("#" + id);
@@ -811,8 +880,9 @@ $("#t-replay").addEventListener("click", () => {
   expand();
 });
 $("#t-reset").addEventListener("click", () => {
-  tune = { profile: "default", dur: BASEMENT.dur, easing: BASEMENT.easing, custom: {} };
-  applyTune(); saveTune();
+  tune = { profile: "default", dur: BASEMENT.dur, easing: BASEMENT.easing, custom: {},
+           bookmarkbar: BB_DEFAULT };
+  applyTune(); saveTune(); render();
   toast("Tuning reset to basement default profile.");
 });
 function toggleTune() {
