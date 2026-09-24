@@ -705,9 +705,9 @@ document.addEventListener("keydown", (ev) => {
    Persisted to localStorage — this machine only. */
 const TUNE_KEY = "aequera-proto-tune-v2";
 const BASEMENT = {
-  top: 52, rail: 56, panel: 272, ctl: 34, rpy: 6, rpx: 8,
-  gap: 6, rad: 10,
-  blur: 24, sat: 1.5, dur: 140, fs: 13, tl: 12, easing: "snappy",
+  top: 42, rail: 42, panel: 220, ctl: 30, rpy: 7, rpx: 7,
+  gap: 6, rad: 9,
+  blur: 24, sat: 1.5, dur: 250, fs: 14, tl: 12, easing: "swift",
 };
 const PROFILE_DELTA = {
   minus:   { top: -6, rail: -8, panel: -32, ctl: -6, rpy: -2, rpx: -2, gap: -2, rad: -2, fs: -1 },
