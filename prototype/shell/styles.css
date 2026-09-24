@@ -7,14 +7,14 @@
 :root {
   /* Basement tokens: every value below is user-editable in the Tune panel.
      Profiles (minus/default/plus) apply deltas over this single source. */
-  --top-h: 52px;    /* top address bar height */
-  --rail-w: 56px;
-  --panel-w: 272px;
-  --ctl: 34px;      /* rail control size */
-  --row-py: 6px;    /* tab row vertical padding */
-  --row-px: 8px;    /* tab row horizontal padding (left adds icon inset) */
+  --top-h: 42px;    /* top address bar height */
+  --rail-w: 42px;
+  --panel-w: 220px;
+  --ctl: 30px;      /* rail control size */
+  --row-py: 7px;    /* tab row vertical padding */
+  --row-px: 7px;    /* tab row horizontal padding (left adds icon inset) */
   --gap: 6px;       /* spacing everywhere: rail, between rows, icon to label */
-  --fs: 13px;       /* base font size */
+  --fs: 14px;       /* base font size */
   --tl: 12px;       /* traffic-light diameter (macOS convention default) */
   --blur: 24px;
   --sat: 1.5;
@@ -28,9 +28,9 @@
   --danger: #ff5f57;
   --warn: #febc2e;
   --ok: #28c840;
-  --snap: cubic-bezier(0.2, 0.9, 0.25, 1);
-  --dur: 140ms;     /* motion duration, user-testable in the Tune panel */
-  --radius: 10px;
+  --snap: cubic-bezier(0.3,0.7,0.3,1);
+  --dur: 250ms;     /* motion duration, user-testable in the Tune panel */
+  --radius: 9px;
 }
 
 @media (prefers-color-scheme: light) {
@@ -195,7 +195,7 @@ body.expanded #sidebar,
   /* Bottom-left anchored: dots land at 4 + 9 + 1 border = 14, the shared
      origin with tab buttons, while the outer margin stays a tight 4px. */
   align-self: flex-start;
-  margin-left: 4px;
+  margin-left: 12px;
   /* Never squeezed by rail overflow: sizes to content, scrolls within caps. */
   flex: none;
   /* Solid dock behind the dots when collapsed; transparent wrapper around
@@ -204,7 +204,7 @@ body.expanded #sidebar,
   border: 1px solid var(--stroke);
   border-radius: 12px;
   /* Left padding holds the origin (right stays visually balanced). */
-  padding: 6px 7px 6px 9px;
+  padding: 6px 4px 6px 4px;
 }
 body.expanded #ws-rail,
 #sidebar:focus-within #ws-rail {
@@ -329,7 +329,7 @@ body.expanded #ws-indicator,
    the next switch (a new transform supersedes the running one). */
 #ws-indicator {
   position: absolute;
-  left: 9px;
+  left: 4px;
   top: 0;
   width: 10px; height: 10px;
   border-radius: 50%;
