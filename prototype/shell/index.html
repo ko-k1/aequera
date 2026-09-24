@@ -93,9 +93,19 @@
   <div id="rail">
     <ul id="tab-list" aria-label="Tabs"></ul>
     <div id="ws-rail" role="tablist" aria-label="Workspaces">
-      <div id="ws-dots" class="ws-layer"><div class="clip"></div></div>
-      <span id="ws-indicator" aria-hidden="true"></span>
-      <div id="ws-rows" class="ws-layer"><div class="clip"></div></div>
+      <!-- Both layers share one grid cell and crossfade in place. The active
+           dot lives INSIDE the dots scroller: it scrolls, clips, and fades
+           with the dots, and persists across renders so it can glide. -->
+      <div id="ws-dots" class="ws-layer"><div class="clip"><div class="scroll">
+        <span id="ws-indicator" aria-hidden="true"></span>
+        <div class="items"></div>
+      </div></div></div>
+      <div id="ws-rows" class="ws-layer"><div class="clip">
+        <div class="scroll"><div class="items"></div></div>
+        <button class="tab-row" data-act="new-workspace" aria-label="New workspace">
+          <span class="nic" aria-hidden="true">+</span><span class="t">New workspace</span>
+        </button>
+      </div></div>
     </div>
     <div id="lib-list" aria-label="Library"></div>
     <button id="settings-rail" class="tab-row" data-act="settings" data-tune-toggle aria-label="Settings" aria-expanded="false" aria-controls="tune" title="Settings">

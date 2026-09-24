@@ -165,8 +165,18 @@ function render() {
 const BBMODES = ["hover", "always", "newtab", "never"];
 const BB_DEFAULT = "hover";
 function validBBMode(v) { return BBMODES.includes(v) ? v : BB_DEFAULT; }
-let bbHover = false; // pointer inside topbar-or-strip
-let bbFocus = false; // keyboard focus inside topbar-or-strip
+let bbHover = false; // pointer inside the top bar (the strip is its child)
+/* Focus intent, read live at decision time (never a tracked flag: a clicked
+   chip is removed by re-render without a focusout, which would pin it open).
+   - Address input active: open, exactly like the tab bar (expansionIntent),
+     however it was focused — click, Ctrl/Cmd+K, or Tab.
+   - Other top-bar controls: keyboard focus (:focus-visible) only. A clicked
+     button keeps focus after the pointer leaves; that must not hold it. */
+function bbFocusIntent() {
+  const el = document.activeElement;
+  if (!el || !$("#topbar").contains(el)) return false;
+  return el === addr || el.matches(":focus-visible");
+}
 function bbPinned() {
   if (tune.bookmarkbar === "always") return true;
   if (tune.bookmarkbar === "newtab") {
@@ -178,7 +188,7 @@ function bbPinned() {
 }
 function bbShown() {
   if (tune.bookmarkbar === "never") return false;
-  return bbPinned() || tune.bookmarkbar === "hover" && (bbHover || bbFocus);
+  return bbPinned() || tune.bookmarkbar === "hover" && (bbHover || bbFocusIntent());
 }
 function renderBookmarkbar() {
   const pinned = bbPinned();
@@ -199,15 +209,25 @@ function updateBBVisibility() {
 }
 /* The strip is a child of the top bar, so one hover/focus region covers
    both: moving from bar to strip keeps it open; leaving the bar closes it.
-   Focus mirrors hover for keyboard. */
+   Same hysteresis as the tab bar (HOVER_OPEN_MS / HOVER_CLOSE_MS): one
+   pending decision at a time, re-checked against live intent when it fires,
+   so both bars open and close on the same beat. */
 {
   const topbar = $("#topbar");
-  topbar.addEventListener("mouseenter", () => { bbHover = true; updateBBVisibility(); });
-  topbar.addEventListener("mouseleave", () => { bbHover = false; updateBBVisibility(); });
-  topbar.addEventListener("focusin", () => { bbFocus = true; updateBBVisibility(); });
-  topbar.addEventListener("focusout", (ev) => {
-    if (!topbar.contains(ev.relatedTarget)) { bbFocus = false; updateBBVisibility(); }
+  let bbTimer = 0;
+  const settle = (ms) => {
+    clearTimeout(bbTimer);
+    bbTimer = setTimeout(updateBBVisibility, ms);
+  };
+  topbar.addEventListener("mouseenter", () => { bbHover = true; settle(HOVER_OPEN_MS); });
+  topbar.addEventListener("mouseleave", () => { bbHover = false; settle(HOVER_CLOSE_MS); });
+  // Address focus is an explicit intent: open now, as the tab bar's expand()
+  // does. Other focus moves use the hover beat. Leaving always lingers.
+  topbar.addEventListener("focusin", (ev) => {
+    if (ev.target === addr) { clearTimeout(bbTimer); updateBBVisibility(); }
+    else settle(HOVER_OPEN_MS);
   });
+  topbar.addEventListener("focusout", () => settle(HOVER_CLOSE_MS));
 }
 
 /* Pinned pills: one icon button per pinned tab across all workspaces.
@@ -279,18 +299,18 @@ function renderTabs() {
     + `<li><button id="newtab-rail" class="tab-row" data-act="newtab" aria-label="New tab">`
     + `<span class="nic" aria-hidden="true">+</span>`
     + `</button></li>`;
-  $("#ws-dots .clip").innerHTML = `<div class="scroll">` + store.workspaces.map((x) =>
+  // Only the item lists re-render: the scrollers, the gliding indicator, and
+  // the sticky New workspace row are static markup, so scroll position and
+  // the indicator's running transition survive every render.
+  $("#ws-dots .items").innerHTML = store.workspaces.map((x) =>
     `<button data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
     + ` aria-label="${esc(x.name)}, ${x.tabs.length} tabs" title="${esc(x.name)}">`
-    + `<span class="wdot"></span></button>`).join("") + `</div>`;
-  $("#ws-rows .clip").innerHTML = `<div class="scroll">` + store.workspaces.map((x) =>
+    + `<span class="wdot"></span></button>`).join("");
+  $("#ws-rows .items").innerHTML = store.workspaces.map((x) =>
     `<button class="tab-row" data-ws="${x.id}" aria-selected="${x.id === store.activeWs}"`
     + ` aria-label="${esc(x.name)}, ${x.tabs.length} tabs">`
     + `<span class="wdot"></span><span class="t">${esc(x.name)}</span>`
-    + `<span class="wn">${x.tabs.length}</span></button>`).join("")
-    + `<button class="tab-row" data-act="new-workspace" aria-label="New workspace">`
-    + `<span class="nic" aria-hidden="true">+</span><span class="t">New workspace</span>`
-    + `</button></div>`;
+    + `<span class="wn">${x.tabs.length}</span></button>`).join("");
   revealActive("#ws-dots");
   revealActive("#ws-rows");
   positionWsIndicator();
@@ -304,7 +324,7 @@ function revealActive(layerSel) {
   const btn = sc && sc.querySelector(`[data-ws="${store.activeWs}"]`);
   if (!sc || !btn) return;
   sc.classList.toggle("scrollable", sc.scrollHeight > sc.clientHeight + 1);
-  const top = btn.offsetTop - sc.offsetTop;
+  const top = btn.offsetTop; // .scroll is the offsetParent (position: relative)
   if (top < sc.scrollTop) sc.scrollTop = top;
   else if (top + btn.offsetHeight > sc.scrollTop + sc.clientHeight) {
     sc.scrollTop = top + btn.offsetHeight - sc.clientHeight;
@@ -313,9 +333,10 @@ function revealActive(layerSel) {
 
 /* Glide the active-workspace dot to its new home. Pure transform, so a
    rapid re-switch supersedes the running animation instead of queueing.
-   Position math uses constants, never measured sizes: measuring is wrong
-   whenever the indicator is hidden (display:none reports height 0, which
-   used to land the dot 5px low after switching while expanded). */
+   The indicator sits inside the dots scroller (position: relative), so
+   offsetTop is already in scroll-content space: it scrolls with the dots
+   and needs no scrollTop compensation. Its own size is a constant, never
+   measured (a hidden layer reports 0). */
 const INDICATOR_SIZE = 10;
 function positionWsIndicator() {
   const ind = $("#ws-indicator");
@@ -325,11 +346,7 @@ function positionWsIndicator() {
     return;
   }
   ind.style.opacity = "1";
-  // offsetTop is layout position; subtract the scroller offset so the dot
-  // tracks the VISIBLE button when the dock is scrolled.
-  const scroller = document.querySelector("#ws-dots .scroll");
-  const scrolled = scroller ? scroller.scrollTop : 0;
-  const y = active.offsetTop - scrolled + (active.offsetHeight - INDICATOR_SIZE) / 2;
+  const y = active.offsetTop + (active.offsetHeight - INDICATOR_SIZE) / 2;
   ind.style.transform = `translateY(${y}px)`;
 }
 
@@ -508,7 +525,10 @@ function collapse() {
    quick (a beat, to debounce single-frame flicker); collapse lingers so
    pointer travel to content, tune, or results never whiplashes. Either timer
    cancels the other, and explicit intents (focus, pin, replay) bypass both
-   by calling expand()/collapse() directly. */
+   by calling expand()/collapse() directly. The bookmark strip shares these
+   delays so the two bars feel like one system. */
+const HOVER_OPEN_MS = 40;
+const HOVER_CLOSE_MS = 150;
 let expandTimer = 0;
 let collapseTimer = 0;
 function cancelHoverTimers() {
@@ -520,14 +540,14 @@ function scheduleExpand() {
   clearTimeout(expandTimer);
   expandTimer = setTimeout(() => {
     if (expansionIntent()) expand();
-  }, 40);
+  }, HOVER_OPEN_MS);
 }
 function scheduleCollapse() {
   clearTimeout(expandTimer);
   clearTimeout(collapseTimer);
   collapseTimer = setTimeout(() => {
     if (!expansionIntent()) collapse();
-  }, 150);
+  }, HOVER_CLOSE_MS);
 }
 
 const actions = {

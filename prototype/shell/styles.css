@@ -257,110 +257,123 @@ body.has-bb #content {
 }
 #tune-toggle[aria-expanded="true"] { color: var(--text); border-color: var(--accent); }
 
+/* Workspace dock. ONE box in both states whose geometry animates with the
+   sidebar's own --dur/--snap — width, inset, padding, and the solid-dock
+   paint all transition, so nothing snaps at the start of the widen.
+   overflow: hidden makes the dock the hard boundary: dots, the gliding
+   active dot, and rows can never render outside its background.
+   Collapsed: a solid dock hugging the dots column (dot center lands on the
+   favicon column). Expanded: a transparent full-width wrapper whose inner
+   edge (border + padding) sits exactly on the tab list's 6px inset, so
+   workspace rows share tab rows' geometry. */
 #ws-rail {
+  --dock-w: calc(10px + 2 * 4px + 2px); /* dot + padding + border */
   position: relative;
   margin-top: auto;
-  /* Bottom-left anchored: dots land at 4 + 9 + 1 border = 14, the shared
-     origin with tab buttons, while the outer margin stays a tight 4px. */
-  align-self: flex-start;
-  margin-left: 12px;
-  /* Never squeezed by rail overflow: sizes to content, scrolls within caps. */
   flex: none;
-  /* Solid dock behind the dots when collapsed; transparent wrapper around
-     rows when expanded, so expanded rows share tab buttons' exact margins. */
-  background: var(--solid);
+  align-self: flex-start;
+  width: var(--dock-w);
+  margin-left: 12px;
+  padding: 6px 4px;
+  overflow: hidden;
+  background-color: var(--solid);
   border: 1px solid var(--stroke);
   border-radius: 12px;
-  /* Left padding holds the origin (right stays visually balanced). */
-  padding: 6px 4px 6px 4px;
+  /* Both layers share one cell, bottom-anchored: the dock morphs its height
+     between them while they crossfade in place (no stacking, no slide). */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); /* never sized by row titles */
+  align-items: end;
+  transition:
+    width var(--dur) var(--snap),
+    margin-left var(--dur) var(--snap),
+    padding var(--dur) var(--snap),
+    background-color var(--dur) var(--snap),
+    border-color var(--dur) var(--snap);
 }
 body.expanded #ws-rail,
 #sidebar:focus-within #ws-rail {
-  align-self: stretch;
-  margin-left: 6px;
-  margin-right: 6px;
-  padding: 6px;
-  background: transparent;
+  width: 100%;
+  margin-left: 0;
+  padding: 6px 5px;
+  background-color: transparent;
   border-color: transparent;
 }
-/* Layer morph: dots and rows crossfade while the rail swaps height between
-   them via the 0fr/1fr grid trick — a real height animation, interruptible
-   mid-flight, dead under reduced motion like every transition here. */
+/* Layer morph: each layer's height runs 0fr <-> 1fr (a real, interruptible
+   height animation); the cell takes the taller of the two at every frame,
+   so the dock height moves monotonically between states. The outgoing
+   layer fades fast; the incoming one fades in slightly later, so the two
+   never double-expose. Dead under reduced motion like every transition. */
 .ws-layer {
+  grid-area: 1 / 1;
   display: grid;
   grid-template-rows: 1fr;
+  min-width: 0;
   opacity: 1;
+  visibility: visible;
   transition:
     grid-template-rows var(--dur) var(--snap),
-    opacity 120ms var(--snap),
+    opacity 140ms var(--snap) 60ms,
     visibility 0s;
 }
 .ws-layer > .clip { overflow: hidden; min-height: 0; min-width: 0; }
-/* Bottom-anchored morph content: tracks open upward from the dock corner
-   and close back into it, instead of dropping from the top. No-op at rest
-   (tracks fit content exactly); only shapes the animation phase. */
-#ws-dots .clip, #ws-rows .clip { display: flex; flex-direction: column; justify-content: flex-end; }
-/* Scroll windows: at most 5 workspaces visible per layer, then scroll.
-   Dots: 5×10px + 4×6px gaps = 74px. Rows: ≈5 content-hugged rows. */
-#ws-dots .scroll, #ws-rows .scroll {
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-/* Scroll affordance: with scrollbars hidden by design, a soft edge fade
-   marks a layer as scrollable. Applied only when content overflows (JS
-   toggles .scrollable by comparing scrollHeight to clientHeight). */
-.ws-layer .scroll.scrollable {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 10px, black calc(100% - 10px), transparent);
-  mask-image: linear-gradient(to bottom, transparent 0, black 10px, black calc(100% - 10px), transparent);
-}
-#ws-dots .scroll::-webkit-scrollbar,
-#ws-rows .scroll::-webkit-scrollbar { display: none; }
-#ws-dots .scroll {
-  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
-  max-height: 74px;
-}
-#ws-rows .scroll {
-  display: flex; flex-direction: column; gap: var(--gap);
-  max-height: 164px;
-}
-/* Scroll children must never flex-shrink: squeezed rows would compress to
-   fit instead of overflowing into scroll (seen live past five workspaces).
-   Excess becomes scroll, always. */
-#ws-dots .scroll > *, #ws-rows .scroll > * { flex: none; }
-#ws-rows {
-  grid-template-rows: 0fr;
-  opacity: 0;
-  visibility: hidden;
-  /* Zero width too: invisible rows must not stretch the collapsed dock. */
-  max-width: 0;
-  transition:
-    grid-template-rows var(--dur) var(--snap),
-    max-width var(--dur) var(--snap),
-    opacity 120ms var(--snap),
-    visibility 0s linear var(--dur);
-}
-#ws-rows .clip { display: flex; flex-direction: column; gap: var(--gap); }
-body.expanded #ws-rows,
-#sidebar:focus-within #ws-rows {
-  grid-template-rows: 1fr;
-  opacity: 1;
-  visibility: visible;
-  max-width: 320px;
-  transition:
-    grid-template-rows var(--dur) var(--snap),
-    max-width var(--dur) var(--snap),
-    opacity 120ms var(--snap);
-}
+#ws-rows,
 body.expanded #ws-dots,
 #sidebar:focus-within #ws-dots {
   grid-template-rows: 0fr;
   opacity: 0;
   visibility: hidden;
+  pointer-events: none;
   transition:
     grid-template-rows var(--dur) var(--snap),
-    opacity 120ms var(--snap),
+    opacity 90ms var(--snap),
     visibility 0s linear var(--dur);
 }
+body.expanded #ws-rows,
+#sidebar:focus-within #ws-rows {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    grid-template-rows var(--dur) var(--snap),
+    opacity 140ms var(--snap) 60ms,
+    visibility 0s;
+}
+/* Bottom-anchored content: tracks open upward from the dock corner and
+   close back into it. No-op at rest (tracks fit content exactly). */
+#ws-dots .clip, #ws-rows .clip {
+  display: flex; flex-direction: column; justify-content: flex-end;
+}
+#ws-rows .clip { gap: var(--gap); }
+/* Scroll windows: at most 5 workspaces visible per layer, then scroll.
+   Dots: 5x10px + 4x6px gaps = 74px. Rows: about 5 rows. The scroller is
+   the offsetParent for its buttons and the indicator (position: relative). */
+#ws-dots .scroll, #ws-rows .scroll {
+  position: relative;
+  overflow-y: auto;
+  scrollbar-width: none;
+  flex: none;
+}
+#ws-dots .scroll { max-height: 74px; }
+#ws-rows .scroll { max-height: 164px; }
+#ws-dots .scroll::-webkit-scrollbar,
+#ws-rows .scroll::-webkit-scrollbar { display: none; }
+/* Scroll affordance: with scrollbars hidden by design, a soft edge fade
+   marks a layer as scrollable (JS toggles .scrollable on overflow). The
+   indicator is inside the scroller, so it fades at the edge too. */
+.ws-layer .scroll.scrollable {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 10px, black calc(100% - 10px), transparent);
+  mask-image: linear-gradient(to bottom, transparent 0, black 10px, black calc(100% - 10px), transparent);
+}
+#ws-dots .items { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+#ws-rows .items { display: flex; flex-direction: column; gap: var(--gap); }
+/* Items never flex-shrink: squeezed rows would compress instead of
+   scrolling (seen live past five workspaces). Excess becomes scroll. */
+#ws-dots .items > *, #ws-rows .items > * { flex: none; }
+/* New workspace stays put below the scroller: always reachable, never
+   scrolled away with the list. */
+#ws-rows [data-act="new-workspace"] { flex: none; }
 #ws-dots button {
   display: flex;
   align-items: center;
@@ -368,7 +381,8 @@ body.expanded #ws-dots,
   border-radius: 8px;
   color: var(--text-dim);
 }
-#ws-dots .wdot {
+#ws-dots .wdot,
+#ws-rows .wdot {
   width: 10px; height: 10px;
   border-radius: 50%;
   background: var(--text-dim);
@@ -377,28 +391,18 @@ body.expanded #ws-dots,
 }
 /* Expanded rows reuse .tab-row geometry (margins, padding, wash, wipe);
    only the dot/count dressing differs. */
-#ws-rows .wdot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: var(--text-dim);
-  opacity: 0.45;
-  flex: none;
-  align-self: center;
-}
+#ws-rows .wdot { align-self: center; }
 #ws-rows button[aria-selected="true"] .wdot { opacity: 1; background: var(--accent); }
 #ws-rows .wn { font-size: 11px; color: var(--text-dim); flex: none; }
 #ws-rows button[aria-selected="true"] { color: var(--text); }
-/* The gliding dot indicator only exists in the collapsed dock; expanded
-   rows carry selection themselves. */
-body.expanded #ws-indicator,
-#sidebar:focus-within #ws-indicator { display: none; }
-/* Active-workspace indicator: one accent dot gliding between positions on
+/* Active-workspace indicator: one accent dot gliding between dots on
    transform only — the switch itself is the animation, interruptible by
-   the next switch (a new transform supersedes the running one). */
+   the next switch. It lives in the dots scroller, so it scrolls, clips,
+   and fades with the dots layer; nothing needs to hide it separately. */
 #ws-indicator {
   position: absolute;
-  left: 4px;
-  top: 0;
+  left: 0; top: 0;
+  z-index: 1;
   width: 10px; height: 10px;
   border-radius: 50%;
   background: var(--accent);

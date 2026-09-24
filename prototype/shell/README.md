@@ -48,13 +48,15 @@ open with the sidebar pinned (testing aid).
   the active workspace.
 - **Workspace dots with gliding active indicator** — collapsed shows dots
   in a solid dock (no blur); switching glides the accent dot on transform
-  only. Expanding morphs for real: the dots layer collapses height while
-  the rows layer opens (0fr/1fr grid + crossfade, interruptible mid-flight),
-  landing on named session rows that reuse tab-row geometry exactly, plus a
-  New workspace row. Each layer shows at most 5 workspaces, then scrolls
-  (the active one is always scrolled into view); the hidden rows layer takes
-  zero width so the collapsed dock never stretches. Scrollbars stay hidden
-  by design, so an overflowing layer gets a soft edge fade instead — scroll
+  only. The active dot lives inside the dots scroller and the dock clips
+  its contents, so it can never render outside the dock. Expanding morphs
+  in place: dots and rows share one grid cell and crossfade while the dock
+  itself animates width, inset, padding, and paint with the sidebar (no
+  step at the start), landing on named session rows that reuse tab-row
+  geometry exactly. Each list shows at most 5 workspaces, then scrolls (the
+  active one is always scrolled into view); the New workspace row stays
+  fixed below the list, never scrolled away. Scrollbars stay hidden by
+  design, so an overflowing list gets a soft edge fade instead — scroll
   with the wheel over the dock.
 - **Pin pills on demand** — no top strip is reserved: drag a tab onto the
   top bar to pin it and a compact pill appears (address squeezes over, no
@@ -67,7 +69,11 @@ open with the sidebar pinned (testing aid).
   Motion mirrors the rail
   widen (same Motion duration and curve, chips wipe + fade in place) but
   runs on clip-path/transform/opacity only; it takes no space and shifts
-  no layout. Clicking a chip opens it in the active tab. Tune modes:
+  no layout. It opens and closes on the tab bar's exact hover delays
+  (40ms in, 150ms out) and, like the tab bar, stays open while the address
+  bar is active. Otherwise only keyboard focus holds it open — clicking a
+  bar button or chip never leaves it stuck after the pointer leaves.
+  Clicking a chip opens it in the active tab. Tune modes:
   **Hover to reveal / Always / New tab only / Never**, persisted per
   machine; Never is the full opt-out, Always pins the strip (content
   shifts, Firefox-style). Reduced motion makes the reveal instant.
