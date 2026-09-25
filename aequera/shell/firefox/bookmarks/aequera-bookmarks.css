@@ -19,13 +19,17 @@
 :root[aequera-bookmarks-peek] #PersonalToolbar:not([collapsed]) {
   position: absolute;
   top: 100%;
-  inset-inline: var(--aequera-content-start, 0px) 0;
+  /* Starts where the rail currently ends: the page's resting edge plus the
+   * widened rail's overlay, moving with it, so a widened rail and an open
+   * drawer meet edge to edge instead of painting over each other. */
+  inset-inline: calc(var(--aequera-content-start, 0px) + var(--aequera-rail-overlay, 0px)) 0;
   z-index: 1;
   clip-path: inset(0 0 100% 0);
   translate: 0 -6px;
   opacity: 0;
   visibility: hidden;
   transition:
+    inset-inline-start var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
     clip-path var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
     translate var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
     opacity 100ms linear,
@@ -38,6 +42,7 @@
   opacity: 1;
   visibility: visible;
   transition:
+    inset-inline-start var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
     clip-path var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
     translate var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
     opacity 160ms linear,

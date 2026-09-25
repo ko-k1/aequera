@@ -127,3 +127,37 @@ add_task(async function test_never_stays_hidden_on_hover() {
   setToolbarVisibility(toolbar(), "always");
   await TestUtils.waitForCondition(() => ROOT.hasAttribute("aequera-bookmarks-peek"), "peek back on");
 });
+
+add_task(async function test_widened_rail_and_open_drawer_do_not_overlap() {
+  // Focusing the address bar opens both at once: the rail widens (unified
+  // search) and the drawer opens. They must meet edge to edge, never paint
+  // over each other.
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.expandOnAddressFocus", true]] });
+  leaveTopBar();
+  gURLBar.focus();
+  await TestUtils.waitForCondition(
+    () => isOpen() && ROOT.hasAttribute("aequera-rail-expanded"),
+    "rail widened and drawer open"
+  );
+  const railBox = document.querySelector("#sidebar-container > sidebar-main");
+  await TestUtils.waitForCondition(() => {
+    const rail = railBox.getBoundingClientRect();
+    const drawer = toolbar().getBoundingClientRect();
+    return Math.abs(drawer.left - rail.right) < 1;
+  }, "the drawer starts exactly where the widened rail ends");
+  const rail = railBox.getBoundingClientRect();
+  const drawer = toolbar().getBoundingClientRect();
+  const overlapWidth = Math.min(rail.right, drawer.right) - Math.max(rail.left, drawer.left);
+  const overlapHeight = Math.min(rail.bottom, drawer.bottom) - Math.max(rail.top, drawer.top);
+  ok(
+    overlapWidth <= 0.5 || overlapHeight <= 0.5,
+    `no crossing region (overlap ${overlapWidth.toFixed(1)} x ${overlapHeight.toFixed(1)})`
+  );
+
+  gBrowser.selectedBrowser.focus();
+  await TestUtils.waitForCondition(
+    () => !isOpen() && !ROOT.hasAttribute("aequera-rail-expanded"),
+    "both close after blur"
+  );
+  await SpecialPowers.popPrefEnv();
+});

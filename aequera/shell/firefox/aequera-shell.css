@@ -25,17 +25,11 @@
  * At rest both are 0 and the clip is a no-op. clip-path is compositor-applied:
  * no layout, no reflow of the page. */
 #tabbrowser-tabbox {
-  --aequera-launcher-extra: 0px;
   clip-path: inset(
-    var(--aequera-page-top, 0px) 0 0 var(--aequera-launcher-extra)
+    var(--aequera-page-top, 0px) 0 0 var(--aequera-rail-overlay, 0px)
     round var(--border-radius-medium) 0 0 0
   );
   transition: clip-path var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out);
-}
-:root[aequera-rail-expanded]:not([aequera-rail-pinned]) #tabbrowser-tabbox {
-  --aequera-launcher-extra: calc(
-    var(--aequera-rail-expanded-width, 220px) - var(--aequera-rail-collapsed-width, 48px)
-  );
 }
 
 /* Fullscreen shows the page edge to edge: never clip it. */

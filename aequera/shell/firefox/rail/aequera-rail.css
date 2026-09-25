@@ -10,8 +10,20 @@
  * the current width), dead under reduced motion. Pinned takes layout space
  * like the prototype's green light. */
 
+/* --aequera-rail-overlay: how far the widened rail currently reaches over
+ * the page (0 at rest and when pinned, since a pinned rail takes layout
+ * space). Everything that meets the rail's edge reads this one value: the
+ * page clip and the bookmarks drawer's start edge. */
+:root {
+  --aequera-rail-overlay: 0px;
+}
 :root[aequera-rail] {
   --aequera-rail-collapsed-width: var(--tab-collapsed-width, 48px);
+}
+:root[aequera-rail-expanded]:not([aequera-rail-pinned]) {
+  --aequera-rail-overlay: calc(
+    var(--aequera-rail-expanded-width, 220px) - var(--aequera-rail-collapsed-width, 48px)
+  );
 }
 
 /* Legacy SidebarState keeps the (launcher) container [hidden], and
