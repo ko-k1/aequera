@@ -28,19 +28,25 @@ revision plus a local front-end build. Minutes, not hours; no Visual Studio.
 
 ```sh
 ./mach build
-./mach run
+bash /c/src/aequera/tools/build/aequera-run.sh               # throwaway dev profile
+bash /c/src/aequera/tools/build/aequera-run.sh --persistent  # real Aequera profile
 ```
 
-`./mach run` uses a throwaway profile under the objdir, so the Aequera
-default prefs (`aequera-prefs.js`) apply as defaults, exactly as on a fresh
-install.
+Always run through `aequera-run.sh`, not bare `./mach run` or the exe: an
+artifact build's `firefox.exe` otherwise identifies as Firefox (vendor,
+name, remoting channel, profile registry) and collides with a Firefox you
+have open. The script writes `aequera-application.ini` from the build's own
+(`aequera_app_ini.py`: Vendor/Name Aequera, remoting `aequera`, profiles in
+`%APPDATA%\Aequera`; the Firefox application ID stays for WebExtension
+compatibility) and starts with `-app` + `-no-remote`. The exe keeps
+Firefox's icon and file name until a full branding build.
 
 ## Edit loop
 
 1. Edit Aequera source in `aequera/shell/firefox/` (never in the worktree:
    the overlay copy is replaced on every apply).
 2. `aequera patch apply` — re-syncs the overlay; patches stay verified.
-3. In the MozillaBuild shell: `./mach build faster && ./mach run`
+3. In the MozillaBuild shell: `./mach build faster && bash /c/src/aequera/tools/build/aequera-run.sh`
    (`build faster` repackages front-end files only; seconds).
 
 ## Tests
