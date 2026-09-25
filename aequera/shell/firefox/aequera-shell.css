@@ -2,46 +2,49 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Aequera shell chrome, Stage 1: the prototype's frame model on native
- * Firefox chrome. Loaded last from browser.xhtml
- * (patches/browser/shell-hooks), so equal-specificity rules here win.
+/* Aequera shell chrome: the prototype's frame model on native Firefox chrome.
+ * Loaded last from browser.xhtml (patches/browser/shell-hooks), so
+ * equal-specificity rules here win.
  *
  * Frame model (prototype/shell, "single-frame chrome material"): all chrome
- * sits on ONE backdrop and the page is a card inset in it. When the hover
- * launcher widens over the page, Firefox paints it a second, opaque
- * surface; here the launcher keeps its collapsed paint and the page card
- * clips back instead, so the widened tab rail is the same material as the
- * collapsed one, with no seam and no page relayout. */
+ * sits on ONE backdrop and the page is a card inset in it. When chrome grows
+ * over the page (the widened tab rail, the bookmarks drawer) the card does not
+ * move or reflow: it clips back to uncover the frame, so the grown chrome is
+ * the same material with no second surface and no seam. */
 
+@import url("chrome://browser/content/aequera/rail/aequera-rail.css");
 @import url("chrome://browser/content/aequera/workspaces/aequera-workspaces.css");
+@import url("chrome://browser/content/aequera/bookmarks/aequera-bookmarks.css");
 
-/* 1. The widened launcher paints exactly what the collapsed one does: no
- *    opaque backdrop layer and no divider line against the page. */
-:root[sidebar-expand-on-hover]
-  #sidebar-container:is([sidebar-launcher-expanded], [sidebar-ongoing-animations]) {
-  background-image: none;
-  background-color: var(--sidebar-launcher-surface-color);
-  border-inline-width: 0 !important;
-}
-
-/* 2. The page card yields exactly the launcher's extra width.
- *    --aequera-launcher-width is the launcher's live width, mirrored every
- *    frame by aequera-shell.js from a ResizeObserver, so the clip edge
- *    follows Firefox's own launcher animation with no second timeline to
- *    drift. Collapsed, the difference is 0 and the clip is a no-op.
- *    clip-path is compositor-applied: no layout, no reflow of the page. */
-:root[sidebar-expand-on-hover] #tabbrowser-tabbox {
-  --aequera-launcher-extra: max(
-    0px,
-    var(--aequera-launcher-width, 0px) - var(--sidebar-launcher-collapsed-width, 0px)
+/* The page card yields on two edges, each a plain transition on the shared
+ * motion tokens (--aequera-motion-*, set from prefs by aequera-shell.js), so
+ * it moves in step with the chrome that grows over it:
+ *   left: the rail's extra width while it is widened (not when pinned: a
+ *         pinned rail takes layout space instead);
+ *   top:  the bookmarks drawer height while it is open (--aequera-page-top).
+ * At rest both are 0 and the clip is a no-op. clip-path is compositor-applied:
+ * no layout, no reflow of the page. */
+#tabbrowser-tabbox {
+  --aequera-launcher-extra: 0px;
+  clip-path: inset(
+    var(--aequera-page-top, 0px) 0 0 var(--aequera-launcher-extra)
+    round var(--border-radius-medium) 0 0 0
   );
-  clip-path: inset(0 0 0 var(--aequera-launcher-extra) round var(--border-radius-medium) 0 0 0);
+  transition: clip-path var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out);
 }
-:root[sidebar-expand-on-hover] #tabbrowser-tabbox[sidebar-positionend] {
-  clip-path: inset(0 var(--aequera-launcher-extra) 0 0 round 0 var(--border-radius-medium) 0 0);
+:root[aequera-rail-expanded]:not([aequera-rail-pinned]) #tabbrowser-tabbox {
+  --aequera-launcher-extra: calc(
+    var(--aequera-rail-expanded-width, 220px) - var(--aequera-rail-collapsed-width, 48px)
+  );
 }
 
 /* Fullscreen shows the page edge to edge: never clip it. */
 :root:is([inDOMFullscreen], [inFullscreen]) #tabbrowser-tabbox {
   clip-path: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #tabbrowser-tabbox {
+    transition: none;
+  }
 }

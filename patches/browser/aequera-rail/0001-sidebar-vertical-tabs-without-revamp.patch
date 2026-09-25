@@ -1,0 +1,118 @@
+Subject: [PATCH 1/2] sidebar: pref to run vertical tabs without the sidebar revamp
+
+Why Firefox source must change:
+  Vertical tabs are tied to the revamped sidebar launcher in three places:
+  - CustomizableUI.reconcileSidebarPrefs: enabling vertical tabs forces
+    sidebar.revamp on; disabling the revamp forces vertical tabs off;
+  - SidebarManager (sidebar.revamp observer): turning the revamp off sets
+    sidebar.verticalTabs=false;
+  - SidebarManager.onWidgetRemoved: removing the sidebar button in
+    customize mode forces horizontal tabs (bug 1970015), because that
+    button controls the launcher hosting them.
+  Aequera hosts the vertical tab strip in its own rail with the legacy
+  sidebar (no revamp launcher: no Lit component, launcher state, or
+  translate animation), which these rules make impossible; the last one
+  also turned an ordinary toolbar customization into "the whole tab rail
+  disappears".
+
+What it changes:
+  - New pref sidebar.verticalTabs.requireRevamp (default true: all three
+    rules unchanged). When false, none of them fire.
+
+Depends on: nothing.
+Validation: aequera/shell/firefox/tests/browser (rail with revamp off;
+  revamp on/off and removing the sidebar button keep vertical tabs);
+  upstream sidebar tests with the default (true).
+Upstream risk: low-medium; conditions at the three coupling sites.
+
+diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
+index 875f8b03d979..36229bd8cd53 100644
+--- a/browser/components/customizableui/CustomizableUI.sys.mjs
++++ b/browser/components/customizableui/CustomizableUI.sys.mjs
+@@ -49,6 +49,10 @@ const kPrefHomeButtonUsed = "browser.engagement.home-button.has-used";
+ const kPrefLibraryButtonUsed = "browser.engagement.library-button.has-used";
+ const kPrefSidebarButtonUsed = "browser.engagement.sidebar-button.has-used";
+ const kPrefSidebarRevampEnabled = "sidebar.revamp";
++// When false, vertical tabs and the revamped sidebar are independent: a
++// browser shell that hosts the vertical tab strip itself can run vertical
++// tabs with the legacy sidebar. Default true keeps them coupled.
++const kPrefVerticalTabsRequireRevamp = "sidebar.verticalTabs.requireRevamp";
+ const kPrefSidebarVerticalTabsEnabled = "sidebar.verticalTabs";
+ const kPrefSidebarPositionStartEnabled = "sidebar.position_start";
+ 
+@@ -5322,10 +5326,14 @@ var CustomizableUIInternal = {
+     lazy.log.debug(
+       `reconcileSidebarPrefs, kPrefSidebarRevampEnabled: {sidebarRevampEnabled}, kPrefSidebarVerticalTabsEnabled: ${verticalTabsEnabled}`
+     );
++    let requireRevamp = Services.prefs.getBoolPref(
++      kPrefVerticalTabsRequireRevamp,
++      true
++    );
+     switch (prefChanged) {
+       case kPrefSidebarVerticalTabsEnabled: {
+         // We need to also enable sidebar.revamp if vertical tabs gets enabled
+-        if (verticalTabsEnabled && !sidebarRevampEnabled) {
++        if (requireRevamp && verticalTabsEnabled && !sidebarRevampEnabled) {
+           Services.prefs.setBoolPref(kPrefSidebarRevampEnabled, true);
+         }
+         break;
+@@ -5343,7 +5351,7 @@ var CustomizableUIInternal = {
+         props.set("defaultPlacements", defaults);
+         gAreas.set(CustomizableUI.AREA_NAVBAR, props);
+         // We need to also disable vertical tabs if sidebar.revamp is no longer enabled
+-        if (!sidebarRevampEnabled && verticalTabsEnabled) {
++        if (requireRevamp && !sidebarRevampEnabled && verticalTabsEnabled) {
+           lazy.log.debug(
+             `{kPrefSidebarRevampEnabled} disabled, so also disabling ${kPrefSidebarVerticalTabsEnabled}`
+           );
+diff --git a/browser/components/sidebar/SidebarManager.sys.mjs b/browser/components/sidebar/SidebarManager.sys.mjs
+index ec118e4179f4..7de10cd1bc98 100644
+--- a/browser/components/sidebar/SidebarManager.sys.mjs
++++ b/browser/components/sidebar/SidebarManager.sys.mjs
+@@ -38,6 +38,17 @@ ChromeUtils.defineESModuleGetters(lazy, {
+     "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
+   SidebarState: "moz-src:///browser/components/sidebar/SidebarState.sys.mjs",
+ });
++/**
++ * Whether vertical tabs depend on the revamped sidebar launcher. Default
++ * true; a browser shell that hosts the vertical tab strip itself sets
++ * sidebar.verticalTabs.requireRevamp to false.
++ *
++ * @returns {boolean}
++ */
++function verticalTabsRequireRevamp() {
++  return Services.prefs.getBoolPref("sidebar.verticalTabs.requireRevamp", true);
++}
++
+ XPCOMUtils.defineLazyPreferenceGetter(lazy, "sidebarNimbus", "sidebar.nimbus");
+ 
+ XPCOMUtils.defineLazyPreferenceGetter(
+@@ -65,8 +76,11 @@ XPCOMUtils.defineLazyPreferenceGetter(
+     sidebarManager.updateDefaultTools();
+ 
+     if (!newVal) {
+-      // Disable vertical tabs if revamped sidebar is turned off
+-      Services.prefs.setBoolPref("sidebar.verticalTabs", false);
++      // Disable vertical tabs if revamped sidebar is turned off, unless
++      // vertical tabs run without it (sidebar.verticalTabs.requireRevamp).
++      if (verticalTabsRequireRevamp()) {
++        Services.prefs.setBoolPref("sidebar.verticalTabs", false);
++      }
+     } else if (newVal && !lazy.verticalTabsEnabled) {
+       // Horizontal tabs with sidebar.revamp default to "hide-on-close"; users
+       // can opt into the switcher-only "hide-launcher" from the customize panel.
+@@ -210,8 +224,12 @@ class SidebarManager extends EventTarget {
+       // know if we were _really_ removed or just moved elsewhere.
+       await Promise.resolve();
+       if (!lazy.CustomizableUI.getPlacementOfWidget(aWidgetId)) {
+-        // Removing sidebar button should force horizontal tabs (Bug 1970015).
+-        Services.prefs.setBoolPref(VERTICAL_TABS_PREF, false);
++        // Removing sidebar button should force horizontal tabs (Bug 1970015),
++        // since it controls the launcher that hosts them. Vertical tabs that
++        // do not depend on the launcher stay.
++        if (verticalTabsRequireRevamp()) {
++          Services.prefs.setBoolPref(VERTICAL_TABS_PREF, false);
++        }
+         this.closeAllSidebars();
+       }
+     }

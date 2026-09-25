@@ -1,0 +1,39 @@
+Subject: [PATCH 3/3] customizableui: Restore Defaults returns vertical tabs to their default
+
+Why Firefox source must change:
+  CustomizableUI.reset() (customize mode's "Restore Defaults") writes
+  sidebar.verticalTabs=false as a user value. In Firefox that equals the
+  default, so it reads as "back to default"; in a product whose default is
+  vertical tabs (Aequera's rail) it instead pins horizontal tabs and removes
+  the whole tab rail.
+
+What it changes:
+  - reset() clears the user value, returning the pref to its default:
+    false in Firefox (unchanged behavior), true in Aequera.
+
+Depends on: nothing (series order only).
+Validation: aequera chrome-rebuild test (Restore Defaults keeps the rail);
+  upstream customizableui/sidebar tests unchanged (default is false).
+Upstream risk: low; one line in reset().
+
+diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
+index 36229bd8cd53..8056b70c0dbf 100644
+--- a/browser/components/customizableui/CustomizableUI.sys.mjs
++++ b/browser/components/customizableui/CustomizableUI.sys.mjs
+@@ -4543,10 +4543,12 @@ var CustomizableUIInternal = {
+    */
+   reset() {
+     gResetting = true;
+-    // CUI reset also implies resetting verticalTabs back to false.
+-    // We do this before the rest of the reset so widgets are reset to their non-vertical
+-    // positions.
+-    Services.prefs.setBoolPref("sidebar.verticalTabs", false);
++    // CUI reset also implies resetting verticalTabs back to its default
++    // (false in Firefox). Clearing the user value, rather than writing false,
++    // keeps a product default of vertical tabs intact.
++    // We do this before the rest of the reset so widgets are reset to the
++    // default tab orientation's positions.
++    Services.prefs.clearUserPref("sidebar.verticalTabs");
+     this._resetUIState();
+ 
+     // Rebuild each registered area (across windows) to reflect the state that

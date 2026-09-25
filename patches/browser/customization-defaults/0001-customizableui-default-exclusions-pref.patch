@@ -1,0 +1,74 @@
+Subject: [PATCH] customizableui: pref to leave widgets out of the default layout
+
+Why Firefox source must change:
+  Every area's default placements (the layout of a new profile and of
+  customize mode's "Restore Defaults") are hard-coded in CustomizableUI;
+  no pref or policy can change them. Aequera's default chrome is leaner
+  than Firefox's (e.g. no "List all tabs" button next to its own tab rail).
+
+What it changes:
+  - New pref browser.uiCustomization.defaultExclusions: comma-separated
+    widget ids removed from defaultPlacements / verticalTabsDefaultPlacements
+    when an area registers. Empty by default: Firefox's defaults unchanged.
+  - Excluded widgets stay in the customization palette; users can add them.
+  - Saved layouts are untouched; the exclusion applies to defaults only.
+
+Depends on: nothing.
+Validation: aequera/shell/firefox/tests/browser (List all tabs absent from
+  the default layout, present in the palette, re-addable); upstream
+  customizableui tests with the default (empty).
+Upstream risk: low; one filter where area properties are stored.
+
+diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
+index 8056b70c0dbf..3e7a3baccd55 100644
+--- a/browser/components/customizableui/CustomizableUI.sys.mjs
++++ b/browser/components/customizableui/CustomizableUI.sys.mjs
+@@ -49,6 +49,34 @@ const kPrefHomeButtonUsed = "browser.engagement.home-button.has-used";
+ const kPrefLibraryButtonUsed = "browser.engagement.library-button.has-used";
+ const kPrefSidebarButtonUsed = "browser.engagement.sidebar-button.has-used";
+ const kPrefSidebarRevampEnabled = "sidebar.revamp";
++// Comma-separated widget ids left out of every area's default placements, so
++// a product can ship a leaner default layout. The widgets stay available in
++// the customization palette. Empty by default: Firefox's defaults unchanged.
++const kPrefDefaultExclusions = "browser.uiCustomization.defaultExclusions";
++const kDefaultPlacementKeys = new Set([
++  "defaultPlacements",
++  "verticalTabsDefaultPlacements",
++]);
++
++/**
++ * @param {string[]|undefined} placements
++ * @returns {string[]|undefined} placements minus browser.uiCustomization.defaultExclusions
++ */
++function withoutDefaultExclusions(placements) {
++  if (!Array.isArray(placements)) {
++    return placements;
++  }
++  const excluded = new Set(
++    Services.prefs
++      .getStringPref(kPrefDefaultExclusions, "")
++      .split(",")
++      .map(id => id.trim())
++      .filter(Boolean)
++  );
++  return excluded.size
++    ? placements.filter(id => !excluded.has(id))
++    : placements;
++}
+ // When false, vertical tabs and the revamped sidebar are independent: a
+ // browser shell that hosts the vertical tab strip itself can run vertical
+ // tabs with the legacy sidebar. Default true keeps them coupled.
+@@ -1193,7 +1221,12 @@ var CustomizableUIInternal = {
+       ) {
+         throw new Error("An area cannot change the property for '" + key + "'");
+       }
+-      props.set(key, aProperties[key]);
++      props.set(
++        key,
++        kDefaultPlacementKeys.has(key)
++          ? withoutDefaultExclusions(aProperties[key])
++          : aProperties[key]
++      );
+     }
+     // Default to a toolbar:
+     if (!props.has("type")) {

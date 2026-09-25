@@ -13,8 +13,8 @@ JAR_MANIFESTS += ["jar.mn"]
 # "firefox.js" and its defaults win (the firefox-branding.js mechanism).
 JS_PREFERENCE_FILES += ["aequera-prefs.js"]
 
-# Aequera-owned browser-chrome tests (mochitest): sidebar motion patches and
-# the frame-model clip. Run: ./mach mochitest browser/aequera/tests/browser
+# Aequera-owned browser-chrome tests (mochitest): rail, workspaces, bookmarks
+# drawer, chrome-rebuild robustness. Run via tools/build/test-shell.sh.
 BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
 
 # The workspace model's node unit tests (workspace-model.test.mjs) are not

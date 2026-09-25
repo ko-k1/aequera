@@ -16,7 +16,7 @@
   border-block-start: 1px solid var(--sidebar-border-color, transparent);
 }
 
-sidebar-main[expanded] #aequera-workspace-dock {
+:root[aequera-rail-expanded] #aequera-workspace-dock {
   align-items: stretch;
   padding-inline: 6px;
 }
@@ -75,7 +75,7 @@ sidebar-main[expanded] #aequera-workspace-dock {
   display: none;
 }
 
-sidebar-main[expanded] .aequera-ws-name {
+:root[aequera-rail-expanded] .aequera-ws-name {
   display: block;
   flex: 1;
   min-width: 0;
@@ -84,7 +84,7 @@ sidebar-main[expanded] .aequera-ws-name {
   white-space: nowrap;
 }
 
-sidebar-main[expanded] .aequera-ws-count {
+:root[aequera-rail-expanded] .aequera-ws-count {
   display: block;
   font-size: 0.85em;
   opacity: 0.7;

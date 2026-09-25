@@ -1,0 +1,38 @@
+Subject: [PATCH 2/2] sidebar: toggleTabstrip without the revamp launcher
+
+Why Firefox source must change:
+  toggleTabstrip (run at init and on every tab-orientation change,
+  revamp or not) unconditionally calls sidebarMain.requestUpdate(), which
+  throws when the revamp launcher component was never loaded - the case once
+  vertical tabs can run without the revamp (0001).
+
+What it changes:
+  - Re-render the launcher only when revamp components are loaded.
+  - Guard the launcher state access on the horizontal path.
+
+Depends on: 0001 (makes the path reachable).
+Validation: aequera rail tests (orientation switches with revamp off, no
+  exceptions); upstream sidebar tests unchanged.
+Upstream risk: low; two guards in toggleTabstrip.
+
+diff --git a/browser/components/sidebar/browser-sidebar.js b/browser/components/sidebar/browser-sidebar.js
+index eef1a75aa745..899dd9fa6046 100644
+--- a/browser/components/sidebar/browser-sidebar.js
++++ b/browser/components/sidebar/browser-sidebar.js
+@@ -2554,9 +2554,13 @@ var SidebarController = {
+     );
+     verticalToolbar.toggleAttribute("visible", toVerticalTabs);
+     // Re-render sidebar-main so that templating is updated
+-    // for proper keyboard navigation for Tools
+-    this.sidebarMain.requestUpdate();
+-    if (!toVerticalTabs) {
++    // for proper keyboard navigation for Tools. Without the revamp (vertical
++    // tabs hosted by the browser shell) the launcher component is never
++    // loaded, so there is nothing to re-render.
++    if (this.revampComponentsLoaded) {
++      this.sidebarMain.requestUpdate();
++    }
++    if (!toVerticalTabs && this._state) {
+       // Horizontal tabs have no expanded launcher state. If the visibility pref
+       // isn't changing as part of this orientation switch, launcherExpanded
+       // won't be updated by its observer, so un-expand the launcher here.

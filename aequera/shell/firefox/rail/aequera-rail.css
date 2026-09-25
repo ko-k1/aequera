@@ -1,0 +1,62 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Aequera tab rail (aequera-rail.js). #sidebar-container keeps the collapsed
+ * width in the layout; its <sidebar-main> child (a plain box: the revamp
+ * launcher component is never loaded) is the visible rail, absolutely
+ * positioned so widening overlays the page instead of reflowing it. Width
+ * is a plain transition: short, interruptible (a new target restarts from
+ * the current width), dead under reduced motion. Pinned takes layout space
+ * like the prototype's green light. */
+
+:root[aequera-rail] {
+  --aequera-rail-collapsed-width: var(--tab-collapsed-width, 48px);
+}
+
+/* Legacy SidebarState keeps the (launcher) container [hidden], and
+ * global-shared.css hides [hidden] with `:where([hidden]) { display: none
+ * !important }`. The rail shows it: !important with higher specificity. */
+:root[aequera-rail] #sidebar-container {
+  display: flex !important;
+  position: relative;
+  flex: none;
+  /* sidebar.css clips the launcher container (overflow: clip); the rail
+   * widens beyond its layout width, so it must not be clipped. */
+  overflow: visible;
+  width: var(--aequera-rail-collapsed-width);
+  z-index: var(--browser-area-z-index-sidebar-expand-on-hover, 3);
+}
+
+:root[aequera-rail-pinned] #sidebar-container {
+  width: var(--aequera-rail-expanded-width, 220px);
+}
+
+:root[aequera-rail] #sidebar-container > sidebar-main {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--aequera-rail-collapsed-width);
+  overflow: hidden;
+  transition: width var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out);
+}
+
+:root[aequera-rail-expanded] #sidebar-container > sidebar-main {
+  width: var(--aequera-rail-expanded-width, 220px);
+}
+
+:root[aequera-rail] #vertical-tabs {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[aequera-rail] #sidebar-container > sidebar-main {
+    transition: none;
+  }
+}

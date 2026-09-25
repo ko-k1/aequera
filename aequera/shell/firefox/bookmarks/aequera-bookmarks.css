@@ -1,0 +1,51 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Aequera bookmarks drawer (aequera-bookmarks.js). In peek mode the Bookmarks
+ * Toolbar leaves the page flow and becomes a drawer under the top bar,
+ * spanning the page (not the rail). It keeps Firefox's toolbar paint, so it
+ * reads as a second row of the top bar; the page card clips back behind it.
+ *
+ * Motion: a clipped wipe + fade + short slide in place (prototype), on
+ * clip-path/translate/opacity only, so it never reflows. Closed it is
+ * visibility: hidden (after the wipe), so it takes no clicks, no Tab stops,
+ * and leaves the accessibility tree. Reduced motion: instant. */
+
+:root[aequera-bookmarks-peek] #navigator-toolbox {
+  position: relative;
+}
+
+:root[aequera-bookmarks-peek] #PersonalToolbar:not([collapsed]) {
+  position: absolute;
+  top: 100%;
+  inset-inline: var(--aequera-content-start, 0px) 0;
+  z-index: 1;
+  clip-path: inset(0 0 100% 0);
+  translate: 0 -6px;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    clip-path var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
+    translate var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
+    opacity 100ms linear,
+    visibility 0s linear var(--aequera-motion-duration, 250ms);
+}
+
+:root[aequera-bookmarks-peek][aequera-bookmarks-open] #PersonalToolbar:not([collapsed]) {
+  clip-path: inset(0);
+  translate: none;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    clip-path var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
+    translate var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
+    opacity 160ms linear,
+    visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[aequera-bookmarks-peek] #PersonalToolbar:not([collapsed]) {
+    transition: none;
+  }
+}

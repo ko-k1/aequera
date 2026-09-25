@@ -5,139 +5,100 @@
 "use strict";
 
 // Aequera shell glue. Loaded as a window script from browser.xhtml
-// (patches/browser/shell-hooks); the block scope keeps every binding out of
-// the shared browser-window global.
+// (patches/browser/shell-hooks). Feature controllers load from here as window
+// subscripts, so adding one needs no further browser.xhtml hook.
 //
-// Feature controllers load from here as window subscripts, so adding one
-// needs no further browser.xhtml hook.
-Services.scriptloader.loadSubScript(
-  "chrome://browser/content/aequera/workspaces/aequera-workspaces.js",
-  window
-);
-//
-// Frame model: the page card (#tabbrowser-tabbox) clips back by exactly the
-// launcher's extra width over its collapsed width (aequera-shell.css).
-//
-// At rest, --aequera-launcher-width carries the launcher's layout width,
-// mirrored by a ResizeObserver (reports after layout, never forces a flush).
-//
-// While Firefox animates the launcher, its layout width is already final (or
-// pinned) and the visible edge moves by an animated `translate` instead, so
-// the rest-state width is wrong for the duration. For that window the clip
-// runs a mirror animation built from Firefox's own: same keyframe endpoints
-// (converted to edge positions), duration, easing, and start time, so the
-// page edge and the rail edge move as one. A newer launcher animation
-// (e.g. an interrupting reversal) replaces the mirror.
-{
-  const WIDTH_PROPERTY = "--aequera-launcher-width";
-  const COLLAPSED_PROPERTY = "--sidebar-launcher-collapsed-width";
-  const ANIMATING_ATTRIBUTE = "sidebar-ongoing-animations";
+// AequeraFrame publishes the shared motion tokens and owns the page card's
+// top inset (aequera-shell.css turns both into plain CSS transitions):
+//   --aequera-motion-duration / --aequera-motion-easing on :root, from
+//     aequera.motion.durationMs / aequera.motion.easing (an easing that does
+//     not parse falls back instead of breaking every transition);
+//   --aequera-page-top on #tabbrowser-tabbox, set by the bookmarks drawer.
 
-  const px = value => parseFloat(value) || 0;
-
-  // Keyframe translate ("12px 0px 0px") -> horizontal offset in px.
-  const translateX = keyframe => px(String(keyframe.translate ?? "0").split(" ")[0]);
-
-  function clipFor(tabbox, extra) {
-    const radius = getComputedStyle(tabbox).getPropertyValue("--border-radius-medium") || "0px";
-    return tabbox.hasAttribute("sidebar-positionend")
-      ? `inset(0 ${extra}px 0 0 round 0 ${radius} 0 0)`
-      : `inset(0 0 0 ${extra}px round ${radius} 0 0 0)`;
+// Locked shell prefs (aequera-prefs.js) unlock only for the test gate, which
+// must be able to turn the revamp on to run Firefox's own tests. An
+// environment variable, not a pref, so about:config can never unlock them.
+const AEQUERA_LOCKED_PREFS = [
+  "sidebar.revamp",
+  "sidebar.verticalTabs.requireRevamp",
+  "browser.tabs.parkedHiddenSources",
+];
+if (Services.env.get("AEQUERA_UNLOCK_SHELL_PREFS") === "1") {
+  for (const pref of AEQUERA_LOCKED_PREFS) {
+    Services.prefs.unlockPref(pref);
   }
+}
 
-  window.addEventListener(
-    "load",
-    () => {
-      const launcher = document.getElementById("sidebar-container");
-      const tabbox = document.getElementById("tabbrowser-tabbox");
-      const browserEl = document.getElementById("browser");
-      if (!launcher || !tabbox || !browserEl) {
-        console.error("aequera-shell: launcher/tabbox missing; frame clip disabled");
+var AequeraFrame = (() => {
+  const DURATION_PREF = "aequera.motion.durationMs";
+  const EASING_PREF = "aequera.motion.easing";
+  const FALLBACK_EASING = "ease-in-out";
+  const ROOT = document.documentElement;
+
+  const frame = {
+    tabbox: null,
+    top: 0,
+
+    /** Configured easing, or the fallback when it is not a CSS easing. */
+    easing() {
+      const easing = Services.prefs.getCharPref(EASING_PREF, FALLBACK_EASING);
+      try {
+        new KeyframeEffect(null, null, { easing });
+        return easing;
+      } catch {
+        console.error(`aequera: invalid ${EASING_PREF} "${easing}", using ${FALLBACK_EASING}`);
+        return FALLBACK_EASING;
+      }
+    },
+
+    publishMotion() {
+      ROOT.style.setProperty(
+        "--aequera-motion-duration",
+        `${Math.max(0, Services.prefs.getIntPref(DURATION_PREF, 250))}ms`
+      );
+      ROOT.style.setProperty("--aequera-motion-easing", this.easing());
+    },
+
+    /** Move the page card's top edge to `top` px (CSS transitions the way). */
+    setTop(top) {
+      if (!this.tabbox || top === this.top) {
         return;
       }
-      let mirror = null;
+      this.top = top;
+      this.tabbox.style.setProperty("--aequera-page-top", `${top}px`);
+    },
 
-      const collapsedWidth = () =>
-        px(getComputedStyle(browserEl).getPropertyValue(COLLAPSED_PROPERTY));
+    observe() {
+      this.publishMotion();
+    },
 
-      const dropMirror = () => {
-        mirror?.cancel();
-        mirror = null;
-      };
-
-      const resizeObserver = new ResizeObserver(entries => {
-        const entry = entries[entries.length - 1];
-        const width = entry.borderBoxSize[0]?.inlineSize ?? entry.contentRect.width;
-        tabbox.style.setProperty(WIDTH_PROPERTY, `${width}px`);
-        // The rest-state clip is now current; a finished mirror can go.
-        if (mirror?.playState === "finished") {
-          dropMirror();
-        }
-      });
-      resizeObserver.observe(launcher);
-
-      const mirrorLauncherAnimation = () => {
-        if (!document.documentElement.hasAttribute("sidebar-expand-on-hover")) {
-          return;
-        }
-        const source = launcher
-          .getAnimations()
-          .find(a => a.effect?.getKeyframes().some(k => "translate" in k));
-        if (!source) {
-          return;
-        }
-        const frames = source.effect.getKeyframes();
-        const timing = source.effect.getTiming();
-        // Layout width is constant for the animation's duration (Firefox pins
-        // it); only translate moves the visible edge.
-        const width = launcher.getBoundingClientRect().width;
-        const atEnd = launcher.hasAttribute("sidebar-positionend");
-        const extra = keyframe =>
-          Math.max(0, width + (atEnd ? -1 : 1) * translateX(keyframe) - collapsedWidth());
-
-        dropMirror();
-        mirror = tabbox.animate(
-          [
-            { clipPath: clipFor(tabbox, extra(frames[0])) },
-            { clipPath: clipFor(tabbox, extra(frames[frames.length - 1])) },
-          ],
-          { duration: timing.duration, easing: timing.easing, fill: "forwards" }
-        );
-        const own = mirror;
-        source.ready.then(
-          () => {
-            if (mirror === own && source.startTime !== null) {
-              own.startTime = source.startTime;
-            }
-          },
-          () => {
-            // Firefox cancelled its animation before it started (superseded
-            // by a newer one, e.g. an interrupting reversal). That newer
-            // animation brings its own mirror; this one is simply dropped.
-            if (mirror === own) {
-              dropMirror();
-            }
-          }
-        );
-      };
-
-      const attributeObserver = new MutationObserver(() => {
-        if (launcher.hasAttribute(ANIMATING_ATTRIBUTE)) {
-          mirrorLauncherAnimation();
-        }
-      });
-      attributeObserver.observe(launcher, { attributeFilter: [ANIMATING_ATTRIBUTE] });
-
+    init() {
+      this.tabbox = document.getElementById("tabbrowser-tabbox");
+      if (!this.tabbox) {
+        console.error("aequera-shell: #tabbrowser-tabbox missing; page clip disabled");
+      }
+      this.publishMotion();
+      Services.prefs.addObserver(DURATION_PREF, this);
+      Services.prefs.addObserver(EASING_PREF, this);
       window.addEventListener(
         "unload",
         () => {
-          resizeObserver.disconnect();
-          attributeObserver.disconnect();
-          dropMirror();
+          Services.prefs.removeObserver(DURATION_PREF, this);
+          Services.prefs.removeObserver(EASING_PREF, this);
         },
         { once: true }
       );
     },
-    { once: true }
-  );
+  };
+
+  window.addEventListener("load", () => frame.init(), { once: true });
+  return frame;
+})();
+
+for (const url of [
+  "chrome://browser/content/aequera/rail/aequera-rail.js",
+  "chrome://browser/content/aequera/workspaces/aequera-workspaces.js",
+  "chrome://browser/content/aequera/bookmarks/aequera-bookmarks.js",
+]) {
+  Services.scriptloader.loadSubScript(url, window);
 }

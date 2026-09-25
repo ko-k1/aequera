@@ -1,10 +1,16 @@
 [DEFAULT]
 prefs = [
-  "sidebar.revamp=true",
+  "sidebar.revamp=false",
   "sidebar.verticalTabs=true",
-  "sidebar.visibility='expand-on-hover'",
+  "sidebar.verticalTabs.requireRevamp=false",
 ]
 
-["browser_aequera_sidebar_motion.js"]
+["browser_aequera_rail.js"]
 
 ["browser_aequera_workspaces.js"]
+
+["browser_aequera_bookmarks_drawer.js"]
+
+["browser_aequera_chrome_rebuild.js"]
+
+["browser_aequera_default_layout.js"]

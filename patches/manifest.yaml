@@ -23,14 +23,18 @@ patches:
   # validation, and upstream risk are in the patch header.
   - id: shell-hooks
     series: browser/shell-hooks
-  # Stage 2 motion parity (3 patches, Firefox defaults unchanged): easing
-  # pref, collapse-delay pref, hover input interrupts the animation.
-  - id: sidebar-motion
-    series: browser/sidebar-motion
   # Workspaces: parked (workspace-hidden) tabs keep the window open when the
   # last visible tab closes (pref-gated, empty by default).
   - id: workspace-hooks
     series: browser/workspace-hooks
+  # Aequera-owned rail: vertical tabs without the sidebar revamp
+  # (pref-gated coupling + launcher-less toggleTabstrip guards).
+  - id: aequera-rail
+    series: browser/aequera-rail
+  # Leaner default toolbar layout (pref-gated list of widgets left out of
+  # the defaults; empty by default).
+  - id: customization-defaults
+    series: browser/customization-defaults
 
 overlays:
   # Stage 1 shell: frame-model stylesheet, launcher-width glue, default
