@@ -240,8 +240,19 @@ fn claim_placeholders(dir: &Path) -> Result<(), String> {
 
 /// Run git in `dir`, returning trimmed stdout or a loud stderr-bearing error.
 pub(crate) fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
+    git_with_env(dir, args, &[])
+}
+
+/// `git` with extra environment variables (e.g. `GIT_INDEX_FILE` for a
+/// throwaway index that never touches the real one).
+pub(crate) fn git_with_env(
+    dir: &Path,
+    args: &[&str],
+    envs: &[(&str, &Path)],
+) -> Result<String, String> {
     let out = Command::new("git")
         .args(args)
+        .envs(envs.iter().map(|(k, v)| (*k, *v)))
         .current_dir(dir)
         .output()
         .map_err(|e| format!("failed to execute git: {e}"))?;

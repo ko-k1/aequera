@@ -159,11 +159,16 @@ pub fn check(root: &Path, lock: &LockFile) -> Result<CheckReport, String> {
     let manifest = load_manifest(root, lock)?;
     require_base_matches(&manifest, lock)?;
     let wt = ensure_worktree_shell(root, lock)?;
+    // Later patches depend on earlier ones, so each file is checked against
+    // the tree as the preceding files leave it. The series is applied, in
+    // order, to a throwaway index seeded from the locked HEAD: cumulative,
+    // independent of the worktree's current state, and never touching it.
+    let index = ScratchIndex::seeded(&wt)?;
     let mut entries = Vec::new();
     for entry in &manifest.patches {
         let files = series_files(root, entry)?;
         for f in &files {
-            upstream::git(&wt, &["apply", "--check", &f.display().to_string()]).map_err(|e| {
+            index.apply(&wt, f).map_err(|e| {
                 format!(
                     "series {:?}: {} does not apply cleanly: {e}",
                     entry.id,
@@ -195,24 +200,14 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
         validate_overlay(root, &wt, overlay)?;
     }
 
-    // Idempotency: identical state + reverse-check proof means "already applied".
+    // Idempotency: identical state + proof that the worktree's tracked files
+    // equal base + the whole ordered series means "already applied".
     if let Ok(state) = read_state(&wt)
         && state.base_sha == lock.upstream.revision.git
         && state.manifest_version == manifest.manifest_version
         && state.applied == want
     {
-        for entry in &manifest.patches {
-            for f in series_files(root, entry)? {
-                upstream::git(&wt, &["apply", "--check", "--reverse", &f.display().to_string()])
-                    .map_err(|e| {
-                        format!(
-                            "state claims {:?} applied but reverse-check fails on {}: {e}; worktree needs rebuild",
-                            entry.id,
-                            f.display()
-                        )
-                    })?;
-            }
-        }
+        verify_worktree_matches_series(root, &wt, &manifest)?;
         let overlay_files = sync_overlays(root, &wt, &manifest)?;
         write_state(&wt, &state_for(lock, &manifest))?;
         return Ok(ApplyReport {
@@ -250,6 +245,34 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
         overlays_synced: manifest.overlays.len(),
         overlay_files,
     })
+}
+
+/// The tree the series should produce, built in a scratch index (so a
+/// dependent series is applied cumulatively, as `apply` does), compared with
+/// the worktree's tracked files. Untracked output (overlays, objdir) is out
+/// of scope; any tracked difference is drift.
+fn verify_worktree_matches_series(
+    root: &Path,
+    wt: &Path,
+    manifest: &PatchManifest,
+) -> Result<(), String> {
+    let index = ScratchIndex::seeded(wt)?;
+    for entry in &manifest.patches {
+        for f in series_files(root, entry)? {
+            index.apply(wt, &f).map_err(|e| {
+                format!(
+                    "series {:?}: {} no longer applies to base: {e}",
+                    entry.id,
+                    f.display()
+                )
+            })?;
+        }
+    }
+    let expected = index.write_tree(wt)?;
+    upstream::git(wt, &["diff", "--quiet", &expected, "--"]).map_err(|_| {
+        "state claims the series is applied but tracked worktree files differ from base + series; worktree needs rebuild".to_string()
+    })?;
+    Ok(())
 }
 
 fn patch_ids(manifest: &PatchManifest) -> Vec<String> {
@@ -436,6 +459,50 @@ fn ensure_worktree_shell(root: &Path, lock: &LockFile) -> Result<PathBuf, String
     )
     .map_err(|e| format!("git worktree add failed: {e}"))?;
     Ok(wt)
+}
+
+/// A temporary Git index file, seeded from HEAD and deleted on drop. Patches
+/// applied with `--cached` land only here, never in the worktree or its index.
+struct ScratchIndex {
+    path: PathBuf,
+}
+
+impl ScratchIndex {
+    fn seeded(wt: &Path) -> Result<Self, String> {
+        let path = std::env::temp_dir().join(format!(
+            "aequera-check-index-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        let index = Self { path };
+        upstream::git_with_env(wt, &["read-tree", "HEAD"], &index.env())
+            .map_err(|e| format!("could not seed scratch index: {e}"))?;
+        Ok(index)
+    }
+
+    fn env(&self) -> [(&str, &Path); 1] {
+        [("GIT_INDEX_FILE", self.path.as_path())]
+    }
+
+    fn apply(&self, wt: &Path, patch: &Path) -> Result<(), String> {
+        let patch = patch.display().to_string();
+        upstream::git_with_env(wt, &["apply", "--cached", &patch], &self.env()).map(|_| ())
+    }
+
+    /// Write the index as a tree object; returns its id.
+    fn write_tree(&self, wt: &Path) -> Result<String, String> {
+        upstream::git_with_env(wt, &["write-tree"], &self.env())
+            .map_err(|e| format!("could not write expected tree: {e}"))
+    }
+}
+
+impl Drop for ScratchIndex {
+    fn drop(&mut self) {
+        std::fs::remove_file(&self.path).ok();
+    }
 }
 
 fn read_state(wt: &Path) -> Result<AppliedState, String> {
@@ -677,6 +744,52 @@ mod tests {
         );
         let err = apply(&root, &lock).expect_err("traversal must fail");
         assert!(err.contains("must be a plain relative path"), "got: {err}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn check_validates_dependent_series_cumulatively() {
+        let (root, lock, sha) = baseline("dependent");
+        // 0002's context only exists after 0001: each alone against base
+        // fails, the ordered series applies.
+        let origin = root.join("origin");
+        std::fs::write(origin.join("base.txt"), "base\none\n").unwrap();
+        let first = git(&origin, &["diff"]);
+        git(&origin, &["commit", "-am", "one"]);
+        std::fs::write(origin.join("base.txt"), "base\none\ntwo\n").unwrap();
+        let second = git(&origin, &["diff"]);
+        let series = root.join("patches/browser/dependent");
+        std::fs::create_dir_all(&series).unwrap();
+        std::fs::write(series.join("0001-one.patch"), format!("{first}\n")).unwrap();
+        std::fs::write(series.join("0002-two.patch"), format!("{second}\n")).unwrap();
+        write_manifest(
+            &root,
+            &sha,
+            "  - id: dependent\n    series: browser/dependent\n",
+        );
+
+        let report = check(&root, &lock).expect("ordered series must check clean");
+        assert!(report.all_clean);
+        // check is read-only: the worktree still holds the pristine base.
+        let base = std::fs::read_to_string(root.join(WORKTREE_RELATIVE).join("base.txt")).unwrap();
+        assert_eq!(base.trim_end(), "base");
+
+        let applied = apply(&root, &lock).expect("apply");
+        assert_eq!(applied.entries_applied, 1);
+        let content =
+            std::fs::read_to_string(root.join(WORKTREE_RELATIVE).join("base.txt")).unwrap();
+        assert!(content.contains("two"), "got: {content:?}");
+
+        // Re-apply must verify the whole series, not reverse-check files one
+        // by one (reversing 0001 alone fails while 0002 sits on top of it).
+        let again = apply(&root, &lock).expect("re-apply of a dependent series");
+        assert!(again.already_applied);
+
+        // A hand edit in the worktree is drift, never "already applied".
+        let wt_file = root.join(WORKTREE_RELATIVE).join("base.txt");
+        std::fs::write(&wt_file, "base\none\ntwo\nhand edit\n").unwrap();
+        let err = apply(&root, &lock).expect_err("drifted worktree must be refused");
+        assert!(err.contains("worktree needs rebuild"), "got: {err}");
         std::fs::remove_dir_all(&root).ok();
     }
 
