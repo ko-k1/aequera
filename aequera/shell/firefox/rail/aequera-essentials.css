@@ -1,0 +1,121 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Essentials (Arc favorites / Zen Essentials): pinned tabs as pill tiles in a
+ * grid at the top of the rail. Pinned tabs are already global across
+ * workspaces (Firefox cannot hide them), which is what essentials are.
+ *
+ * Geometry and colors follow Zen's essentials exactly
+ * (zen-browser/desktop src/zen/tabs/zen-tabs/vertical-tabs.css,
+ * src/zen/common/styles/zen-theme.css):
+ *   grid  gap 4px (plus Firefox's own pinned-tab inline margin on each tile,
+ *         which reads better at this rail width than Zen's flush tiles);
+ *   inset horizontal padding = Zen's toolbox padding (5px, 6px on macOS);
+ *   tile  46px tall, full cell width, var(--border-radius-medium), icon only;
+ *   paint rest 8%/15% toolbox text color (light/dark), hover 10% black /
+ *         20% white, selected 85% white / 20% white.
+ * In forced-colors (high contrast) the Zen paint is skipped and Firefox's
+ * system-color tab styling applies.
+ *
+ * Selectors name #tabbrowser-tabs[expanded] so they outrank Firefox's own
+ * expanded pinned-tab rules (two id selectors), e.g. its inline padding,
+ * which pushed the icon off center.
+ *
+ * Balanced rows, 1 to 9 essentials (3 x 3 is the designed maximum): a
+ * 6-column grid where a tile spans 6 (row of one), 3 (row of two), or 2 (row
+ * of three), so every row fills the width and there is never a lone tile
+ * trailing a full row. #pinned-tabs-container[aequera-essentials] carries the
+ * count (aequera-essentials.js):
+ *   1: 1   2: 2   3: 3   4: 2 2   5: 3 2   6: 3 3   7: 3 2 2   8: 3 3 2   9: 3 3 3
+ * Past 9 ("many") tiles continue 3 per row and Firefox's pinned area scrolls;
+ * pinning is never refused.
+ *
+ * Motion: the grid is laid out at the rail's FULL expanded width as soon as
+ * it starts widening and is revealed by the widening; laid out against the
+ * animating width, columns would re-flow every frame. Collapsed, pinned tabs
+ * are one column of icon tiles, the same geometry as tabs. */
+
+:root[aequera-rail] {
+  --aequera-essential-height: 46px;
+  --aequera-essential-gap: 4px;
+  --aequera-essential-inset: 5px;
+  @media (-moz-platform: macos) {
+    --aequera-essential-inset: 6px;
+  }
+}
+
+:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"]::part(items-wrapper) {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-auto-rows: var(--aequera-essential-height);
+  gap: var(--aequera-essential-gap);
+  box-sizing: border-box;
+  width: var(--aequera-rail-expanded-width, 220px);
+  padding: 6px var(--aequera-essential-inset) 2px;
+}
+
+:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
+  /* Tiles fill their grid cell; Firefox's per-tab min/max widths would
+   * push a row wider than the grid. */
+  min-width: 0;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  --toolbarbutton-padding-inner: 0;
+}
+
+/* Row shapes (see the table above): 3 per row by default. */
+:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
+  grid-column: span 2;
+}
+:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] {
+  &[aequera-essentials="1"] .tabbrowser-tab {
+    grid-column: span 6;
+  }
+  &:is([aequera-essentials="2"], [aequera-essentials="4"]) .tabbrowser-tab,
+  &:is([aequera-essentials="5"], [aequera-essentials="7"]) .tabbrowser-tab:nth-child(n + 4 of .tabbrowser-tab),
+  &[aequera-essentials="8"] .tabbrowser-tab:nth-child(n + 7 of .tabbrowser-tab) {
+    grid-column: span 3;
+  }
+}
+
+:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tab-background {
+  /* Inline margin stays Firefox's (tile spacing); block margin goes so the
+   * tile fills its 46px row. */
+  margin-block: 0;
+  min-height: 100%;
+  border-radius: var(--border-radius-medium);
+}
+
+:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tab-content {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] :is(.tab-icon-image, .tab-icon-overlay) {
+  margin-inline-end: 0;
+}
+
+:root[aequera-rail] #pinned-tabs-container[orient="vertical"] :is(.tab-label-container, .tab-close-button) {
+  display: none;
+}
+
+@media not (forced-colors) {
+  :root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
+    & > .tab-stack > .tab-background {
+      border: none;
+      background: light-dark(
+        color-mix(in oklch, var(--toolbox-textcolor, currentColor) 8%, transparent),
+        color-mix(in oklch, var(--toolbox-textcolor, currentColor) 15%, transparent)
+      );
+    }
+    &:hover > .tab-stack > .tab-background:not([selected], [multiselected]) {
+      background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.2));
+    }
+    & > .tab-stack > .tab-background:is([selected], [multiselected]) {
+      background: light-dark(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.2));
+    }
+  }
+}

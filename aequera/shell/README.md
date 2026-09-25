@@ -42,6 +42,24 @@ pinned mode (`aequera.rail.pinned`, takes layout space); and
 card clips back on the same timing. Turning `sidebar.revamp` on hands the
 rail back to Firefox's launcher.
 
+### Essentials
+
+`rail/aequera-essentials.css` (Arc favorites / Zen Essentials): pinned tabs
+are uniform pill tiles in a grid at the top of the rail, one column while
+collapsed. Geometry and colors are Zen's essentials, taken from its source
+(`zen-browser/desktop`): 46px tiles, 4px grid gaps (plus Firefox's pinned-tab
+inline margin per tile, which reads better than Zen's flush tiles), icons
+centered on both axes, 5px insets (6px on macOS), `--border-radius-medium`, Zen's rest/hover/selected
+paint (skipped in forced-colors, where Firefox's system colors apply). Rows are balanced for 1-9 essentials (3 x 3 is the designed maximum) on
+a 6-column grid (a tile spans 6, 3, or 2): 1 | 2 | 3 | 2 2 | 3 2 | 3 3 |
+3 2 2 | 3 3 2 | 3 3 3; past 9 tiles continue 3 per row and Firefox's pinned
+area scrolls (pinning is never refused). `rail/aequera-essentials.js` sets
+the count on `#pinned-tabs-container`. Pinned tabs are already global
+across workspaces. The grid is laid out at the full expanded width as soon
+as the rail starts widening and is revealed by the widening, so columns never
+reflow mid-animation. Pin/unpin and drag stay
+Firefox-native. Test: `tests/browser/browser_aequera_essentials.js`.
+
 Tests: `tests/browser/browser_aequera_rail.js` (hosting, widen without
 reflow + hit-testable, linger/re-entry, interrupt without jump, address-bar
 and context-menu holds, pinned, revamp hand-back).

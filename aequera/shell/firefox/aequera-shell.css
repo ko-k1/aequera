@@ -13,6 +13,7 @@
  * the same material with no second surface and no seam. */
 
 @import url("chrome://browser/content/aequera/rail/aequera-rail.css");
+@import url("chrome://browser/content/aequera/rail/aequera-essentials.css");
 @import url("chrome://browser/content/aequera/workspaces/aequera-workspaces.css");
 @import url("chrome://browser/content/aequera/bookmarks/aequera-bookmarks.css");
 

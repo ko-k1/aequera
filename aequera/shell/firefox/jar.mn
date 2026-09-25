@@ -5,6 +5,8 @@ browser.jar:
     content/browser/aequera/aequera-shell.js     (aequera-shell.js)
     content/browser/aequera/rail/aequera-rail.js               (rail/aequera-rail.js)
     content/browser/aequera/rail/aequera-rail.css              (rail/aequera-rail.css)
+    content/browser/aequera/rail/aequera-essentials.css        (rail/aequera-essentials.css)
+    content/browser/aequera/rail/aequera-essentials.js         (rail/aequera-essentials.js)
     content/browser/aequera/workspaces/workspace-model.mjs     (workspaces/workspace-model.mjs)
     content/browser/aequera/workspaces/aequera-workspaces.js   (workspaces/aequera-workspaces.js)
     content/browser/aequera/workspaces/aequera-workspaces.css  (workspaces/aequera-workspaces.css)

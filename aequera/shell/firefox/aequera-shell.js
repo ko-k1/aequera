@@ -97,6 +97,7 @@ var AequeraFrame = (() => {
 
 for (const url of [
   "chrome://browser/content/aequera/rail/aequera-rail.js",
+  "chrome://browser/content/aequera/rail/aequera-essentials.js",
   "chrome://browser/content/aequera/workspaces/aequera-workspaces.js",
   "chrome://browser/content/aequera/bookmarks/aequera-bookmarks.js",
   "chrome://browser/content/aequera/layout/aequera-layout.js",
