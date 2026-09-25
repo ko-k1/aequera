@@ -3,3 +3,6 @@
 browser.jar:
     content/browser/aequera/aequera-shell.css    (aequera-shell.css)
     content/browser/aequera/aequera-shell.js     (aequera-shell.js)
+    content/browser/aequera/workspaces/workspace-model.mjs     (workspaces/workspace-model.mjs)
+    content/browser/aequera/workspaces/aequera-workspaces.js   (workspaces/aequera-workspaces.js)
+    content/browser/aequera/workspaces/aequera-workspaces.css  (workspaces/aequera-workspaces.css)

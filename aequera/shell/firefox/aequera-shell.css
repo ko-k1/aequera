@@ -13,6 +13,8 @@
  * clips back instead, so the widened tab rail is the same material as the
  * collapsed one, with no seam and no page relayout. */
 
+@import url("chrome://browser/content/aequera/workspaces/aequera-workspaces.css");
+
 /* 1. The widened launcher paints exactly what the collapsed one does: no
  *    opaque backdrop layer and no divider line against the page. */
 :root[sidebar-expand-on-hover]

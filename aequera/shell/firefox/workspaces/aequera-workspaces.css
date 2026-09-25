@@ -1,0 +1,91 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Aequera workspace dock (prototype/shell #ws-rail): a column of dots under
+ * the tab list while the rail is collapsed; named rows with tab counts when
+ * it is expanded. Semantic Firefox tokens only, so themes and high-contrast
+ * modes carry through. */
+
+#aequera-workspace-dock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-block: 6px;
+  border-block-start: 1px solid var(--sidebar-border-color, transparent);
+}
+
+sidebar-main[expanded] #aequera-workspace-dock {
+  align-items: stretch;
+  padding-inline: 6px;
+}
+
+.aequera-ws {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  margin: 0;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: var(--border-radius-medium);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+.aequera-ws:hover {
+  background-color: var(--button-background-color-ghost-hover, color-mix(in srgb, currentColor 12%, transparent));
+}
+
+.aequera-ws:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-inset, -2px);
+}
+
+.aequera-ws-dot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.45;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.aequera-ws[aria-selected="true"] .aequera-ws-dot {
+  opacity: 1;
+  background-color: var(--color-accent-primary, AccentColor);
+}
+
+/* "+" reads as a glyph, not a filled dot. */
+.aequera-ws-new .aequera-ws-dot {
+  background-color: transparent;
+  opacity: 0.7;
+}
+
+.aequera-ws-name,
+.aequera-ws-count {
+  display: none;
+}
+
+sidebar-main[expanded] .aequera-ws-name {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+sidebar-main[expanded] .aequera-ws-count {
+  display: block;
+  font-size: 0.85em;
+  opacity: 0.7;
+}

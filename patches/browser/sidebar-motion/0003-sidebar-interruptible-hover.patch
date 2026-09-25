@@ -1,0 +1,67 @@
+Subject: [PATCH 3/3] sidebar: hover input interrupts the launcher animation
+
+Why Firefox source must change:
+  onMouseEnter/onMouseLeave return early while the launcher animates, so
+  input during the animation is dropped until it settles (then reconciled).
+  Aequera requires input to supersede animation (AGENTS.md: animation must
+  not delay or block direct interaction).
+
+What it changes:
+  - Hover changes are honored during an animation (the popup guard stays).
+  - _animateSidebarContainer measures element rects BEFORE cancelling a
+    running animation. getBoundingClientRect includes the animated
+    translate, so the new animation starts from the on-screen position: a
+    reversal is continuous instead of jumping to the previous end state.
+
+Depends on: 0002 (context lines).
+Validation: aequera shell tests (mouse-out mid-expand reverses without
+  waiting and without a positional jump); upstream browser_sidebar_animation.js
+  and browser_sidebar_expand_on_hover.js green under Firefox defaults.
+Upstream risk: medium; animation bookkeeping in _animateSidebarContainer.
+
+diff --git a/browser/components/sidebar/browser-sidebar.js b/browser/components/sidebar/browser-sidebar.js
+index ca19f7251549..4cd9f9afe267 100644
+--- a/browser/components/sidebar/browser-sidebar.js
++++ b/browser/components/sidebar/browser-sidebar.js
+@@ -1412,14 +1412,16 @@ var SidebarController = {
+       tabbox.toggleAttribute("sidebar-ongoing-animations", false);
+       this.sidebarMain.toggleAttribute("sidebar-ongoing-animations", false);
+     };
++    // Measure before cancelling: getBoundingClientRect includes the running
++    // translate, so an interrupting animation starts from the on-screen
++    // position instead of jumping back to the previous end state.
++    let fromRects = this._getRects(animatingElements);
+     if (this._ongoingAnimations.length) {
+       this._ongoingAnimations.forEach(a => a.cancel());
+       this._ongoingAnimations = [];
+       resetElements();
+     }
+ 
+-    let fromRects = this._getRects(animatingElements);
+-
+     // We need to wait for lit to re-render, and us to get the final width.
+     // This is a bit unfortunate but alas...
+     await new Promise(resolve => {
+@@ -2629,9 +2631,10 @@ var SidebarController = {
+   },
+ 
+   onMouseLeave() {
+-    // Ignore hover changes while animating or while a popup is open; the state
+-    // is reconciled once the animation settles or the popup closes.
+-    if (this._ongoingAnimations.length || this._isMenuPopupOpen()) {
++    // Ignore hover changes while a popup is open; the state is reconciled once
++    // the popup closes. Hover changes during an animation are honored: the
++    // animation reverses from its current position.
++    if (this._isMenuPopupOpen()) {
+       return;
+     }
+     if (this._escapedWhileHovered) {
+@@ -2676,7 +2679,7 @@ var SidebarController = {
+     if (this._state.launcherExpanded) {
+       return;
+     }
+-    if (this._ongoingAnimations.length || this._isMenuPopupOpen()) {
++    if (this._isMenuPopupOpen()) {
+       return;
+     }
+     if (this._escapedWhileHovered) {

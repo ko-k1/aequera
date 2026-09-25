@@ -43,6 +43,21 @@ install.
 3. In the MozillaBuild shell: `./mach build faster && ./mach run`
    (`build faster` repackages front-end files only; seconds).
 
+## Tests
+
+```sh
+bash /c/src/aequera/tools/build/test-shell.sh            # all
+bash /c/src/aequera/tools/build/test-shell.sh aequera --repeat 4
+```
+
+- `aequera`: Aequera-owned mochitests (`aequera/shell/firefox/tests`),
+  under Aequera defaults.
+- `upstream`: Firefox's own sidebar tests with Firefox's defaults restored
+  (`--setpref`), proving the `sidebar-motion` patches change nothing by
+  default. Firefox's tests assume Firefox's defaults: run without the
+  resets, `browser_sidebar_expand_on_hover.js` fails its first assertion
+  because Aequera ships expand-on-hover on.
+
 ## Stage 1 acceptance
 
 - Tabs render in the vertical rail; hovering the rail widens it after
@@ -52,7 +67,7 @@ install.
   in step with the rail. The page itself does not reflow.
 - Fullscreen shows the page unclipped.
 - Browser Console (`Ctrl+Shift+J`) shows no `aequera-shell` errors.
-- `about:config`: the six prefs in `aequera-prefs.js` show as defaults.
+- `about:config`: the prefs in `aequera-prefs.js` show as defaults.
 
 ## If artifact download fails
 

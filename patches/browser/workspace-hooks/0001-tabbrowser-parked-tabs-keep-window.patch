@@ -1,0 +1,76 @@
+Subject: [PATCH] tabbrowser: parked hidden tabs keep the window open
+
+Why Firefox source must change:
+  Aequera workspaces keep several tab sets in one window and park the
+  inactive sets as hidden tabs (hiddenBy "aequera-workspaces").
+  #isLastTabInWindow deliberately ignores hidden tabs, so closing the last
+  visible tab of a workspace closes the whole window (with the default
+  browser.tabs.closeWindowWithLastTab) and discards every other workspace.
+  The decision happens inside #beginRemoveTab before any event a feature
+  could handle, so it cannot be fixed from outside.
+
+What it changes:
+  - New pref browser.tabs.parkedHiddenSources (comma-separated hiddenBy
+    sources; empty by default, so Firefox behavior is unchanged).
+  - When the closing tab is the last visible one but tabs hidden by a listed
+    source remain, the window is not closed; Firefox's existing
+    "replace with a new tab" path runs instead.
+  - Tabs hidden by any other source (e.g. extensions) behave as before.
+
+Depends on: nothing.
+Validation: aequera/shell/firefox/tests/browser/browser_aequera_workspaces.js
+  (closing a workspace's last tab keeps the window and the other
+  workspaces); pref empty -> upstream behavior.
+Upstream risk: low; one condition in #beginRemoveTab plus a private helper.
+
+diff --git a/browser/components/tabbrowser/Tabbrowser.sys.mjs b/browser/components/tabbrowser/Tabbrowser.sys.mjs
+index f68e37926001..f97552413483 100644
+--- a/browser/components/tabbrowser/Tabbrowser.sys.mjs
++++ b/browser/components/tabbrowser/Tabbrowser.sys.mjs
+@@ -6354,6 +6354,36 @@ export class Tabbrowser {
+     return true;
+   }
+ 
++  /**
++   * Whether the window holds tabs parked by a browser feature that swaps sets
++   * of tabs in one window: tabs hidden with a `hiddenBy` source listed in the
++   * browser.tabs.parkedHiddenSources pref (comma-separated; empty by
++   * default). #isLastTabInWindow ignores hidden tabs, so closing the last
++   * visible tab would otherwise close the window and discard the parked
++   * ones; with parked tabs present the closed tab is replaced by a new one
++   * instead. Tabs hidden by other sources (e.g. extensions) are unaffected.
++   *
++   * @param {MozTabbrowserTab} closingTab
++   * @returns {boolean}
++   */
++  #hasParkedTabs(closingTab) {
++    const sources = Services.prefs
++      .getStringPref("browser.tabs.parkedHiddenSources", "")
++      .split(",")
++      .map(source => source.trim())
++      .filter(Boolean);
++    if (!sources.length) {
++      return false;
++    }
++    return this.tabs.some(
++      tab =>
++        tab != closingTab &&
++        tab.isOpen &&
++        tab.hidden &&
++        sources.includes(lazy.SessionStore.getCustomTabValue(tab, "hiddenBy"))
++    );
++  }
++
+   #hasBeforeUnload(aTab) {
+     let browser = aTab.linkedBrowser;
+     if (browser.isRemoteBrowser && browser.frameLoader) {
+@@ -6464,7 +6494,8 @@ export class Tabbrowser {
+     var newTab = false;
+     if (this.#isLastTabInWindow(aTab)) {
+       closeWindow =
+-        closeWindowWithLastTab ?? this.#shouldCloseWindowWithLastTab;
++        (closeWindowWithLastTab ?? this.#shouldCloseWindowWithLastTab) &&
++        !this.#hasParkedTabs(aTab);
+ 
+       if (closeWindow) {
+         // We've already called beforeunload on all the relevant tabs if we get here,

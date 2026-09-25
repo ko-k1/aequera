@@ -1,0 +1,10 @@
+[DEFAULT]
+prefs = [
+  "sidebar.revamp=true",
+  "sidebar.verticalTabs=true",
+  "sidebar.visibility='expand-on-hover'",
+]
+
+["browser_aequera_sidebar_motion.js"]
+
+["browser_aequera_workspaces.js"]

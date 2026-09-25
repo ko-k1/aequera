@@ -23,6 +23,14 @@ patches:
   # validation, and upstream risk are in the patch header.
   - id: shell-hooks
     series: browser/shell-hooks
+  # Stage 2 motion parity (3 patches, Firefox defaults unchanged): easing
+  # pref, collapse-delay pref, hover input interrupts the animation.
+  - id: sidebar-motion
+    series: browser/sidebar-motion
+  # Workspaces: parked (workspace-hidden) tabs keep the window open when the
+  # last visible tab closes (pref-gated, empty by default).
+  - id: workspace-hooks
+    series: browser/workspace-hooks
 
 overlays:
   # Stage 1 shell: frame-model stylesheet, launcher-width glue, default
