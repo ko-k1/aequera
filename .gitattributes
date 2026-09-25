@@ -1,3 +1,5 @@
 # Patch files must keep LF endings: git apply matches them byte-for-byte
 # against Firefox sources, and core.autocrlf would otherwise convert them.
 *.patch text eol=lf
+# Shell scripts run under bash (MozillaBuild/msys2), which rejects CRLF.
+*.sh text eol=lf
