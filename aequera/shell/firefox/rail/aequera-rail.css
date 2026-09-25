@@ -18,11 +18,13 @@
   --aequera-rail-overlay: 0px;
 }
 :root[aequera-rail] {
-  --aequera-rail-collapsed-width: var(--tab-collapsed-width, 48px);
+  /* Firefox's collapsed tile width, from the token geometry at the end of
+   * this file: 42px, tokens.toml [chrome] rail. */
+  --aequera-rail-collapsed-width: var(--tab-collapsed-width, 42px);
 }
 :root[aequera-rail-expanded]:not([aequera-rail-pinned]) {
   --aequera-rail-overlay: calc(
-    var(--aequera-rail-expanded-width, 220px) - var(--aequera-rail-collapsed-width, 48px)
+    var(--aequera-rail-expanded-width, 220px) - var(--aequera-rail-collapsed-width, 42px)
   );
 }
 
@@ -36,6 +38,10 @@
   /* sidebar.css clips the launcher container (overflow: clip); the rail
    * widens beyond its layout width, so it must not be clipped. */
   overflow: visible;
+  /* sidebar.css paints the container with the opaque legacy sidebar color;
+   * the rail is chrome on the one window backdrop like the top bar, so it
+   * paints nothing (collapsed and widened then read as the same material). */
+  background-color: transparent;
   width: var(--aequera-rail-collapsed-width);
   z-index: var(--browser-area-z-index-sidebar-expand-on-hover, 3);
 }
@@ -71,4 +77,18 @@
   :root[aequera-rail] #sidebar-container > sidebar-main {
     transition: none;
   }
+}
+
+/* Token geometry for Firefox's tab layout that is still shown (the pinned
+ * tabs / essentials; unpinned tabs are Aequera rows, aequera-tabs.css):
+ * 30px tabs (tokens.toml [rows]: 16px icon + 7px above and below) with the
+ * prototype's 6px list inset on each side, so Firefox's collapsed tile width
+ * (--tab-collapsed-width = tab + 2 x inner margin) is the token rail, 42px,
+ * and pinned tiles and Aequera rows share one column. Beats Firefox's rules
+ * (its :root[uidensity] ones inside the vertical-tabs media query) on
+ * specificity and order. */
+:root[aequera-rail] {
+  --tab-min-height: 30px;
+  --tab-margin-block: 0px;
+  --tab-inner-inline-margin: 6px;
 }

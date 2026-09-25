@@ -116,10 +116,23 @@ add_task(async function test_dock_renders_and_clicking_switches() {
   is(workButton.getAttribute("aria-selected"), "true", "active workspace is marked selected");
   homeButton.click();
   is(ws().state.active, homeButton.dataset.ws, "clicking a dot switches workspace");
-  // The dock re-renders its buttons: query again rather than reuse old nodes.
-  is(dockButtons()[0].getAttribute("aria-selected"), "true", "dock follows the switch");
+  is(dockButtons()[0], homeButton, "the dock updates its buttons in place");
+  is(homeButton.getAttribute("aria-selected"), "true", "dock follows the switch");
   document.querySelector('#aequera-workspace-dock [data-action="new-workspace"]').click();
   is(dockButtons().length, 3, "the + button adds a workspace");
+  await resetWorkspaces();
+});
+
+add_task(async function test_dock_updates_keep_keyboard_focus() {
+  ws().newWorkspace();
+  const [homeButton, workButton] = dockButtons();
+  homeButton.focus();
+  // A background tab joins the active workspace, which updates the dock.
+  const tab = BrowserTestUtils.addTab(gBrowser, "about:blank");
+  is(workButton.querySelector(".aequera-ws-count").textContent, "2", "the dock updated its counts");
+  is(document.activeElement, homeButton, "a dock update keeps keyboard focus on the focused button");
+  BrowserTestUtils.removeTab(tab);
+  gBrowser.selectedBrowser.focus();
   await resetWorkspaces();
 });
 
@@ -155,6 +168,56 @@ add_task(async function test_closing_a_workspaces_last_tab_keeps_the_window() {
   is(memberOf(gBrowser.selectedTab), work, "a fresh tab replaced the closed one in this workspace");
   ok(!gBrowser.selectedTab.hidden, "and it is visible");
 
+  await SpecialPowers.popPrefEnv();
+  await resetWorkspaces();
+});
+
+add_task(async function test_dock_names_show_when_widened_and_dots_never_move() {
+  ws().newWorkspace();
+  const ROOT = document.documentElement;
+  const container = document.getElementById("sidebar-container");
+  const firstButton = () => dockButtons()[0];
+  const dotLeft = () => firstButton().querySelector(".aequera-ws-dot").getBoundingClientRect().left;
+  const nameOpacity = () => Number(getComputedStyle(firstButton().querySelector(".aequera-ws-name")).opacity);
+
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["aequera.hover.openDelayMs", 0],
+      ["aequera.hover.closeDelayMs", 0],
+    ],
+  });
+  window.windowUtils.disableNonTestMouseEvents(true);
+  // The new workspace's new tab focuses the address bar, which widens the
+  // rail (prototype unified search); start from the page instead.
+  gBrowser.selectedBrowser.focus();
+  EventUtils.synthesizeMouseAtCenter(document.getElementById("tabbrowser-tabbox"), { type: "mousemove" });
+  await TestUtils.waitForCondition(
+    () => !ROOT.hasAttribute("aequera-rail-content-expanded"),
+    "starts collapsed"
+  );
+  // Names fade out after the collapse; wait for the fade to finish.
+  await TestUtils.waitForCondition(() => nameOpacity() == 0, "collapsed: names are not shown");
+  const collapsedDot = dotLeft();
+
+  // Widen by hovering, as a user does (not the pinned pref).
+  EventUtils.synthesizeMouse(container, 5, 60, { type: "mousemove" });
+  await TestUtils.waitForCondition(
+    () => ROOT.hasAttribute("aequera-rail-content-expanded"),
+    "hover widens the rail"
+  );
+  Assert.less(nameOpacity(), 1, "names fade in rather than appear at once");
+  await TestUtils.waitForCondition(() => nameOpacity() == 1, "names fully shown when widened");
+  const name = firstButton().querySelector(".aequera-ws-name");
+  is(name.textContent, ws().state.workspaces[0].name, "the row shows the workspace name");
+  Assert.greater(name.getBoundingClientRect().width, 40, "with room to read it");
+  Assert.less(Math.abs(dotLeft() - collapsedDot), 0.5, "the dot did not move");
+
+  EventUtils.synthesizeMouseAtCenter(document.getElementById("tabbrowser-tabbox"), { type: "mousemove" });
+  await TestUtils.waitForCondition(
+    () => !ROOT.hasAttribute("aequera-rail-content-expanded"),
+    "collapses"
+  );
+  window.windowUtils.disableNonTestMouseEvents(false);
   await SpecialPowers.popPrefEnv();
   await resetWorkspaces();
 });

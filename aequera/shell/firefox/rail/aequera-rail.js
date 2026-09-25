@@ -5,7 +5,7 @@
 "use strict";
 
 // Aequera tab rail (prototype/shell #sidebar). Loaded into each browser
-// window by aequera-shell.js.
+// window by aequera-main.js.
 //
 // With vertical tabs on and the sidebar revamp off (patches/browser/
 // aequera-rail makes that combination possible), Firefox's own vertical tab
@@ -21,7 +21,12 @@
 //     the rail (e.g. the tab context menu), the address bar when
 //     aequera.rail.expandOnAddressFocus is on (prototype unified search);
 //   - pinned (aequera.rail.pinned): always expanded, taking layout space;
-//   - tabbrowser-tabs[expanded], which Firefox's tab CSS uses for full rows.
+//   - two states: the TARGET (:root[aequera-rail-expanded]) flips at once and
+//     drives the width, the page clip, and the drawer edge; the CONTENT
+//     (:root[aequera-rail-content-expanded] + tabbrowser-tabs[expanded],
+//     which Firefox's tab CSS uses for full rows) widens at once but only
+//     collapses after the width transition, so the narrowing rail clips the
+//     wide content away instead of it snapping to icons mid-animation.
 // The widened rail overlays the page; the page card clips back in step
 // (aequera-shell.css) so the rail stays on the frame material.
 var AequeraRail = (() => {
@@ -41,6 +46,7 @@ var AequeraRail = (() => {
     hovered: false,
     expanded: false,
     timer: 0,
+    contentTimer: 0,
     /** Popups opened from inside the rail (context menus, tab menus). */
     openPopups: new Set(),
 
@@ -84,6 +90,25 @@ var AequeraRail = (() => {
       }
       this.expanded = expanded;
       ROOT.toggleAttribute("aequera-rail-expanded", expanded);
+      clearTimeout(this.contentTimer);
+      if (expanded) {
+        this.setContentExpanded(true);
+      } else {
+        // Keep the wide layout until the width transition has finished.
+        const duration = parseFloat(
+          getComputedStyle(ROOT).getPropertyValue("--aequera-motion-duration")
+        );
+        const delay = window.gReduceMotion ? 0 : duration || 0;
+        this.contentTimer = setTimeout(() => {
+          if (!this.expanded) {
+            this.setContentExpanded(false);
+          }
+        }, delay);
+      }
+    },
+
+    setContentExpanded(expanded) {
+      ROOT.toggleAttribute("aequera-rail-content-expanded", expanded);
       gBrowser.tabContainer.toggleAttribute("expanded", expanded);
     },
 
@@ -174,6 +199,7 @@ var AequeraRail = (() => {
         "unload",
         () => {
           clearTimeout(this.timer);
+          clearTimeout(this.contentTimer);
           for (const pref of prefs) {
             Services.prefs.removeObserver(pref, this);
           }

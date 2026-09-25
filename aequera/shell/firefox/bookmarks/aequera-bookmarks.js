@@ -5,7 +5,7 @@
 "use strict";
 
 // Aequera bookmarks drawer (prototype/shell bookmark bar, "hover" mode).
-// Loaded into each browser window by aequera-shell.js.
+// Loaded into each browser window by aequera-main.js.
 //
 // With aequera.bookmarks.hoverPeek on and Firefox's toolbar visibility set
 // to "always", the Bookmarks Toolbar stays built (no per-hover rebuild) but

@@ -35,6 +35,18 @@ add_task(async function test_existing_profiles_are_migrated_once() {
   CustomizableUI.reset();
 });
 
+add_task(async function test_migration_only_removes_excluded_widgets() {
+  // With the exclusion dropped (e.g. Firefox's empty default), the migration
+  // must leave the button alone.
+  await SpecialPowers.pushPrefEnv({ set: [["browser.uiCustomization.defaultExclusions", ""]] });
+  CustomizableUI.addWidgetToArea(WIDGET, CustomizableUI.AREA_NAVBAR);
+  Services.prefs.setIntPref("aequera.layout.migrationVersion", 0);
+  window.AequeraLayout.migrate();
+  ok(CustomizableUI.getPlacementOfWidget(WIDGET), "not excluded: the button stays");
+  await SpecialPowers.popPrefEnv();
+  CustomizableUI.reset();
+});
+
 add_task(async function test_it_can_still_be_added_from_the_palette() {
   CustomizableUI.addWidgetToArea(WIDGET, CustomizableUI.AREA_NAVBAR);
   ok(CustomizableUI.getPlacementOfWidget(WIDGET), "a user can add it back");

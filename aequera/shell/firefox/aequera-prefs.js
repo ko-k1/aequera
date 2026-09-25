@@ -17,7 +17,7 @@
 // rail back to Firefox's launcher; re-coupling it would let Firefox switch
 // vertical tabs off behind the rail. Vertical tabs themselves stay a user
 // choice (the rail steps aside for horizontal tabs). The only way to unlock
-// is AEQUERA_UNLOCK_SHELL_PREFS=1 in the environment (aequera-shell.js), used
+// is AEQUERA_UNLOCK_SHELL_PREFS=1 in the environment (aequera-frame.js), used
 // by the test gate to run Firefox's own revamp tests.
 pref("sidebar.revamp", false, locked);
 pref("sidebar.verticalTabs", true);

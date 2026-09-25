@@ -2,23 +2,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Aequera workspace dock (prototype/shell #ws-rail): a column of dots under
- * the tab list while the rail is collapsed; named rows with tab counts when
- * it is expanded. Semantic Firefox tokens only, so themes and high-contrast
- * modes carry through. */
+/* Aequera workspace dock (prototype/shell #ws-rail): dots under the tab list
+ * while the rail is collapsed; named rows with tab counts when it is widened.
+ *
+ * Prototype rule "icons never move": the dock has ONE layout in both states.
+ * Rows always span the dock and each dot sits at the same x, centered on the
+ * collapsed rail's icon column; widening only reveals what is already laid
+ * out to its right. Names and counts are always laid out (never display:
+ * none) and fade in/out, so the change animates in BOTH directions: the
+ * widening rail uncovers them while they fade in; on collapse the narrowing
+ * rail clips them away first (the content state is only dropped after the
+ * width transition, aequera-rail.js), then they fade out.
+ * Semantic Firefox tokens only, so themes and high contrast carry through. */
 
 #aequera-workspace-dock {
+  --aequera-dock-inset: 6px;
+  /* Dot (10px) centered on the collapsed rail's icon column. */
+  --aequera-dock-dot-start: calc(
+    var(--aequera-rail-collapsed-width, 42px) / 2 - var(--aequera-dock-inset) - 5px
+  );
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding-block: 6px;
-  border-block-start: 1px solid var(--sidebar-border-color, transparent);
-}
-
-:root[aequera-rail-expanded] #aequera-workspace-dock {
   align-items: stretch;
-  padding-inline: 6px;
+  gap: 2px;
+  padding: 6px var(--aequera-dock-inset);
+  border-block-start: 1px solid var(--sidebar-border-color, transparent);
 }
 
 .aequera-ws {
@@ -28,13 +36,16 @@
   gap: 8px;
   min-height: 24px;
   margin: 0;
-  padding: 4px 7px;
+  padding-block: 4px;
+  padding-inline: var(--aequera-dock-dot-start) 7px;
   border: 0;
   border-radius: var(--border-radius-medium);
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: start;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .aequera-ws:hover {
@@ -70,22 +81,39 @@
   opacity: 0.7;
 }
 
-.aequera-ws-name,
-.aequera-ws-count {
-  display: none;
-}
-
-:root[aequera-rail-expanded] .aequera-ws-name {
-  display: block;
+/* Names and counts: always laid out, revealed by the rail and faded
+ * (prototype title wipe: 100ms out, 160ms in after a 30ms beat). */
+.aequera-ws-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-:root[aequera-rail-expanded] .aequera-ws-count {
-  display: block;
+.aequera-ws-count {
+  flex: none;
   font-size: 0.85em;
+}
+
+.aequera-ws-name,
+.aequera-ws-count {
+  opacity: 0;
+  transition: opacity 100ms linear;
+}
+
+:root[aequera-rail-content-expanded] .aequera-ws-name {
+  opacity: 1;
+  transition: opacity 160ms linear 30ms;
+}
+
+:root[aequera-rail-content-expanded] .aequera-ws-count {
   opacity: 0.7;
+  transition: opacity 160ms linear 30ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aequera-ws-name,
+  .aequera-ws-count {
+    transition: none !important;
+  }
 }

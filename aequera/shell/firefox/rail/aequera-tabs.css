@@ -1,0 +1,155 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Aequera tab list (aequera-tabs.js), in the prototype's row language:
+ * - one layout in both rail states ("icons never move"): each icon sits on
+ *   the collapsed rail's icon column; rows span the rail, so they grow with
+ *   it as it widens;
+ * - titles are always laid out, revealed by the widening rail and faded in
+ *   (clipped away by the narrowing rail, then faded out) - the same motion as
+ *   the workspace dock;
+ * - prototype geometry and paint (prototype/shell styles.css #tab-list,
+ *   .tab-row): 30px rows (7px + 16px icon + 7px), 6px apart, 9px corners,
+ *   rgba(127,140,170,.12) hover and .22 selected wash, 12px/16px titles;
+ * - close: a dim "x" glyph, only on hover in the widened rail;
+ * - New Tab: the same row with a dim "+" glyph, centered: a 30px square in the
+ *   collapsed rail, a full-width row when widened (prototype #newtab-rail).
+ * Firefox's own unpinned rows and New Tab buttons are hidden; pinned tabs
+ * stay in Firefox's pinned container (the essentials grid). */
+
+/* Only once the Aequera list has mounted (:root[aequera-tabs], set by
+ * aequera-tabs.js): if it ever fails to load (an error, a stale startup
+ * cache), Firefox's own rows stay visible instead of the window having no
+ * tabs at all. */
+:root[aequera-rail][aequera-tabs] {
+  #tabbrowser-arrowscrollbox,
+  #vertical-tabs-newtab-button,
+  #vertical-pinned-tabs-splitter {
+    display: none !important;
+  }
+
+  #vertical-tabs {
+    flex: none;
+  }
+}
+
+#aequera-tabs {
+  --aequera-row-inset: 6px;
+  /* 16px icon centered on the collapsed rail's icon column. */
+  --aequera-row-icon-start: calc(
+    var(--aequera-rail-collapsed-width, 42px) / 2 - var(--aequera-row-inset) - 8px
+  );
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  padding: 4px var(--aequera-row-inset);
+  overflow: hidden auto;
+  scrollbar-width: none;
+}
+
+.aequera-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  box-sizing: border-box;
+  height: 30px;
+  padding-inline: var(--aequera-row-icon-start) 7px;
+  border-radius: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+
+  &:hover {
+    background-color: rgba(127, 140, 170, 0.12);
+  }
+
+  &[aria-selected="true"] {
+    background-color: rgba(127, 140, 170, 0.22);
+  }
+
+  @media (forced-colors) {
+    &[aria-selected="true"] {
+      background-color: SelectedItem;
+      color: SelectedItemText;
+    }
+  }
+}
+
+.aequera-tab-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  -moz-context-properties: fill;
+  fill: currentColor;
+}
+
+.aequera-tab[busy] > .aequera-tab-icon {
+  content: url("chrome://global/skin/icons/loading.svg");
+}
+
+.aequera-tab-title {
+  flex: 1;
+  min-width: 0;
+  /* The prototype's 22px icon column: the title starts 6px past it. */
+  margin-inline-start: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 100ms linear;
+
+  :root[aequera-rail-content-expanded] & {
+    opacity: 1;
+    transition: opacity 160ms linear 30ms;
+  }
+}
+
+/* Prototype .x: a 22 x 16 "x" glyph, dim, shown on hover (widened rail). */
+.aequera-tab-close {
+  flex: none;
+  display: none;
+  place-items: center;
+  width: 22px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-color-deemphasized);
+
+  :root[aequera-rail-content-expanded] .aequera-tab:hover > & {
+    display: grid;
+  }
+
+  &:hover {
+    color: inherit;
+    background-color: rgba(127, 140, 170, 0.18);
+  }
+}
+
+/* New Tab (prototype #newtab-rail + .nic): a dim 16px "+" glyph in the icon
+ * box, centered in both states. */
+.aequera-newtab {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.aequera-newtab-icon {
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-color-deemphasized);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aequera-tab-title {
+    transition: none !important;
+  }
+}

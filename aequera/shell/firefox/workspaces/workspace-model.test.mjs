@@ -1,14 +1,17 @@
-// Unit tests for the pure workspace model. Run: node --test aequera/shell/firefox/workspaces
+// Unit tests for the pure workspace model (the same file the browser loads).
+// Run: node --test aequera/shell/firefox/workspaces/workspace-model.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
+import model from "./workspace-model.js";
+
+const {
   WORKSPACE_SOURCE,
   normalizeState,
   initialState,
   createWorkspace,
   membershipOf,
   planSwitch,
-} from "./workspace-model.mjs";
+} = model;
 
 const two = () => createWorkspace(initialState(), "Work").state;
 const tab = (key, workspace, extra = {}) => ({

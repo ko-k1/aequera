@@ -32,14 +32,19 @@ bash /c/src/aequera/tools/build/aequera-run.sh               # throwaway dev pro
 bash /c/src/aequera/tools/build/aequera-run.sh --persistent  # real Aequera profile
 ```
 
-Always run through `aequera-run.sh`, not bare `./mach run` or the exe: an
+Outside the MozillaBuild shell (Explorer, cmd, PowerShell), start the real
+Aequera profile with `tools\build\aequera.cmd`: double-click it, or run it
+with extra Firefox arguments. It is `--persistent` without the shell.
+
+Always start through one of these, never bare `./mach run` or the exe: an
 artifact build's `firefox.exe` otherwise identifies as Firefox (vendor,
-name, remoting channel, profile registry) and collides with a Firefox you
-have open. The script writes `aequera-application.ini` from the build's own
-(`aequera_app_ini.py`: Vendor/Name Aequera, remoting `aequera`, profiles in
-`%APPDATA%\Aequera`; the Firefox application ID stays for WebExtension
-compatibility) and starts with `-app` + `-no-remote`. The exe keeps
-Firefox's icon and file name until a full branding build.
+name, remoting channel, profile registry), opens your Firefox profile, and
+collides with a Firefox you have open. Both write `aequera-application.ini`
+from the build's own (`aequera_app_ini.py`: Vendor/Name Aequera, remoting
+`aequera`, profiles in `%APPDATA%\Aequera`; the Firefox application ID
+stays for WebExtension compatibility) and start with `-app`, `-no-remote`,
+and `-purgecaches`. The exe keeps Firefox's icon and file name until a full
+branding build.
 
 ## Edit loop
 

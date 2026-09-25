@@ -25,10 +25,13 @@
  * Balanced rows, 1 to 9 essentials (3 x 3 is the designed maximum): a
  * 6-column grid where a tile spans 6 (row of one), 3 (row of two), or 2 (row
  * of three), so every row fills the width and there is never a lone tile
- * trailing a full row. #pinned-tabs-container[aequera-essentials] carries the
- * count (aequera-essentials.js):
+ * trailing a full row. The count is read by CSS from the tabs actually in
+ * the pinned container (`:has()` + `:nth-child(… of .tabbrowser-tab)`), so it
+ * is always in sync however tabs got there: session restore, pin/unpin,
+ * drag, close. (A script-maintained count missed tabs that session restore
+ * creates already pinned, leaving every tile the default size.)
  *   1: 1   2: 2   3: 3   4: 2 2   5: 3 2   6: 3 3   7: 3 2 2   8: 3 3 2   9: 3 3 3
- * Past 9 ("many") tiles continue 3 per row and Firefox's pinned area scrolls;
+ * Past 9 tiles continue 3 per row and Firefox's pinned area scrolls;
  * pinning is never refused.
  *
  * Motion: the grid is laid out at the rail's FULL expanded width as soon as
@@ -45,17 +48,23 @@
   }
 }
 
-:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"]::part(items-wrapper) {
+:root[aequera-rail] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"]::part(items-wrapper) {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   grid-auto-rows: var(--aequera-essential-height);
-  gap: var(--aequera-essential-gap);
+  /* Even spacing on both axes: each tile carries Firefox's pinned-tab inline
+   * margin, so the visible gap between tiles is the grid gap plus twice that
+   * margin; rows use the same visible gap, and the block padding matches. */
+  column-gap: var(--aequera-essential-gap);
+  row-gap: calc(
+    var(--aequera-essential-gap) + 2 * var(--tab-pinned-margin-inline-expanded, 0px)
+  );
   box-sizing: border-box;
   width: var(--aequera-rail-expanded-width, 220px);
-  padding: 6px var(--aequera-essential-inset) 2px;
+  padding: var(--aequera-essential-inset);
 }
 
-:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
+:root[aequera-rail] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
   /* Tiles fill their grid cell; Firefox's per-tab min/max widths would
    * push a row wider than the grid. */
   min-width: 0;
@@ -67,21 +76,24 @@
 }
 
 /* Row shapes (see the table above): 3 per row by default. */
-:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
+:root[aequera-rail] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
   grid-column: span 2;
 }
-:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] {
-  &[aequera-essentials="1"] .tabbrowser-tab {
+:root[aequera-rail] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] {
+  /* exactly 1: one full-width tile */
+  &:has(> .tabbrowser-tab:nth-child(1 of .tabbrowser-tab):nth-last-child(1 of .tabbrowser-tab)) .tabbrowser-tab {
     grid-column: span 6;
   }
-  &:is([aequera-essentials="2"], [aequera-essentials="4"]) .tabbrowser-tab,
-  &:is([aequera-essentials="5"], [aequera-essentials="7"]) .tabbrowser-tab:nth-child(n + 4 of .tabbrowser-tab),
-  &[aequera-essentials="8"] .tabbrowser-tab:nth-child(n + 7 of .tabbrowser-tab) {
+  /* exactly 2 and 4: rows of two; 5 and 7: after the first row of three;
+   * 8: after two rows of three */
+  &:is(:has(> .tabbrowser-tab:nth-child(2 of .tabbrowser-tab):nth-last-child(1 of .tabbrowser-tab)), :has(> .tabbrowser-tab:nth-child(4 of .tabbrowser-tab):nth-last-child(1 of .tabbrowser-tab))) .tabbrowser-tab,
+  &:is(:has(> .tabbrowser-tab:nth-child(5 of .tabbrowser-tab):nth-last-child(1 of .tabbrowser-tab)), :has(> .tabbrowser-tab:nth-child(7 of .tabbrowser-tab):nth-last-child(1 of .tabbrowser-tab))) .tabbrowser-tab:nth-child(n + 4 of .tabbrowser-tab),
+  &:has(> .tabbrowser-tab:nth-child(8 of .tabbrowser-tab):nth-last-child(1 of .tabbrowser-tab)) .tabbrowser-tab:nth-child(n + 7 of .tabbrowser-tab) {
     grid-column: span 3;
   }
 }
 
-:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tab-background {
+:root[aequera-rail] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tab-background {
   /* Inline margin stays Firefox's (tile spacing); block margin goes so the
    * tile fills its 46px row. */
   margin-block: 0;
@@ -89,12 +101,12 @@
   border-radius: var(--border-radius-medium);
 }
 
-:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tab-content {
+:root[aequera-rail] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tab-content {
   justify-content: center;
   padding-inline: 0;
 }
 
-:root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] :is(.tab-icon-image, .tab-icon-overlay) {
+:root[aequera-rail] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] :is(.tab-icon-image, .tab-icon-overlay) {
   margin-inline-end: 0;
 }
 
@@ -103,7 +115,7 @@
 }
 
 @media not (forced-colors) {
-  :root[aequera-rail-expanded] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
+  :root[aequera-rail] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
     & > .tab-stack > .tab-background {
       border: none;
       background: light-dark(

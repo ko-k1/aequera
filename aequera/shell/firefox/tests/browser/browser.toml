@@ -16,3 +16,5 @@ prefs = [
 ["browser_aequera_default_layout.js"]
 
 ["browser_aequera_essentials.js"]
+
+["browser_aequera_tabs.js"]

@@ -1,13 +1,16 @@
 # Aequera shell chrome resources -> chrome://browser/content/aequera/
 
 browser.jar:
-    content/browser/aequera/aequera-shell.css    (aequera-shell.css)
-    content/browser/aequera/aequera-shell.js     (aequera-shell.js)
+    content/browser/aequera/aequera-shell.css                  (aequera-shell.css)
+    content/browser/aequera/aequera-shell.js                   (aequera-shell.js)
+    content/browser/aequera/aequera-main.js                    (aequera-main.js)
+    content/browser/aequera/aequera-frame.js                   (aequera-frame.js)
     content/browser/aequera/rail/aequera-rail.js               (rail/aequera-rail.js)
     content/browser/aequera/rail/aequera-rail.css              (rail/aequera-rail.css)
     content/browser/aequera/rail/aequera-essentials.css        (rail/aequera-essentials.css)
-    content/browser/aequera/rail/aequera-essentials.js         (rail/aequera-essentials.js)
-    content/browser/aequera/workspaces/workspace-model.mjs     (workspaces/workspace-model.mjs)
+    content/browser/aequera/rail/aequera-tabs.js               (rail/aequera-tabs.js)
+    content/browser/aequera/rail/aequera-tabs.css              (rail/aequera-tabs.css)
+    content/browser/aequera/workspaces/workspace-model.js      (workspaces/workspace-model.js)
     content/browser/aequera/workspaces/aequera-workspaces.js   (workspaces/aequera-workspaces.js)
     content/browser/aequera/workspaces/aequera-workspaces.css  (workspaces/aequera-workspaces.css)
     content/browser/aequera/bookmarks/aequera-bookmarks.js     (bookmarks/aequera-bookmarks.js)

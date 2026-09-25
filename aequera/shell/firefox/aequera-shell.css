@@ -14,11 +14,12 @@
 
 @import url("chrome://browser/content/aequera/rail/aequera-rail.css");
 @import url("chrome://browser/content/aequera/rail/aequera-essentials.css");
+@import url("chrome://browser/content/aequera/rail/aequera-tabs.css");
 @import url("chrome://browser/content/aequera/workspaces/aequera-workspaces.css");
 @import url("chrome://browser/content/aequera/bookmarks/aequera-bookmarks.css");
 
 /* The page card yields on two edges, each a plain transition on the shared
- * motion tokens (--aequera-motion-*, set from prefs by aequera-shell.js), so
+ * motion tokens (--aequera-motion-*, set from prefs by aequera-frame.js), so
  * it moves in step with the chrome that grows over it:
  *   left: the rail's extra width while it is widened (not when pinned: a
  *         pinned rail takes layout space instead);

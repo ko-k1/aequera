@@ -5,8 +5,8 @@
 "use strict";
 
 // Aequera workspaces: window controller + dock. Loaded into each browser
-// window by aequera-shell.js. Decisions come from the pure model
-// (workspace-model.mjs); this file only translates plans into gBrowser calls,
+// window by aequera-main.js. Decisions come from the pure model
+// (workspace-model.js); this file only translates plans into gBrowser calls,
 // persists with SessionStore, and renders the dock.
 //
 // Persistence: window value "aequera-workspaces" (JSON state), tab value
@@ -14,17 +14,20 @@
 // both, plus each tab's native hidden flag.
 
 var AequeraWorkspaces = (() => {
-  const MODEL_URL = "chrome://browser/content/aequera/workspaces/workspace-model.mjs";
   const WINDOW_KEY = "aequera-workspaces";
   const TAB_KEY = "aequera-workspace";
   const HTML_NS = "http://www.w3.org/1999/xhtml";
 
+  // Loaded just before this script by aequera-main.js.
   const { WORKSPACE_SOURCE, normalizeState, createWorkspace, withActive, membershipOf, planSwitch } =
-    ChromeUtils.importESModule(MODEL_URL, { global: "current" });
+    AequeraWorkspaceModel;
 
   const controller = {
     state: null,
     dock: null,
+    /** workspace id -> its dock button, reused across renders. */
+    buttons: new Map(),
+    newButton: null,
     /** workspace id -> WeakRef(tab) last selected there (this session). */
     lastSelected: new Map(),
     /** Resolves once state is loaded and the dock is mounted. */
@@ -187,10 +190,49 @@ var AequeraWorkspaces = (() => {
           this.newWorkspace();
         }
       });
+      const add = this.createButton("aequera-ws-name");
+      add.classList.add("aequera-ws-new");
+      add.dataset.action = "new-workspace";
+      add.setAttribute("aria-label", "New workspace");
+      add.title = "New workspace";
+      add.querySelector(".aequera-ws-dot").textContent = "+";
+      add.querySelector(".aequera-ws-name").textContent = "New workspace";
       main.append(dock);
       this.dock = dock;
+      this.newButton = add;
     },
 
+    /** A dock row: dot, then text spans of the given classes. */
+    createButton(...textClasses) {
+      const button = document.createElementNS(HTML_NS, "button");
+      button.className = "aequera-ws";
+      const dot = document.createElementNS(HTML_NS, "span");
+      dot.className = "aequera-ws-dot";
+      button.append(dot);
+      for (const className of textClasses) {
+        const span = document.createElementNS(HTML_NS, "span");
+        span.className = className;
+        button.append(span);
+      }
+      return button;
+    },
+
+    buttonFor(workspace) {
+      let button = this.buttons.get(workspace.id);
+      if (!button) {
+        button = this.createButton("aequera-ws-name", "aequera-ws-count");
+        button.dataset.ws = workspace.id;
+        button.setAttribute("role", "tab");
+        this.buttons.set(workspace.id, button);
+      }
+      return button;
+    },
+
+    /**
+     * Bring the dock in line with the state. Buttons are updated in place and
+     * only moved when out of order, never re-created: a focused button (a
+     * keyboard switch) keeps focus.
+     */
     render() {
       if (!this.dock) {
         return;
@@ -202,39 +244,33 @@ var AequeraWorkspaces = (() => {
           counts.set(id, counts.get(id) + 1);
         }
       }
-      const buttons = this.state.workspaces.map(w => {
+      const ids = new Set(this.state.workspaces.map(w => w.id));
+      for (const [id, button] of this.buttons) {
+        if (!ids.has(id)) {
+          button.remove();
+          this.buttons.delete(id);
+        }
+      }
+      const setText = (node, text) => {
+        if (node.textContent !== text) {
+          node.textContent = text;
+        }
+      };
+      const rows = this.state.workspaces.map(w => {
+        const button = this.buttonFor(w);
         const count = counts.get(w.id);
-        const button = document.createElementNS(HTML_NS, "button");
-        button.className = "aequera-ws";
-        button.dataset.ws = w.id;
-        button.setAttribute("role", "tab");
         button.setAttribute("aria-selected", String(w.id === this.state.active));
         button.setAttribute("aria-label", `${w.name}, ${count} tabs`);
         button.title = w.name;
-        const dot = document.createElementNS(HTML_NS, "span");
-        dot.className = "aequera-ws-dot";
-        const name = document.createElementNS(HTML_NS, "span");
-        name.className = "aequera-ws-name";
-        name.textContent = w.name;
-        const badge = document.createElementNS(HTML_NS, "span");
-        badge.className = "aequera-ws-count";
-        badge.textContent = String(count);
-        button.append(dot, name, badge);
+        setText(button.querySelector(".aequera-ws-name"), w.name);
+        setText(button.querySelector(".aequera-ws-count"), String(count));
         return button;
       });
-      const add = document.createElementNS(HTML_NS, "button");
-      add.className = "aequera-ws aequera-ws-new";
-      add.dataset.action = "new-workspace";
-      add.setAttribute("aria-label", "New workspace");
-      add.title = "New workspace";
-      const plus = document.createElementNS(HTML_NS, "span");
-      plus.className = "aequera-ws-dot";
-      plus.textContent = "+";
-      const label = document.createElementNS(HTML_NS, "span");
-      label.className = "aequera-ws-name";
-      label.textContent = "New workspace";
-      add.append(plus, label);
-      this.dock.replaceChildren(...buttons, add);
+      [...rows, this.newButton].forEach((node, index) => {
+        if (this.dock.children[index] !== node) {
+          this.dock.insertBefore(node, this.dock.children[index] ?? null);
+        }
+      });
     },
   };
 

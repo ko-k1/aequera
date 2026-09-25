@@ -39,7 +39,11 @@ async function assertShellSane(label) {
   // With the sidebar hidden ("hide-sidebar"), Firefox hides the vertical tab
   // list itself by design; tabs must be laid out whenever the rail is shown.
   if (!SidebarController.sidebarContainer.hidden) {
-    const tab = gBrowser.selectedTab.getBoundingClientRect();
+    // Unpinned tabs are Aequera rows while the rail is active.
+    const element = document.documentElement.hasAttribute("aequera-rail")
+      ? window.AequeraTabs.rows.get(gBrowser.selectedTab)
+      : gBrowser.selectedTab;
+    const tab = element.getBoundingClientRect();
     Assert.greater(tab.width * tab.height, 0, `${label}: the selected tab is laid out`);
   }
   if (ROOT.hasAttribute("aequera-bookmarks-peek")) {
@@ -57,6 +61,19 @@ async function assertShellSane(label) {
 add_setup(async () => {
   await window.AequeraWorkspaces.ready;
   await assertShellSane("start");
+  // Turning vertical tabs off and on rewrites the saved horizontal tab strip
+  // layout (already saved at startup: Aequera starts with vertical tabs).
+  const HORIZONTAL_TABSTRIP = "browser.uiCustomization.horizontalTabstrip";
+  const saved = Services.prefs.prefHasUserValue(HORIZONTAL_TABSTRIP)
+    ? Services.prefs.getStringPref(HORIZONTAL_TABSTRIP)
+    : null;
+  registerCleanupFunction(() => {
+    if (saved === null) {
+      Services.prefs.clearUserPref(HORIZONTAL_TABSTRIP);
+    } else {
+      Services.prefs.setStringPref(HORIZONTAL_TABSTRIP, saved);
+    }
+  });
 });
 
 add_task(async function test_vertical_tabs_off_and_on() {

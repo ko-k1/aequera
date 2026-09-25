@@ -12,8 +12,13 @@ const container = () => document.getElementById("sidebar-container");
 const railBox = () => container().querySelector(":scope > sidebar-main");
 const tabbox = () => document.getElementById("tabbrowser-tabbox");
 const isExpanded = () => ROOT.hasAttribute("aequera-rail-expanded");
+// Content (tab rows, essentials, dock) collapses after the width transition.
+const isFullyCollapsed = () =>
+  !ROOT.hasAttribute("aequera-rail-expanded") && !gBrowser.tabContainer.hasAttribute("expanded");
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const railWidth = () => railBox().getBoundingClientRect().width;
+// Unpinned tabs render as Aequera rows (rail/aequera-tabs.js).
+const rowFor = tab => window.AequeraTabs.rows.get(tab);
 
 function pageClipLeft() {
   const clip = getComputedStyle(tabbox()).clipPath;
@@ -34,7 +39,7 @@ async function collapse() {
     gBrowser.selectedBrowser.focus();
   }
   leaveRail();
-  await TestUtils.waitForCondition(() => !isExpanded(), "rail collapses");
+  await TestUtils.waitForCondition(isFullyCollapsed, "rail collapses");
 }
 
 add_setup(async () => {
@@ -64,8 +69,8 @@ add_task(async function test_rail_hosts_firefox_vertical_tabs_without_revamp() {
   isnot(getComputedStyle(container()).display, "none", "the rail is shown");
   ok(container().contains(gBrowser.tabContainer), "Firefox's tab strip lives in the rail");
   is(gBrowser.tabContainer.getAttribute("orient"), "vertical", "tab strip is vertical");
-  const tab = gBrowser.selectedTab.getBoundingClientRect();
-  Assert.greater(tab.width * tab.height, 0, "tabs are laid out in the rail");
+  const row = rowFor(gBrowser.selectedTab).getBoundingClientRect();
+  Assert.greater(row.width * row.height, 0, "tab rows are laid out in the rail");
 });
 
 add_task(async function test_hover_widens_over_the_page_without_reflow() {
@@ -98,7 +103,7 @@ add_task(async function test_linger_and_reentry() {
   leaveRail();
   await wait(60);
   ok(isExpanded(), "still expanded during the linger");
-  await TestUtils.waitForCondition(() => !isExpanded(), "collapses after the linger");
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapses after the linger");
   Assert.greaterOrEqual(performance.now() - leftAt, 130, "waited for the close delay");
 
   hoverRail();
@@ -145,7 +150,7 @@ add_task(async function test_address_bar_focus_expands_and_holds() {
   await wait(300);
   ok(isExpanded(), "and holds while it is focused");
   gBrowser.selectedBrowser.focus();
-  await TestUtils.waitForCondition(() => !isExpanded(), "collapses after blur");
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapses after blur");
 });
 
 add_task(async function test_context_menu_from_the_rail_holds_it_open() {
@@ -153,7 +158,7 @@ add_task(async function test_context_menu_from_the_rail_holds_it_open() {
   await TestUtils.waitForCondition(isExpanded, "expanded");
   const menu = document.getElementById("tabContextMenu");
   const shown = BrowserTestUtils.waitForPopupEvent(menu, "shown");
-  EventUtils.synthesizeMouseAtCenter(gBrowser.selectedTab, { type: "contextmenu", button: 2 });
+  EventUtils.synthesizeMouseAtCenter(rowFor(gBrowser.selectedTab), { type: "contextmenu", button: 2 });
   await shown;
   leaveRail();
   await wait(300);
@@ -164,7 +169,7 @@ add_task(async function test_context_menu_from_the_rail_holds_it_open() {
   // While the menu was open it received the pointer; after it closes, the
   // next move away from the rail is what lets it collapse.
   leaveRail();
-  await TestUtils.waitForCondition(() => !isExpanded(), "collapses once the menu closes");
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapses once the menu closes");
 });
 
 add_task(async function test_pinned_takes_layout_space() {
@@ -177,7 +182,7 @@ add_task(async function test_pinned_takes_layout_space() {
   );
   await TestUtils.waitForCondition(() => pageClipLeft() < 1, "no clip: nothing overlays the page");
   await SpecialPowers.popPrefEnv();
-  await TestUtils.waitForCondition(() => !isExpanded(), "unpinned collapses");
+  await TestUtils.waitForCondition(isFullyCollapsed, "unpinned collapses");
 });
 
 add_task(async function test_structural_prefs_are_locked() {
@@ -202,4 +207,41 @@ add_task(async function test_structural_prefs_are_locked() {
   ok(ROOT.hasAttribute("aequera-rail"), "the rail is untouched");
   Services.prefs.clearUserPref("sidebar.revamp");
   Services.prefs.clearUserPref("browser.tabs.parkedHiddenSources");
+});
+
+add_task(async function test_content_collapses_after_the_width_transition() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["aequera.motion.durationMs", 600],
+      ["aequera.hover.closeDelayMs", 0],
+    ],
+  });
+  const tab = gBrowser.selectedTab;
+  hoverRail();
+  await TestUtils.waitForCondition(isExpanded, "expanded");
+  await TestUtils.waitForCondition(() => Math.abs(railWidth() - 220) < 1, "fully widened");
+  leaveRail();
+  await TestUtils.waitForCondition(() => !isExpanded(), "collapse started");
+  ok(gBrowser.tabContainer.hasAttribute("expanded"), "tab rows stay wide while the rail narrows");
+  is(
+    Number(getComputedStyle(rowFor(tab).querySelector(".aequera-tab-title")).opacity),
+    1,
+    "titles are clipped away by the narrowing rail, not snapped off"
+  );
+  await TestUtils.waitForCondition(isFullyCollapsed, "content collapses once the width is done");
+  Assert.less(railWidth(), 60, "and by then the rail is narrow");
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function test_rail_is_the_same_material_as_the_top_bar() {
+  const toolbox = getComputedStyle(gNavToolbox).backgroundColor;
+  for (const [label, pinned] of [["collapsed", false], ["expanded", true]]) {
+    await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.pinned", pinned]] });
+    await TestUtils.waitForCondition(() => isExpanded() == pinned, label);
+    for (const el of [container(), railBox(), document.getElementById("vertical-tabs")]) {
+      is(getComputedStyle(el).backgroundColor, toolbox, `${label}: ${el.id || el.localName} paints like the top bar`);
+    }
+    await SpecialPowers.popPrefEnv();
+  }
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
 });

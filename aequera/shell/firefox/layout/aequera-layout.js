@@ -5,7 +5,7 @@
 "use strict";
 
 // Aequera layout migrations. Loaded into each browser window by
-// aequera-shell.js; each step runs once per profile.
+// aequera-main.js; each step runs once per profile.
 //
 // New Aequera defaults (browser.uiCustomization.defaultExclusions) only shape
 // new profiles and Restore Defaults; a profile that already saved a layout
@@ -14,15 +14,29 @@
 // and records that it ran, so a widget the user adds back afterwards stays.
 var AequeraLayout = (() => {
   const VERSION_PREF = "aequera.layout.migrationVersion";
+  const EXCLUSIONS_PREF = "browser.uiCustomization.defaultExclusions";
+
+  /** Widgets the current default layout leaves out. A migration only ever
+   * removes these: if the exclusion is dropped, the migration is a no-op. */
+  const excluded = () =>
+    new Set(
+      Services.prefs
+        .getStringPref(EXCLUSIONS_PREF, "")
+        .split(",")
+        .map(id => id.trim())
+        .filter(Boolean)
+    );
+
+  const removeIfExcluded = id => {
+    if (excluded().has(id) && CustomizableUI.getPlacementOfWidget(id)) {
+      CustomizableUI.removeWidgetFromArea(id);
+    }
+  };
 
   /** Ordered steps; the array index + 1 is the version they bring a profile to. */
   const STEPS = [
     // 1: no "List all tabs" button next to the Aequera tab rail.
-    () => {
-      if (CustomizableUI.getPlacementOfWidget("alltabs-button")) {
-        CustomizableUI.removeWidgetFromArea("alltabs-button");
-      }
-    },
+    () => removeIfExcluded("alltabs-button"),
   ];
 
   const layout = {

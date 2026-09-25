@@ -12,6 +12,9 @@ const container = () => document.getElementById("sidebar-container");
 const pinnedTabs = () => gBrowser.tabs.filter(t => t.pinned);
 const rect = tab => tab.querySelector(".tab-background").getBoundingClientRect();
 const round = n => Math.round(n);
+// Content (tiles) collapses after the width transition, not with it.
+const isFullyCollapsed = () =>
+  !ROOT.hasAttribute("aequera-rail-expanded") && !gBrowser.tabContainer.hasAttribute("expanded");
 
 let opened = [];
 
@@ -61,7 +64,7 @@ add_setup(async () => {
 });
 
 add_task(async function test_collapsed_is_one_column() {
-  await TestUtils.waitForCondition(() => !ROOT.hasAttribute("aequera-rail-expanded"), "collapsed");
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
   const lefts = new Set(pinnedTabs().map(t => round(rect(t).left)));
   is(lefts.size, 1, "collapsed essentials share one column");
   const tops = pinnedTabs().map(t => rect(t).top);
@@ -86,7 +89,11 @@ add_task(async function test_expanded_is_a_grid_of_uniform_pills() {
   );
   is(round(firstRow[1].left - firstRow[0].right), round(4 + 2 * margin), "tile spacing");
   Assert.greater(round(tiles[3].top), round(tiles[0].top), "the fourth wraps to the next row");
-  is(round(tiles[3].top - tiles[0].bottom), 4, "4px gap between rows");
+  is(
+    round(tiles[3].top - tiles[0].bottom),
+    round(firstRow[1].left - firstRow[0].right),
+    "rows are spaced like tiles"
+  );
   is(round(tiles[0].height), 46, "46px tiles");
   for (const tab of pinnedTabs()) {
     const tile = rect(tab);
@@ -105,7 +112,7 @@ add_task(async function test_expanded_is_a_grid_of_uniform_pills() {
     );
   }
   await SpecialPowers.popPrefEnv();
-  await TestUtils.waitForCondition(() => !ROOT.hasAttribute("aequera-rail-expanded"), "collapsed");
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
 });
 
 add_task(async function test_rows_are_balanced_for_every_count() {
@@ -123,17 +130,11 @@ add_task(async function test_rows_are_balanced_for_every_count() {
   };
   await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.pinned", true]] });
   await TestUtils.waitForCondition(() => ROOT.hasAttribute("aequera-rail-expanded"), "expanded");
-  const container = document.getElementById("pinned-tabs-container");
   for (const [count, shape] of Object.entries(expected)) {
     setPinnedCount(Number(count));
     await TestUtils.waitForCondition(
       () => JSON.stringify(rowShape()) == JSON.stringify(shape),
       `${count} essentials lay out as ${shape.join(" ")}`
-    );
-    is(
-      container.getAttribute("aequera-essentials"),
-      Number(count) > 9 ? "many" : count,
-      `count attribute for ${count}`
     );
     if (Number(count) <= 9) {
       // Balanced: every row spans the grid edge to edge.
@@ -152,7 +153,47 @@ add_task(async function test_rows_are_balanced_for_every_count() {
   }
   setPinnedCount(5);
   await SpecialPowers.popPrefEnv();
-  await TestUtils.waitForCondition(() => !ROOT.hasAttribute("aequera-rail-expanded"), "collapsed");
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
+});
+
+add_task(async function test_tabs_created_pinned_get_the_layout_too() {
+  // Session restore creates tabs already pinned; the layout must not depend
+  // on pin events, only on what is in the pinned container.
+  setPinnedCount(0);
+  const created = [0, 1, 2, 3].map(i =>
+    gBrowser.addTrustedTab(`data:text/html,restored ${i}`, { pinned: true })
+  );
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.pinned", true]] });
+  await TestUtils.waitForCondition(
+    () => JSON.stringify(rowShape()) == JSON.stringify([2, 2]),
+    "four tabs created pinned lay out as 2 2"
+  );
+  for (const tab of created) {
+    gBrowser.removeTab(tab, { animate: false, skipPermitUnload: true });
+  }
+  setPinnedCount(5);
+  await SpecialPowers.popPrefEnv();
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
+});
+
+add_task(async function test_spacing_is_even_on_both_axes() {
+  setPinnedCount(6);
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.pinned", true]] });
+  await TestUtils.waitForCondition(
+    () => JSON.stringify(rowShape()) == JSON.stringify([3, 3]),
+    "3 3"
+  );
+  const tiles = pinnedTabs().map(rect);
+  const columnGap = tiles[1].left - tiles[0].right;
+  const rowGap = tiles[3].top - tiles[0].bottom;
+  Assert.less(Math.abs(rowGap - columnGap), 1, `row gap ${rowGap} equals the gap between tiles ${columnGap}`);
+  const box = document.getElementById("pinned-tabs-container").getBoundingClientRect();
+  const topInset = tiles[0].top - box.top;
+  const bottomInset = box.bottom - tiles[5].bottom;
+  Assert.less(Math.abs(topInset - bottomInset), 1, `top inset ${topInset} equals bottom inset ${bottomInset}`);
+  setPinnedCount(5);
+  await SpecialPowers.popPrefEnv();
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
 });
 
 add_task(async function test_grid_does_not_reflow_while_the_rail_widens() {
@@ -186,7 +227,7 @@ add_task(async function test_grid_does_not_reflow_while_the_rail_widens() {
   EventUtils.synthesizeMouseAtCenter(document.getElementById("tabbrowser-tabbox"), {
     type: "mousemove",
   });
-  await TestUtils.waitForCondition(() => !ROOT.hasAttribute("aequera-rail-expanded"), "collapsed");
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
   await SpecialPowers.popPrefEnv();
 });
 
