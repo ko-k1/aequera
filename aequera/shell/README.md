@@ -69,7 +69,11 @@ pref can unlock them.
 `browser.uiCustomization.defaultExclusions` (empty in Firefox). Aequera sets
 `alltabs-button`: no "List all tabs" button in the default layout (new
 profiles, Restore Defaults); it stays in the customize palette, and saved
-layouts are never changed. Test: `browser_aequera_default_layout.js`.
+layouts are only changed once: `layout/aequera-layout.js` runs versioned,
+one-time migrations (`aequera.layout.migrationVersion`) that bring profiles
+saved before a new default to it, like Firefox's own layout migrations; a
+widget the user adds back afterwards stays. Test:
+`browser_aequera_default_layout.js`.
 
 ## Workspaces (`workspaces/`)
 

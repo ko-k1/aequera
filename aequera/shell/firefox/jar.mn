@@ -10,3 +10,4 @@ browser.jar:
     content/browser/aequera/workspaces/aequera-workspaces.css  (workspaces/aequera-workspaces.css)
     content/browser/aequera/bookmarks/aequera-bookmarks.js     (bookmarks/aequera-bookmarks.js)
     content/browser/aequera/bookmarks/aequera-bookmarks.css    (bookmarks/aequera-bookmarks.css)
+    content/browser/aequera/layout/aequera-layout.js           (layout/aequera-layout.js)
