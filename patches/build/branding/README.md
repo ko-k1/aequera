@@ -3,7 +3,9 @@
 First deliberate Firefox divergence (Phase 0, Workstream 4). Classification
 per `docs/SOURCE_LAYOUT.md`: application identity cannot be expressed through
 supported runtime preferences — it is build-time product identity — so the
-mechanism is a narrow `patches/build` series, applied after W3's pipeline.
+mechanism is build configuration and an Aequera branding directory, plus a
+narrow `patches/build` series for the two values configuration cannot set
+(see Implementation).
 Runtime values live in `configs/defaults/branding.toml` (validated from W5).
 
 ## Product identity
@@ -37,18 +39,36 @@ Rules:
 3. Telemetry client identity stays disabled with the product (see W5); branding
    must never re-enable attribution, studies, or normandy-style remote content.
 
-## Future patch design (queued behind the first real fetch)
+## Implementation
 
-```text
-patches/build/branding/
-├── README.md                  # this file
-├── 0001-product-identity.patch      # app name, vendor, remoting, D-Bus
-├── 0002-profile-layout.patch        # per-OS profile roots above
-└── 0003-branding-assets.patch       # icons, about dialog strings
-```
+Firefox exposes almost all of this as supported build configuration, so
+most of the rebrand is configuration plus Aequera-owned source, and the
+patch series is one small patch:
 
-Each patch gets the standard hygiene: rationale, minimal scope, linked test
-(profile-dir assertion per OS in a future compatibility test), and a named
-upstream conflict surface (usually `toolkit/mozapps` + `browser/branding`).
-Nothing here is validated against the tree yet — `patch check` will prove
-each file the moment the series exists, which is exactly what W3 built.
+| Piece | Layer | Where |
+|---|---|---|
+| Branding directory: name strings (`brand.ftl`, `brand.properties`), logo and icons, about dialog, Windows tiles and installer art, branding prefs (no Mozilla landing or update pages) | Aequera source (overlay) | `aequera/design/branding` -> `browser/branding/aequera`; rasters from `tools/branding/render_brand_assets.py` |
+| `--with-branding`, `--with-app-basename=Aequera` (Name), `MOZ_APP_REMOTINGNAME=aequera` | configuration | `tools/build/mozconfig.branding` (sourced by every Aequera mozconfig) |
+| No Mozilla update or crash-report server | launcher (artifact) / configuration (compiled) | the artifact binary has both compiled in and will not start without their front end, so `aequera_app_ini.py` drops `[AppUpdate]` and `[Crash Reporter]` from the launch ini; a compiled build uses `--disable-updater --disable-crashreporter` |
+| `MOZ_APP_VENDOR=Aequera`, `MOZ_APP_PROFILE=Aequera` | patch | `0001-product-identity.patch`: project flags only `browser/moz.configure` may set (a mozconfig is refused) |
+| `MOZ_APP_ID` | unchanged | Firefox's ID keeps WebExtension compatibility |
+
+Result, checked on the artifact build: `dist/bin/application.ini` carries
+Vendor/Name `Aequera`, RemotingName `aequera`, Profile `Aequera`, and the
+launcher copy has no crash-report or update server; started through `tools/build/aequera.cmd` or
+`aequera-run.sh`, the window, brand strings, and about dialog read Aequera
+and profiles live in `%APPDATA%\Aequera\Profiles`.
+
+## Not yet covered
+
+- The prebuilt `firefox.exe` of an artifact build keeps Mozilla's
+  compiled-in identity, file name, and icon; the launchers pass the Aequera
+  `application.ini` with `-app`. A compiled build (not set up yet) takes
+  everything above from configuration and also needs
+  `--with-app-name=aequera` (binary and install names).
+- Compiled-only identity (registry keys, taskbar AUMID, launcher, default
+  browser agent) follows `MOZ_APP_VENDOR`/`MOZ_APP_BASENAME` but is only
+  exercised by a compiled build and installer.
+- macOS assets (`firefox.icns`, `Assets.car`, `dsstore`, disk image art)
+  and `MOZ_MACBUNDLE_ID`'s `org.mozilla.` prefix; the Linux D-Bus name
+  (`org.aequera.browser`). Neither platform is built yet.

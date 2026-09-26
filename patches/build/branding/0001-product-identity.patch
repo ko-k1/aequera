@@ -1,0 +1,41 @@
+Subject: [PATCH] build: Aequera vendor and profile identity
+
+Why Firefox source must change:
+  application.ini's Vendor and Profile decide where profiles live
+  (%APPDATA%\<Vendor>\<Profile>) and, in compiled builds, the vendor half
+  of the registry keys, launcher, background tasks, and default-browser
+  agent identity. Firefox declares both as project flags: only the
+  project's moz.configure may imply them; a mozconfig is refused. Left as
+  "Mozilla", an Aequera build shares a vendor tree with Firefox.
+
+What it changes:
+  - MOZ_APP_VENDOR "Mozilla" -> "Aequera".
+  - MOZ_APP_PROFILE "Aequera" (profile root %APPDATA%\Aequera\Profiles).
+  - MOZ_APP_ID stays Firefox's, keeping WebExtension compatibility.
+  Everything else of the product identity is supported configuration:
+  tools/build/mozconfig.branding (branding directory, basename, remoting
+  name).
+
+Depends on: nothing.
+Validation: generated dist/bin/application.ini carries Vendor=Aequera,
+  Profile=Aequera; the Aequera shell gate and Firefox's sidebar, tab, and
+  bookmarks suites.
+Upstream risk: low; two literal values next to MOZ_APP_ID.
+
+diff --git a/browser/moz.configure b/browser/moz.configure
+index 446e8637d053..aebd2fbb38bc 100644
+--- a/browser/moz.configure
++++ b/browser/moz.configure
+@@ -11,7 +11,11 @@ imply_option("MOZ_NORMANDY", True)
+ imply_option("MOZ_PROFILE_MIGRATOR", True)
+ 
+ 
+-imply_option("MOZ_APP_VENDOR", "Mozilla")
++# Aequera: application.ini Vendor and Profile, i.e. the profile root
++# (%APPDATA%\Aequera\Profiles) and the vendor half of the Windows registry
++# and launcher identity. Only the project may imply these (not a mozconfig).
++imply_option("MOZ_APP_VENDOR", "Aequera")
++imply_option("MOZ_APP_PROFILE", "Aequera")
+ imply_option("MOZ_APP_ID", "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}")
+ # Include the DevTools client, not just the server (which is the default)
+ imply_option("MOZ_DEVTOOLS", "all")

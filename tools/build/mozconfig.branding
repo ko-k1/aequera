@@ -1,0 +1,27 @@
+# Aequera product identity, shared by every Aequera mozconfig (sourced).
+#
+# All of this is Firefox build configuration, not a patch: branding directory
+# (overlay aequera/design/branding), application.ini identity, and the
+# Mozilla services an Aequera build must not talk to. Values mirror
+# configs/defaults/branding.toml.
+
+ac_add_options --with-branding=browser/branding/aequera
+
+# application.ini [App]: Name is the registry/window identity, RemotingName
+# the single-instance channel. Vendor and Profile (the profile root,
+# %APPDATA%\Aequera\Profiles) can only be set by the project itself:
+# patches/build/branding/0001-product-identity.patch. None is shared with
+# Firefox, so the two never hand off to each other or share a profile.
+ac_add_options --with-app-basename=Aequera
+ac_add_options MOZ_APP_REMOTINGNAME=aequera
+# MOZ_APP_NAME (binary and install names) defaults to the lowercased
+# basename, "aequera"; mozconfig.artifact pins "firefox", the name of the
+# prebuilt binary it runs.
+
+# Mozilla's update and crash-report servers: an Aequera build must never
+# update itself to Firefox or send crash reports to Mozilla. Both are
+# compiled into the prebuilt artifact binary, which refuses to start without
+# their front-end files, so they cannot be configured out of an artifact
+# build; the launchers' application.ini drops both servers instead
+# (tools/build/aequera_app_ini.py). A compiled build adds
+# --disable-updater and --disable-crashreporter.

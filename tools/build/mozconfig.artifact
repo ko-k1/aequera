@@ -13,3 +13,9 @@ ac_add_options --enable-artifact-builds
 
 # Keep build output inside the generated worktree, away from Aequera source.
 mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-aequera-artifact
+
+# Product identity and branding (shared with every Aequera mozconfig).
+. "$topsrcdir/../../tools/build/mozconfig.branding"
+# The binary is Mozilla's prebuilt firefox.exe: keep the app name that names
+# it (the Aequera basename would otherwise make it "aequera").
+ac_add_options --with-app-name=firefox

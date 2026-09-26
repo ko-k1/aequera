@@ -35,6 +35,10 @@ patches:
   # the defaults; empty by default).
   - id: customization-defaults
     series: browser/customization-defaults
+  # Product identity: Aequera vendor and profile root (project flags only
+  # the project's moz.configure may set; the rest is mozconfig.branding).
+  - id: branding
+    series: build/branding
 
 overlays:
   # Stage 1 shell: frame-model stylesheet, launcher-width glue, default
@@ -43,3 +47,11 @@ overlays:
   - id: shell-chrome
     source: aequera/shell/firefox
     dest: browser/aequera
+  # Aequera branding: product name, logo and icons, branding prefs; selected
+  # by --with-branding in tools/build/mozconfig.branding, together with the
+  # identity options (vendor, profile root, remoting name). Configuration +
+  # Aequera source, no Firefox patch: Firefox exposes all of it as supported
+  # build options (patches/build/branding/README.md).
+  - id: branding-assets
+    source: aequera/design/branding
+    dest: browser/branding/aequera
