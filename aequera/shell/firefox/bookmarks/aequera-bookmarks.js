@@ -12,9 +12,12 @@
 // leaves the page flow: it is a drawer under the top bar that
 //   - opens when the pointer rests on the top bar (hover-intent delay) and
 //     immediately when the address bar is focused;
-//   - stays open while the address bar is focused or keyboard focus
+//   - stays open while the pointer is on the top bar or the drawer (its whole
+//     area, also while the wipe is still revealing it: aequera-bookmarks.css),
+//     while a menu or panel opened from them is showing (a bookmark's context
+//     menu, a folder), and while the address bar is focused or keyboard focus
 //     (:focus-visible) is in the top bar; a mouse-clicked button never holds
-//     it open;
+//     it open, and a menu never opens it;
 //   - closes after the linger delay once none of that holds.
 // The page card clips back from the top while it is open (AequeraFrame), so
 // the drawer sits on the frame material and the page never reflows.
@@ -32,6 +35,8 @@ var AequeraBookmarks = (() => {
     toolbox: null,
     hovered: false,
     open: false,
+    /** Menus and panels opened from the top bar or drawer while it was open. */
+    openPopups: new Set(),
     height: 0,
     timer: 0,
     customizing: false,
@@ -55,7 +60,15 @@ var AequeraBookmarks = (() => {
     },
 
     wantsOpen() {
-      return this.active && (this.hovered || this.focusIntent());
+      return this.active && (this.hovered || this.openPopups.size > 0 || this.focusIntent());
+    },
+
+    /** A menu or panel of the top bar or drawer (not a tooltip). */
+    isOwnPopup(popup) {
+      return (
+        popup.localName != "tooltip" &&
+        [popup, popup.triggerNode, popup.anchorNode].some(node => this.toolbox.contains(node))
+      );
     },
 
     /** Re-decide after `delay` ms; a newer call supersedes a pending one. */
@@ -66,6 +79,12 @@ var AequeraBookmarks = (() => {
 
     update() {
       clearTimeout(this.timer);
+      for (const popup of this.openPopups) {
+        // A popup removed while open never fires popuphidden.
+        if (!popup.isConnected || popup.state == "closed") {
+          this.openPopups.delete(popup);
+        }
+      }
       const open = this.wantsOpen();
       if (open === this.open) {
         return;
@@ -109,6 +128,18 @@ var AequeraBookmarks = (() => {
         case "focusout":
           this.settle(Services.prefs.getIntPref(CLOSE_DELAY_PREF, 150));
           break;
+        case "popupshown":
+          // Holds an open drawer while in use; never opens a closed one (a
+          // shortcut opening a toolbar panel is not a request for bookmarks).
+          if (this.open && this.isOwnPopup(event.target)) {
+            this.openPopups.add(event.target);
+          }
+          break;
+        case "popuphidden":
+          if (this.openPopups.delete(event.target)) {
+            this.settle(Services.prefs.getIntPref(CLOSE_DELAY_PREF, 150));
+          }
+          break;
         case "customizationstarting":
           this.customizing = true;
           this.refreshMode();
@@ -145,6 +176,10 @@ var AequeraBookmarks = (() => {
       ]) {
         this.toolbox.addEventListener(type, this);
       }
+      // Menus and panels are not in the toolbox's subtree (context menus,
+      // panels) or are shown outside it, so listen document-wide.
+      document.addEventListener("popupshown", this);
+      document.addEventListener("popuphidden", this);
       const prefs = [PEEK_PREF, VISIBILITY_PREF];
       for (const pref of prefs) {
         Services.prefs.addObserver(pref, this);
@@ -157,6 +192,8 @@ var AequeraBookmarks = (() => {
         const height = entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height;
         if (height !== this.height) {
           this.height = height;
+          // The drawer's hit area while open (aequera-bookmarks.css).
+          this.toolbox.style.setProperty("--aequera-drawer-height", `${height}px`);
           if (this.open) {
             AequeraFrame.setTop(height);
           }
@@ -187,6 +224,8 @@ var AequeraBookmarks = (() => {
         () => {
           clearTimeout(this.timer);
           cancelAnimationFrame(startFrame);
+          document.removeEventListener("popupshown", this);
+          document.removeEventListener("popuphidden", this);
           heightObserver.disconnect();
           startObserver.disconnect();
           for (const pref of prefs) {

@@ -169,8 +169,14 @@ With `aequera.bookmarks.hoverPeek` on and Firefox's toolbar visibility
 "always", the Bookmarks Toolbar stays built but becomes a drawer under the
 top bar: opens on top-bar hover (rail timing), immediately and held while the
 address bar is focused; keyboard focus holds it, a mouse-clicked button never
-does; out of the page flow, the page card clips back from the top. Firefox's
-own "Never" / "Only on new tab" behave natively; customize mode turns it off.
+does; out of the page flow, the page card clips back from the top. The
+pointer on the drawer holds it like the top bar does, over its whole area
+from the first frame (before the wipe has revealed all of it); while open,
+the top bar stacks above the browser area, whose positioned `#browser` box
+would otherwise take every pointer event over the drawer. A menu or panel
+opened from the top bar or drawer (a bookmark's context menu, a folder)
+holds it open, but never opens it. Firefox's own "Never" / "Only on new tab"
+behave natively; customize mode turns it off.
 
 Tests: `tests/browser/browser_aequera_bookmarks_drawer.js`.
 

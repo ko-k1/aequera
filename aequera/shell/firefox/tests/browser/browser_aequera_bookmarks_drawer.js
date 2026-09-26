@@ -22,6 +22,19 @@ function leaveTopBar() {
   EventUtils.synthesizeMouseAtCenter(tabbox(), { type: "mousemove" });
 }
 
+/** Move to where the open drawer is (whether or not its wipe has revealed
+ * that part yet): `fraction` of the way down, centered across it. */
+function moveOntoDrawer(fraction) {
+  const bar = gNavToolbox.getBoundingClientRect();
+  const drawer = toolbar().getBoundingClientRect();
+  EventUtils.synthesizeMouse(
+    gNavToolbox,
+    (drawer.left + drawer.right) / 2 - bar.left,
+    bar.height + drawer.height * fraction,
+    { type: "mousemove" }
+  );
+}
+
 async function closeDrawer() {
   if (gURLBar.focused) {
     gBrowser.selectedBrowser.focus();
@@ -79,6 +92,69 @@ add_task(async function test_leaving_lingers_then_closes() {
   ok(isOpen(), "still open during the linger");
   await TestUtils.waitForCondition(() => !isOpen(), "closes after the linger");
   Assert.greaterOrEqual(performance.now() - leftAt, 130, "waited for the close delay");
+});
+
+add_task(async function test_pointer_on_the_open_drawer_keeps_it_open() {
+  hoverTopBar();
+  await TestUtils.waitForCondition(isOpen, "open");
+  await wait(200); // past the 100ms wipe
+  moveOntoDrawer(0.5);
+  await wait(450); // three close delays
+  ok(isOpen(), "the pointer resting on the drawer keeps it open");
+  await closeDrawer();
+});
+
+add_task(async function test_pointer_on_the_drawer_while_it_opens_keeps_it_open() {
+  // Straight down onto a bookmark while the drawer is still wiping in: the
+  // part not revealed yet is already the drawer, not the page (animation
+  // must not block interaction).
+  hoverTopBar();
+  await TestUtils.waitForCondition(isOpen, "opening");
+  moveOntoDrawer(0.8);
+  await wait(450);
+  ok(isOpen(), "the pointer on the drawer's area during the wipe keeps it open");
+  leaveTopBar();
+  await TestUtils.waitForCondition(() => !isOpen(), "leaving the drawer for the page closes it");
+});
+
+add_task(async function test_menu_opened_from_the_drawer_holds_it_open() {
+  const bookmark = await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+    url: "https://example.com/aequera-drawer",
+    title: "Aequera drawer test",
+  });
+  registerCleanupFunction(() => PlacesUtils.bookmarks.remove(bookmark));
+  hoverTopBar();
+  await TestUtils.waitForCondition(isOpen, "open");
+  const item = await TestUtils.waitForCondition(
+    () => [...toolbar().querySelectorAll(".bookmark-item")].find(b => b.label == bookmark.title),
+    "the bookmark is on the drawer"
+  );
+  await wait(200);
+  const menu = document.getElementById("placesContext");
+  const shown = BrowserTestUtils.waitForPopupEvent(menu, "shown");
+  EventUtils.synthesizeMouseAtCenter(item, { type: "contextmenu", button: 2 });
+  await shown;
+  leaveTopBar(); // e.g. on the way to the menu, or past it
+  await wait(450);
+  ok(isOpen(), "the drawer stays while its bookmark's context menu is open");
+  const hidden = BrowserTestUtils.waitForPopupEvent(menu, "hidden");
+  menu.hidePopup();
+  await hidden;
+  await TestUtils.waitForCondition(() => !isOpen(), "closing the menu lets it close");
+});
+
+add_task(async function test_a_top_bar_panel_never_opens_a_closed_drawer() {
+  await closeDrawer();
+  // As a keyboard shortcut would: the app menu, anchored in the top bar.
+  const shown = BrowserTestUtils.waitForEvent(PanelUI.panel, "popupshown");
+  PanelUI.show();
+  await shown;
+  await wait(200);
+  ok(!isOpen(), "the drawer stays closed");
+  const hidden = BrowserTestUtils.waitForEvent(PanelUI.panel, "popuphidden");
+  PanelUI.hide();
+  await hidden;
 });
 
 add_task(async function test_address_bar_focus_opens_now_and_holds() {

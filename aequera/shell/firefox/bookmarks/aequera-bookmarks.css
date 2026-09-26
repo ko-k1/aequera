@@ -49,6 +49,26 @@
     visibility 0s;
 }
 
+/* Open, the drawer must take the pointer, both to stay open while hovered
+ * and to be clickable: #browser (positioned, later in the tree) otherwise
+ * sits invisibly over it and takes every event. So the top bar stacks above
+ * the browser area (Firefox's token for a toolbox overlapping it; the rail,
+ * later in the tree at the same level, still stacks above it), and its
+ * drawer area, sized by aequera-bookmarks.js, is hit-testable from the
+ * first frame: a pointer reaching a bookmark before the wipe has revealed it
+ * is on the drawer, not the page. */
+:root[aequera-bookmarks-peek][aequera-bookmarks-open] #navigator-toolbox {
+  z-index: var(--browser-area-z-index-toolbox-while-animating, 4);
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    inset-inline: calc(var(--aequera-content-start, 0px) + var(--aequera-rail-overlay, 0px)) 0;
+    height: var(--aequera-drawer-height, 0px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root[aequera-bookmarks-peek] #PersonalToolbar:not([collapsed]) {
     transition: none;
