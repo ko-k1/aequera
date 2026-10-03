@@ -1,23 +1,29 @@
 @echo off
-rem Start the Aequera artifact build: double-click, or run from any shell.
+rem Start the Aequera build: double-click, or run from any shell.
 rem
-rem Always use this (or aequera-run.sh), never bare firefox.exe: the prebuilt
-rem exe of an artifact build is Firefox until told otherwise, so started bare it
-rem opens your Firefox profile, joins a running Firefox, and serves shell code
-rem from that profile's startup cache. This passes the Aequera identity
-rem (-app aequera-application.ini: its own profiles under %APPDATA%\Aequera and
-rem its own single-instance channel), -no-remote, and -purgecaches.
+rem Prefers the compiled build (aequera.exe with the Aequera icon embedded),
+rem falls back to the artifact build (Mozilla's prebuilt firefox.exe). Always
+rem use this (or aequera-run.sh), never a bare exe: started bare, the
+rem artifact binary opens your Firefox profile, joins a running Firefox, and
+rem serves shell code from that profile's startup cache. This passes the
+rem Aequera identity (-app aequera-application.ini: its own profiles under
+rem %APPDATA%\Aequera and its own single-instance channel), -no-remote, and
+rem -purgecaches.
 rem
 rem Usage: aequera.cmd [Firefox arguments...]
 rem   AEQUERA_OBJDIR overrides the build directory
-rem   (default: worktree\firefox\obj-aequera-artifact in this repository).
+rem   (default: worktree\firefox\obj-aequera when it holds aequera.exe,
+rem   else worktree\firefox\obj-aequera-artifact in this repository).
 setlocal
-set "OBJDIR=%~dp0..\..\worktree\firefox\obj-aequera-artifact"
+set "OBJDIR=%~dp0..\..\worktree\firefox\obj-aequera"
+if not exist "%OBJDIR%\dist\bin\aequera.exe" set "OBJDIR=%~dp0..\..\worktree\firefox\obj-aequera-artifact"
 if defined AEQUERA_OBJDIR set "OBJDIR=%AEQUERA_OBJDIR%"
 set "BIN=%OBJDIR%\dist\bin"
 set "INI=%BIN%\browser\aequera-application.ini"
+set "EXE=%BIN%\aequera.exe"
+if not exist "%EXE%" set "EXE=%BIN%\firefox.exe"
 
-if not exist "%BIN%\firefox.exe" (
+if not exist "%EXE%" (
   echo aequera: no build in "%BIN%"; see tools\build\README.md. 1>&2
   exit /b 1
 )
@@ -33,4 +39,4 @@ if errorlevel 1 (
 ) else (
   python "%~dp0aequera_app_ini.py" "%BIN%\application.ini" "%INI%" || exit /b 1
 )
-start "" "%BIN%\firefox.exe" -app "%INI%" -no-remote -purgecaches %*
+start "" "%EXE%" -app "%INI%" -no-remote -purgecaches %*

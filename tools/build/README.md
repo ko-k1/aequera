@@ -36,17 +36,41 @@ Outside the MozillaBuild shell (Explorer, cmd, PowerShell), start the real
 Aequera profile with `tools\build\aequera.cmd`: double-click it, or run it
 with extra Firefox arguments. It is `--persistent` without the shell.
 
-Always start through one of these, never bare `./mach run` or the exe. The
-build is branded Aequera (`mozconfig.branding` + `patches/build/branding`:
-name, logo, vendor, profiles in `%APPDATA%\Aequera`, remoting `aequera`, no
-updater or crash upload), and its `application.ini` says so; but an artifact
-build's `firefox.exe` is Mozilla's prebuilt binary, which ignores that file
-and uses the Firefox identity compiled into it, opening your Firefox profile
-and colliding with a Firefox you have open. Both launchers copy the ini to
+Always start through one of these, never bare `./mach run` or the exe. Both
+launchers prefer the compiled build (`obj-aequera/dist/bin/aequera.exe`,
+own file name and embedded Aequera icon) and fall back to the artifact
+build. The build is branded Aequera (`mozconfig.branding` +
+`patches/build/branding`: name, logo, vendor, profiles in
+`%APPDATA%\Aequera`, remoting `aequera`, no updater or crash upload), and
+its `application.ini` says so; but an artifact build's `firefox.exe` is
+Mozilla's prebuilt binary, which ignores that file and uses the Firefox
+identity compiled into it, opening your Firefox profile and colliding with
+a Firefox you have open. Both launchers copy the ini to
 `browser/aequera-application.ini` (`aequera_app_ini.py` refuses one without
 the Aequera identity) and start with `-app`, `-no-remote`, and
-`-purgecaches`. The exe keeps Firefox's file name and icon until a compiled
-build (which also adds `--with-app-name=aequera`).
+`-purgecaches`.
+
+## Compiled build (full C++/Rust; the exe icon lives here)
+
+```sh
+export MOZCONFIG=/c/src/aequera/tools/build/mozconfig.compiled
+./mach bootstrap --application-choice browser   # once: VS2022 + SDK + toolchains
+./mach build
+```
+
+`mozconfig.compiled` is `mozconfig.artifact` minus artifact mode and the
+`--with-app-name=firefox` pin, plus `--disable-updater
+--disable-crashreporter`, in its own `obj-aequera` dir so both builds
+coexist. First build is hours; later ones are incremental. Machine notes
+from bringing it up (2026-10-03, 128 GB box shared with ML training):
+
+- Cap parallelism in the mozconfig (`MOZ_MAKE_FLAGS="-j1"` here): even
+  `-j4` OOMs giant unified TUs and the `gkrust` LTO link against resident
+  training jobs. The box idles through it if training is paused.
+- Rust: the tree needs >= 1.90.0, but newer rustc can crash on the
+  `gkrust` LTO link (stable hit `0xc0000409` here); 1.95.0 is known-good.
+  Point `RUSTC`/`CARGO` at it in the build shell (configure-time setting,
+  so re-run `./mach configure` after changing it).
 
 ## Edit loop
 

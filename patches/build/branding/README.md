@@ -63,12 +63,14 @@ and profiles live in `%APPDATA%\Aequera\Profiles`.
 
 - The prebuilt `firefox.exe` of an artifact build keeps Mozilla's
   compiled-in identity, file name, and icon; the launchers pass the Aequera
-  `application.ini` with `-app`. A compiled build (not set up yet) takes
-  everything above from configuration and also needs
-  `--with-app-name=aequera` (binary and install names).
+  `application.ini` with `-app`. A compiled build (`mozconfig.compiled`,
+  `obj-aequera`, up since 2026-10-03) takes everything above from
+  configuration: `MOZ_APP_NAME` defaults to `aequera`, so the binary is
+  `aequera.exe` with the Aequera `firefox.ico` embedded (verified by icon
+  extraction against the old binary).
 - Compiled-only identity (registry keys, taskbar AUMID, launcher, default
   browser agent) follows `MOZ_APP_VENDOR`/`MOZ_APP_BASENAME` but is only
-  exercised by a compiled build and installer.
+  exercised by a compiled build and installer (no installer built yet).
 - macOS assets (`firefox.icns`, `Assets.car`, `dsstore`, disk image art)
   and `MOZ_MACBUNDLE_ID`'s `org.mozilla.` prefix; the Linux D-Bus name
   (`org.aequera.browser`). Neither platform is built yet.
