@@ -1,0 +1,92 @@
+Subject: [PATCH] toolkit: default page icon is the Aequera mark
+
+Why Firefox source must change:
+  The fallback page icon (chrome://global/skin/icons/defaultFavicon.svg,
+  FAVICON_DEFAULT_URL in toolkit/components/places/nsIFaviconService.idl)
+  is a Mozilla globe baked into toolkit's shared skin. No build option,
+  branding directory, or preference redirects it: the URL is part of the
+  favicon-service contract and is referenced across browser/toolkit chrome
+  (tabs, address bar, library, prompts, page-icon protocol). Reaching it
+  requires changing the upstream file.
+
+What it changes (1 file, no behavior of its own):
+  - toolkit/themes/shared/icons/defaultFavicon.svg: globe -> Aequera
+    geometric mark, same construction as
+    aequera/design/branding/source/aequera-icon.svg (one congruent
+    three-face block, exact 120-degree rotations about (205,214), faces
+    #4ED5FF/#4EFFFF). Fixed brand fills replace context-fill so the mark
+    reads as product identity in light and dark contexts; the proton/nova
+    variant switch goes away with the globe. URL, file name, and packaging
+    (toolkit/themes/shared/desktop-jar.inc.mn) are unchanged.
+
+Depends on: none. Touches a unique file; independent of other series.
+Validation: `aequera patch status` (applied state matches manifest);
+  artifact build + run: chrome://global/skin/icons/defaultFavicon.svg
+  renders the mark, and a favicon-less page shows it in the tab strip.
+  places favicon tests reference only the URL spec, which is unchanged.
+Upstream risk: low. Conflicts only if Mozilla redesigns the globe; the
+  file is otherwise stable for long stretches.
+
+diff --git a/toolkit/themes/shared/icons/defaultFavicon.svg b/toolkit/themes/shared/icons/defaultFavicon.svg
+index 46ccd0fe6c0e..40f89f1c8995 100644
+--- a/toolkit/themes/shared/icons/defaultFavicon.svg
++++ b/toolkit/themes/shared/icons/defaultFavicon.svg
+@@ -1,19 +1,44 @@
+ <!-- This Source Code Form is subject to the terms of the Mozilla Public
+    - License, v. 2.0. If a copy of the MPL was not distributed with this
+    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="context-fill" fill-opacity="context-fill-opacity">
+-<style>
+-.nova { display: none; }
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="16" height="16" role="img" aria-labelledby="title desc">
++<title id="title">Aequera icon</title>
++  <desc id="desc">Aequera geometric icon constructed from one congruent three-face block repeated by exact 120 degree rotations.</desc>
+
+-@media -moz-pref("browser.nova.enabled") {
+-  .proton { display: none; }
+-  .nova { display: revert; }
+-}
+-</style>
+-<g class="proton">
+-  <path d="M8 0.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15zm2.447 1.75a6.255 6.255 0 0 1 3.756 5.125l-2.229 0A9.426 9.426 0 0 0 10.04 2.25l.407 0zm-2.049 0a8.211 8.211 0 0 1 2.321 5.125l-5.438 0A8.211 8.211 0 0 1 7.602 2.25l.796 0zm-2.846 0 .408 0a9.434 9.434 0 0 0-1.934 5.125l-2.229 0A6.254 6.254 0 0 1 5.552 2.25zm0 11.5a6.252 6.252 0 0 1-3.755-5.125l2.229 0A9.426 9.426 0 0 0 5.96 13.75l-.408 0zm2.05 0a8.211 8.211 0 0 1-2.321-5.125l5.437 0a8.211 8.211 0 0 1-2.321 5.125l-.795 0zm2.846 0-.409 0a9.418 9.418 0 0 0 1.934-5.125l2.229 0a6.253 6.253 0 0 1-3.754 5.125z"/>
+-</g>
+-<g class="nova">
+-  <path fill-rule="evenodd" d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0m0 7.75c-.728 0-1.568.033-2.497.122L5.5 8a8.97 8.97 0 0 0 2.499 6.22A8.97 8.97 0 0 0 10.501 8l-.004-.13A26 26 0 0 0 8 7.75m-4 .309c-.782.121-1.61.286-2.475.508a6.5 6.5 0 0 0 4.496 5.624A10.45 10.45 0 0 1 4 8.06m7.999 0a10.45 10.45 0 0 1-2.02 6.132 6.5 6.5 0 0 0 4.495-5.623 26 26 0 0 0-2.475-.508M9.98 1.809a10.45 10.45 0 0 1 1.918 4.72 28 28 0 0 1 2.527.485A6.51 6.51 0 0 0 9.98 1.808m-3.96 0A6.51 6.51 0 0 0 1.575 7.01c.885-.213 1.73-.37 2.529-.484a10.45 10.45 0 0 1 1.918-4.72M8 1.779a8.97 8.97 0 0 0-2.346 4.572 27.5 27.5 0 0 1 4.693 0A8.97 8.97 0 0 0 8 1.779" clip-rule="evenodd" />
+-</g>
++  <defs>
++    <g id="unit-sector">
++      <!--
++        Common construction:
++        - all long/short transitions use exact 30° / 90° / 150° directions
++        - block thickness = 50 source units
++        - the three copies are exact 120° rotations about (205,214)
++      -->
++
++      <!-- Outer blue face: 50-unit thickness, exact 30° side angle -->
++      <path fill="#4ED5FF"
++            d="M295 160
++               L295 260
++               L335 282
++               L335 185 Z"/>
++
++      <!-- Outer cyan bent face: exact 30° diagonals and 50-unit vertical thickness -->
++      <path fill="#4EFFFF"
++            d="M199 67
++               L199 113
++               L255 142
++               L255 185
++               L290 205
++               L290 115 Z"/>
++
++      <!-- Inner blue face: exact 90×50 rectangle -->
++      <rect fill="#4ED5FF" x="154" y="145" width="95" height="40"/>
++    </g>
++  </defs>
++
++  <!-- Single construction center. Every face is derived from the same sector. -->
++  <g transform="scale(0.5)" shape-rendering="geometricPrecision">
++    <use href="#unit-sector"/>
++    <use href="#unit-sector" transform="rotate(120 205 214)"/>
++    <use href="#unit-sector" transform="rotate(240 205 214)"/>
++  </g>
+ </svg>

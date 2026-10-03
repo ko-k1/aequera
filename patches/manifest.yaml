@@ -39,6 +39,11 @@ patches:
   # the project's moz.configure may set; the rest is mozconfig.branding).
   - id: branding
     series: build/branding
+  # Default page icon: Aequera mark instead of the Mozilla globe
+  # (Firefox-wide fallback: tabs, address bar, library, prompts). Single
+  # toolkit file; the FAVICON_DEFAULT_URL contract is unchanged.
+  - id: default-favicon
+    series: toolkit/default-favicon
 
 overlays:
   # Stage 1 shell: frame-model stylesheet, launcher-width glue, default
