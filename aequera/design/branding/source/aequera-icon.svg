@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 200 200" role="img">
-<title id="title">Aequera icon</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-labelledby="title desc">
+  <title id="title">Aequera icon</title>
   <desc id="desc">Aequera geometric icon constructed from one congruent three-face block repeated by exact 120 degree rotations.</desc>
 
   <defs>

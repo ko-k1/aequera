@@ -1,87 +1,155 @@
-"""Render Aequera's raster brand assets from the mark defined here.
+"""Render Aequera's raster brand assets from the canonical geometric mark.
 
-The mark ("aequus": level, even) is two equal white bars on a round
-teal-to-indigo field. It is drawn with plain geometry so the same shapes
-produce the SVGs (about-logo.svg) and every PNG/ICO/BMP Firefox's branding
-directory expects; nothing is derived from Mozilla artwork.
+Source of truth: aequera/design/branding/source/aequera-icon.svg
+(one congruent three-face block repeated by exact 120-degree rotations
+about (205, 214), faces #4ED5FF / #4EFFFF, viewBox 0 0 200 200).
+
+The renderer parses that file's #unit-sector shapes, so geometry edits
+flow through. It replays the three rotations (0/120/240) plus the
+scale(0.5) into the 200-unit viewBox, then scales to each output size.
+Supersampled Pillow polygons + LANCZOS downscale keep edges clean.
+
+Private variant reuses the same geometry with remapped fills
+(#4ED5FF -> #8C5ADC, #4EFFFF -> #C4A8FF); see source/README.md.
 
 Usage: python tools/branding/render_brand_assets.py [branding dir]
   (default: aequera/design/branding). Requires Pillow. Deterministic: the
   same inputs always produce byte-identical files.
 """
 
+import math
+import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-TOP = (63, 208, 201)  # teal, top-left of the field
-BOTTOM = (79, 91, 213)  # indigo, bottom-right
-PRIVATE_TOP = (140, 90, 220)  # private browsing: violet field
-PRIVATE_BOTTOM = (60, 30, 120)
-BAR = (255, 255, 255)
 SUPERSAMPLE = 8
 
-# Geometry as fractions of the icon size.
-FIELD_INSET = 0.04
-BAR_WIDTH = 0.50
-BAR_HEIGHT = 0.11
-BAR_GAP = 0.10
+# Source construction (mirrors aequera-icon.svg).
+CENTER = (205.0, 214.0)
+VIEWBOX = 200.0
+ANGLES = (0.0, 120.0, 240.0)
+
+BLUE = (78, 213, 255, 255)  # #4ED5FF
+CYAN = (78, 255, 255, 255)  # #4EFFFF
+PRIVATE_BLUE = (140, 90, 220, 255)  # #8C5ADC
+PRIVATE_CYAN = (196, 168, 255, 255)  # #C4A8FF
+
+COLOR_MAP = {
+    "#4ed5ff": (BLUE, PRIVATE_BLUE),
+    "#4effff": (CYAN, PRIVATE_CYAN),
+}
 
 
-def mark(size, top=TOP, bottom=BOTTOM, field=True):
-    """The mark at `size` px, antialiased by supersampling."""
+def _source_path():
+    root = Path(__file__).resolve().parents[2]
+    return root / "aequera" / "design" / "branding" / "source" / "aequera-icon.svg"
+
+
+def _parse_path_d(d):
+    tokens = re.findall(r"[MLZmlz]|[-+]?\d*\.?\d+", d)
+    points = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        i += 1
+        if tok in ("M", "m", "L", "l"):
+            x = float(tokens[i])
+            y = float(tokens[i + 1])
+            i += 2
+            points.append((x, y))
+        elif tok in ("Z", "z"):
+            break
+        else:
+            raise ValueError(f"unexpected token in path d: {tok!r}")
+    return points
+
+
+def _load_unit_shapes(source=None):
+    """Shapes of #unit-sector in document order: [(fill_hex, [(x, y), ...])]."""
+    path = Path(source) if source else _source_path()
+    root = ET.parse(path).getroot()
+    sector = None
+    for elem in root.iter():
+        if elem.tag.endswith("}g") or elem.tag == "g":
+            if elem.attrib.get("id") == "unit-sector":
+                sector = elem
+                break
+    if sector is None:
+        raise ValueError(f"#unit-sector not found in {path}")
+    shapes = []
+    for child in list(sector):
+        tag = child.tag.split("}")[-1]
+        fill = child.attrib.get("fill", "#4ED5FF")
+        if tag == "path":
+            shapes.append((fill, _parse_path_d(child.attrib["d"])))
+        elif tag == "rect":
+            x = float(child.attrib["x"])
+            y = float(child.attrib["y"])
+            w = float(child.attrib["width"])
+            h = float(child.attrib["height"])
+            shapes.append((fill, [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]))
+    if not shapes:
+        raise ValueError(f"no shapes in #unit-sector of {path}")
+    return shapes
+
+
+def _map_color(fill_hex, private):
+    pair = COLOR_MAP.get(fill_hex.lower())
+    if pair:
+        return pair[1] if private else pair[0]
+    h = fill_hex.lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255)
+
+
+def _rotate_about(x, y, angle_deg):
+    theta = math.radians(angle_deg)
+    cos_a, sin_a = math.cos(theta), math.sin(theta)
+    dx, dy = x - CENTER[0], y - CENTER[1]
+    return (
+        CENTER[0] + dx * cos_a - dy * sin_a,
+        CENTER[1] + dx * sin_a + dy * cos_a,
+    )
+
+
+def mark(size, private=False, source=None):
+    """The real mark at `size` px, antialiased by supersampling."""
+    shapes = _load_unit_shapes(source)
     big = size * SUPERSAMPLE
     image = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    if field:
-        # A linear gradient: exact at a small size, then scaled up smoothly.
-        steps = 64
-        gradient = Image.new("RGBA", (steps, steps))
-        pixels = gradient.load()
-        for y in range(steps):
-            for x in range(steps):
-                t = (x + y) / (2 * (steps - 1))
-                pixels[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(top, bottom)) + (255,)
-        gradient = gradient.resize((big, big), Image.BILINEAR)
-        disc = Image.new("L", (big, big), 0)
-        inset = round(big * FIELD_INSET)
-        ImageDraw.Draw(disc).ellipse((inset, inset, big - inset - 1, big - inset - 1), fill=255)
-        image.paste(gradient, (0, 0), disc)
-    draw = ImageDraw.Draw(image)
-    width, height, gap = big * BAR_WIDTH, big * BAR_HEIGHT, big * BAR_GAP
-    left = (big - width) / 2
-    for top_edge in ((big - gap) / 2 - height, (big + gap) / 2):
-        draw.rounded_rectangle(
-            (left, top_edge, left + width, top_edge + height), radius=height / 2, fill=BAR + (255,)
-        )
+    draw = ImageDraw.Draw(image, "RGBA")
+    # Source units -> viewBox (scale 0.5) -> pixels (big / VIEWBOX).
+    scale = big / (VIEWBOX * 2.0)
+    for angle in ANGLES:
+        for fill_hex, points in shapes:
+            transformed = []
+            for x, y in points:
+                rx, ry = _rotate_about(x, y, angle)
+                transformed.append((rx * scale, ry * scale))
+            draw.polygon(transformed, fill=_map_color(fill_hex, private))
     return image.resize((size, size), Image.LANCZOS)
 
 
-def tile(size, background, top=TOP, bottom=BOTTOM):
+def tile(size, background, private=False):
     """Square tile (Start menu, installer art): the mark centered on a flat color."""
     image = Image.new("RGBA", (size, size), background + (255,))
     inner = round(size * 0.6)
     offset = (size - inner) // 2
-    image.alpha_composite(mark(inner, top, bottom), (offset, offset))
+    image.alpha_composite(mark(inner, private=private), (offset, offset))
     return image
 
 
-def svg_mark(size=512):
-    inset = size * FIELD_INSET
-    radius = (size - 2 * inset) / 2
-    width, height, gap = size * BAR_WIDTH, size * BAR_HEIGHT, size * BAR_GAP
-    left = (size - width) / 2
-    bars = "".join(
-        f'<rect x="{left:g}" y="{y:g}" width="{width:g}" height="{height:g}" rx="{height / 2:g}" fill="#fff"/>'
-        for y in ((size - gap) / 2 - height, (size + gap) / 2)
-    )
-    hex_ = lambda c: "#%02x%02x%02x" % c
+def svg_mark(size=512, source=None):
+    path = Path(source) if source else _source_path()
+    text = path.read_text(encoding="utf-8")
+    start = text.index(">") + 1
+    end = text.rindex("</svg>")
+    inner = text[start:end].strip() + "\n"
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 {size} {size}">'
-        f'<defs><linearGradient id="f" x1="0" y1="0" x2="1" y2="1">'
-        f'<stop offset="0" stop-color="{hex_(TOP)}"/><stop offset="1" stop-color="{hex_(BOTTOM)}"/>'
-        f"</linearGradient></defs>"
-        f'<circle cx="{size / 2:g}" cy="{size / 2:g}" r="{radius:g}" fill="url(#f)"/>{bars}</svg>\n'
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
+        f'viewBox="0 0 200 200" role="img">\n{inner}</svg>\n'
     )
 
 
@@ -94,11 +162,11 @@ def main(out):
     for name in ("firefox.ico", "document.ico", "document_pdf.ico", "newtab.ico", "newwindow.ico"):
         base.save(out / name, sizes=ico_sizes)
     mark(256).save(out / "firefox64.ico", sizes=[(64, 64)])
-    mark(256, PRIVATE_TOP, PRIVATE_BOTTOM).save(out / "pbmode.ico", sizes=ico_sizes)
+    mark(256, private=True).save(out / "pbmode.ico", sizes=ico_sizes)
     tile_bg = (20, 23, 26)
     for size in (70, 150):
         tile(size, tile_bg).save(out / f"VisualElements_{size}.png", optimize=True)
-        tile(size, (37, 0, 62), PRIVATE_TOP, PRIVATE_BOTTOM).save(
+        tile(size, (37, 0, 62), private=True).save(
             out / f"PrivateBrowsing_{size}.png", optimize=True
         )
     # Windows installer art (NSIS wizard bitmaps, stub installer background).
@@ -123,10 +191,11 @@ def main(out):
     content.mkdir(exist_ok=True)
     mark(192).save(content / "about-logo.png", optimize=True)
     mark(384).save(content / "about-logo@2x.png", optimize=True)
-    mark(192, PRIVATE_TOP, PRIVATE_BOTTOM).save(content / "about-logo-private.png", optimize=True)
-    mark(384, PRIVATE_TOP, PRIVATE_BOTTOM).save(content / "about-logo-private@2x.png", optimize=True)
+    mark(192, private=True).save(content / "about-logo-private.png", optimize=True)
+    mark(384, private=True).save(content / "about-logo-private@2x.png", optimize=True)
     mark(300).save(content / "about.png", optimize=True)
     (content / "about-logo.svg").write_text(svg_mark(), encoding="utf-8", newline="\n")
+    (content / "document_pdf.svg").write_text(svg_mark(), encoding="utf-8", newline="\n")
     return 0
 
 

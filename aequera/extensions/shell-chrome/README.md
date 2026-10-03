@@ -41,7 +41,7 @@ the exact chord is a later shell-integration decision, not a silent override.
 - `cargo test -p aequera-core` green (20 tests).
 - `node --test src/palette.test.js` green (6 tests: order, case-folding, gating, cap).
 - `aequera upstream verify` → verified; `aequera patch status` → base match, applied state matches manifest.
-- `manifest.json` parses; `strict_min_version` == lock version `156.0`; permissions ⊆ {tabs, sessions, storage, history, bookmarks}.
+- `manifest.json` parses; `strict_min_version` == lock version `156.0`; permissions ⊆ {tabs, sessions, storage, history, bookmarks}; `icons` 16/32/48/128 resolve to `icons/` (real mark).
 - `background.js` / `palette.js` contain no `fetch(` / `XMLHttpRequest` / `WebSocket` call sites, no telemetry.
 - Temporary load in the pinned build works without errors (manual; full Firefox build is hours — not run in this slice).
 

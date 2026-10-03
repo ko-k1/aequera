@@ -47,7 +47,7 @@ patch series is one small patch:
 
 | Piece | Layer | Where |
 |---|---|---|
-| Branding directory: name strings (`brand.ftl`, `brand.properties`), logo and icons, about dialog, Windows tiles and installer art, branding prefs (no Mozilla landing or update pages) | Aequera source (overlay) | `aequera/design/branding` -> `browser/branding/aequera`; rasters from `tools/branding/render_brand_assets.py` |
+| Branding directory: name strings (`brand.ftl`, `brand.properties`), logo and icons, about dialog, Windows tiles and installer art, branding prefs (no Mozilla landing or update pages) | Aequera source (overlay) | `aequera/design/branding` -> `browser/branding/aequera`; source `source/aequera-icon.svg`, rasters from `tools/branding/render_brand_assets.py` |
 | `--with-branding`, `--with-app-basename=Aequera` (Name), `MOZ_APP_REMOTINGNAME=aequera` | configuration | `tools/build/mozconfig.branding` (sourced by every Aequera mozconfig) |
 | No Mozilla update or crash-report server | launcher (artifact) / configuration (compiled) | the artifact binary has both compiled in and will not start without their front end, so `aequera_app_ini.py` drops `[AppUpdate]` and `[Crash Reporter]` from the launch ini; a compiled build uses `--disable-updater --disable-crashreporter` |
 | `MOZ_APP_VENDOR=Aequera`, `MOZ_APP_PROFILE=Aequera` | patch | `0001-product-identity.patch`: project flags only `browser/moz.configure` may set (a mozconfig is refused) |
