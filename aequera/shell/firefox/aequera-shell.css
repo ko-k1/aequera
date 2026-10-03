@@ -44,3 +44,10 @@
     transition: none;
   }
 }
+
+/* The fixed 40px titlebar shim (#vertical-spacer) has no purpose in the
+ * Aequera navbar: window dragging lives on the titlebar/tab strip, so it
+ * lands as a dead gap between placed widgets (e.g. after downloads). */
+#nav-bar #vertical-spacer {
+  display: none;
+}

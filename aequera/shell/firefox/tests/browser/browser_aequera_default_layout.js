@@ -54,3 +54,131 @@ add_task(async function test_it_can_still_be_added_from_the_palette() {
   CustomizableUI.reset();
   is(CustomizableUI.getPlacementOfWidget(WIDGET), null, "Restore Defaults removes it again");
 });
+
+// Aequera's default topbar order
+// (browser.uiCustomization.defaultNavbarPlacements,
+// patches/browser/customization-defaults 0002): back, forward, reload,
+// space, address, devtools, space, downloads; the fixed extensions button
+// and app menu follow on their own.
+
+const NAVBAR_ORDER = [
+  "back-button",
+  "forward-button",
+  "stop-reload-button",
+  "spring",
+  "urlbar-container",
+  "developer-button",
+  "spring",
+  "downloads-button",
+];
+
+// Orientation snapshots (vertical/horizontal tabstrip backups) persist
+// across resets in one profile; clear them so each order test starts from
+// bare defaults rather than a previous test's merged layout. Called after
+// the final reset too, so the run leaves no changed preferences behind.
+function clearSnapshots() {
+  for (let pref of [
+    "browser.uiCustomization.navBarWhenVerticalTabs",
+    "browser.uiCustomization.horizontalTabsBackup",
+    "browser.uiCustomization.horizontalTabstrip",
+  ]) {
+    if (Services.prefs.prefHasUserValue(pref)) {
+      Services.prefs.clearUserPref(pref);
+    }
+  }
+}
+
+function resetToDefaults() {
+  clearSnapshots();
+  CustomizableUI.reset();
+}
+
+// Orientation machinery persists snapshots on idle after a reset; settle,
+// then leave the profile without changed preferences (the harness flags
+// leftovers at file end).
+async function settleClean() {
+  resetToDefaults();
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  clearSnapshots();
+}
+
+// getWidgetIdsInArea reports spring instances with unique suffixes
+// (customizableui-special-springN); the product order just says "spring".
+const SPRING_INSTANCE = /^customizableui-special-spring\d+$/;
+function normalizedNavbarIds() {
+  return CustomizableUI.getWidgetIdsInArea(CustomizableUI.AREA_NAVBAR).map(
+    id => (SPRING_INSTANCE.test(id) ? "spring" : id)
+  );
+}
+
+add_task(async function test_navbar_follows_the_default_order() {
+  resetToDefaults();
+  Assert.deepEqual(
+    normalizedNavbarIds(),
+    [
+      ...NAVBAR_ORDER,
+      // Fixed chrome after the placed widgets: the extensions button and
+      // the titlebar spring live in the XUL, outside customization. The
+      // spring is hidden by aequera-shell.css (dead 40px gap otherwise).
+      "unified-extensions-button",
+      "vertical-spacer",
+    ],
+    "navbar defaults follow the product order"
+  );
+});
+
+add_task(async function test_omitted_widgets_stay_in_the_palette() {
+  for (let id of ["home-button", "fxa-toolbar-menu-button"]) {
+    is(
+      CustomizableUI.getPlacementOfWidget(id),
+      null,
+      `${id} is not placed by default`
+    );
+    ok(CustomizableUI.getWidget(id)?.id, `${id} still exists as a widget`);
+  }
+  await settleClean();
+});
+
+// Empty means Firefox's order: area defaults are computed once at area
+// registration (browser startup), so flipping the pref mid-session cannot
+// change a reset. The empty-pref case is covered by the upstream gate
+// instead: test-shell.sh runs Firefox's own toolbar suites with
+// defaultNavbarPlacements empty.
+
+add_task(async function test_migration_brings_saved_layouts_to_the_order() {
+  // A profile that saved a jumbled bar: the product order afterwards, the
+  // user's own button kept at the end, and the run recorded.
+  resetToDefaults();
+  CustomizableUI.addWidgetToArea("home-button", CustomizableUI.AREA_NAVBAR);
+  CustomizableUI.removeWidgetFromArea("downloads-button");
+  CustomizableUI.moveWidgetWithinArea("forward-button", 0);
+  Services.prefs.setIntPref("aequera.layout.migrationVersion", 1);
+  window.AequeraLayout.migrate();
+  Assert.deepEqual(
+    normalizedNavbarIds(),
+    [
+      ...NAVBAR_ORDER,
+      // Unknowns keep their relative order at the end: the fixed chrome
+      // first, then the user's own button where they put it.
+      "unified-extensions-button",
+      "vertical-spacer",
+      "home-button",
+    ],
+    "saved layouts migrate to the product order once"
+  );
+  is(
+    Services.prefs.getIntPref("aequera.layout.migrationVersion"),
+    2,
+    "the migration is recorded"
+  );
+
+  // Second run: the user's post-migration layout is left alone.
+  CustomizableUI.removeWidgetFromArea("developer-button");
+  window.AequeraLayout.migrate();
+  is(
+    CustomizableUI.getPlacementOfWidget("developer-button"),
+    null,
+    "a button removed after migrating stays removed"
+  );
+  await settleClean();
+});

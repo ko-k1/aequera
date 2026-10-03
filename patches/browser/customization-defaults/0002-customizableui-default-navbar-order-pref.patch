@@ -1,0 +1,83 @@
+Subject: [PATCH] customizableui: pref for the navbar's default order
+
+Why Firefox source must change:
+  The navbar's default placements (new profiles, Restore Defaults) are a
+  hard-coded array in CustomizableUI; no pref or policy can reorder them.
+  The 0001 exclusions pref can only remove widgets, not express Aequera's
+  default topbar order.
+
+What it changes:
+  - New pref browser.uiCustomization.defaultNavbarPlacements:
+    comma-separated widget ids replacing the navbar's default placements
+    at area registration, in both orientations (a vertical-tabs restore
+    reads verticalTabsDefaultPlacements, a horizontal one
+    defaultPlacements). Empty by default: Firefox's defaults unchanged.
+  - Composes with 0001: the exclusion filter still applies on top, and
+    unknown ids stay harmless (buildArea skips them with a debug log).
+    Saved layouts are untouched; this affects defaults only.
+
+Depends on: 0001 (same series; applies the exclusion filter underneath).
+Validation: aequera/shell/firefox/tests/browser (exact navbar order after
+  reset; omitted widgets stay in the palette); established sidebar/tab/
+  bookmarks suites with both prefs empty (pass-through: empty inputs
+  return the placements unchanged).
+Upstream risk: low; one nested call in the same props.set filter as 0001.
+
+diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
+--- a/browser/components/customizableui/CustomizableUI.sys.mjs
++++ b/browser/components/customizableui/CustomizableUI.sys.mjs
+@@ -76,7 +76,31 @@ function withoutDefaultExclusions(placements) {
+   return excluded.size
+     ? placements.filter(id => !excluded.has(id))
+     : placements;
+ }
++// Comma-separated widget ids used as the navbar's defaultPlacements,
++// replacing the hard-coded order in both orientations: a vertical-tabs
++// restore reads the navbar's verticalTabsDefaultPlacements, a horizontal
++// one the defaultPlacements. Every other area keeps Firefox's lists.
++// Empty by default: Firefox's defaults unchanged.
++const kPrefDefaultNavbarPlacements =
++  "browser.uiCustomization.defaultNavbarPlacements";
++
++/**
++ * @param {string} area
++ * @param {string[]|undefined} placements
++ * @returns {string[]|undefined} the product's navbar order when configured
++ */
++function withDefaultNavbarPlacements(area, placements) {
++  if (area != CustomizableUI.AREA_NAVBAR || !Array.isArray(placements)) {
++    return placements;
++  }
++  const order = Services.prefs
++    .getStringPref(kPrefDefaultNavbarPlacements, "")
++    .split(",")
++    .map(id => id.trim())
++    .filter(Boolean);
++  return order.length ? order : placements;
++}
+ // When false, vertical tabs and the revamped sidebar are independent: a
+ // browser shell that hosts the vertical tab strip itself can run vertical
+ // tabs with the legacy sidebar. Default true keeps them coupled.
+@@ -1218,12 +1243,16 @@ var CustomizableUIInternal = {
+       ) {
+         throw new Error("An area cannot change the property for '" + key + "'");
+       }
+-      props.set(
+-        key,
+-        kDefaultPlacementKeys.has(key)
+-          ? withoutDefaultExclusions(aProperties[key])
+-          : aProperties[key]
+-      );
++      props.set(
++        key,
++        kDefaultPlacementKeys.has(key)
++          ? withoutDefaultExclusions(
++              aName == CustomizableUI.AREA_NAVBAR
++                ? withDefaultNavbarPlacements(aName, aProperties[key])
++                : aProperties[key]
++            )
++          : aProperties[key]
++      );
+     }
+     // Default to a toolbar:
+     if (!props.has("type")) {

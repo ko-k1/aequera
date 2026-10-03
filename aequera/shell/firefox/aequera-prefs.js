@@ -58,6 +58,13 @@ pref("browser.tabs.parkedHiddenSources", "aequera-workspaces", locked);
 // applies to new profiles and Restore Defaults, never to a saved layout.
 pref("browser.uiCustomization.defaultExclusions", "alltabs-button");
 
+// Default topbar order (customization-defaults 0002): back,
+// forward, reload, space, address, devtools, space, downloads; the fixed
+// extensions button and app menu follow on their own. Omitted widgets
+// (home, profile, sidebar, ...) stay in the customize palette. Applies to
+// new profiles and Restore Defaults, never to a saved layout.
+pref("browser.uiCustomization.defaultNavbarPlacements", "back-button,forward-button,stop-reload-button,spring,urlbar-container,developer-button,spring,downloads-button");
+
 // Frame material: one OS backdrop behind all chrome (Windows 11 Mica), the
 // native counterpart of the prototype's single #frame glass layer.
 pref("widget.windows.mica", true);

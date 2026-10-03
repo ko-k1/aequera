@@ -26,6 +26,7 @@ FIREFOX_DEFAULTS=(
   --setpref browser.toolbars.bookmarks.visibility=newtab
   --setpref aequera.bookmarks.hoverPeek=false
   --setpref browser.uiCustomization.defaultExclusions=
+  --setpref browser.uiCustomization.defaultNavbarPlacements=
 )
 SIDEBAR_TESTS=browser/components/sidebar/tests/browser
 TAB_TESTS=browser/components/tabbrowser/test/browser/tabs
