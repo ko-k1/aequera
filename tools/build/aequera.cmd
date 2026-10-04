@@ -18,6 +18,13 @@ setlocal
 set "OBJDIR=%~dp0..\..\worktree\firefox\obj-aequera"
 if not exist "%OBJDIR%\dist\bin\aequera.exe" set "OBJDIR=%~dp0..\..\worktree\firefox\obj-aequera-artifact"
 if defined AEQUERA_OBJDIR set "OBJDIR=%AEQUERA_OBJDIR%"
+rem Like `mach run`, advertise the developer dirs: local builds symlink
+rem front-end files into dist, and the Windows content-process sandbox only
+rem resolves those links when MOZ_DEVELOPER_REPO_DIR is set (upstream bug
+rem 1916286: without it DevTools cannot open and Ctrl+Shift+I / F12 fail
+rem with "builtin-modules.js is not found").
+for %%I in ("%~dp0..\..\worktree\firefox") do set "MOZ_DEVELOPER_REPO_DIR=%%~fI"
+for %%I in ("%OBJDIR%") do set "MOZ_DEVELOPER_OBJ_DIR=%%~fI"
 set "BIN=%OBJDIR%\dist\bin"
 set "INI=%BIN%\browser\aequera-application.ini"
 set "EXE=%BIN%\aequera.exe"

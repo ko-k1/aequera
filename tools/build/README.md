@@ -39,7 +39,12 @@ with extra Firefox arguments. It is `--persistent` without the shell.
 Always start through one of these, never bare `./mach run` or the exe. Both
 launchers prefer the compiled build (`obj-aequera/dist/bin/aequera.exe`,
 own file name and embedded Aequera icon) and fall back to the artifact
-build. The build is branded Aequera (`mozconfig.branding` +
+build. Both also export `MOZ_DEVELOPER_REPO_DIR` (and
+`MOZ_DEVELOPER_OBJ_DIR`), like `mach run` does: local builds symlink
+front-end files into `dist`, and the Windows content-process sandbox only
+resolves those links when the repo dir is advertised (upstream bug 1916286).
+Without it DevTools cannot open (`Ctrl+Shift+I`, `F12`, … fail with
+`builtin-modules.js is not found`). The build is branded Aequera (`mozconfig.branding` +
 `patches/build/branding`: name, logo, vendor, profiles in
 `%APPDATA%\Aequera`, remoting `aequera`, no updater or crash upload), and
 its `application.ini` says so; but an artifact build's `firefox.exe` is
