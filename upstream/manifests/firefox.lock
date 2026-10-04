@@ -4,7 +4,7 @@
 # Channel, version, and ref are provenance metadata, not the pin.
 # A build must never silently replace this revision with a remote tip.
 #
-# Policy: UPSTREAM.md (repository root), docs/engineering/UPSTREAM.md.
+# Policy: docs/engineering/UPSTREAM1.md, docs/engineering/UPSTREAM2.md.
 # Consumed by: aequera upstream fetch/status/verify/checkout/update
 #              (tools/cli, Phase 0 Workstream 1).
 

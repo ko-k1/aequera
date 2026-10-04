@@ -87,7 +87,7 @@ The project should always be able to answer:
 
 ## Track Policy (Phase 0)
 
-Detailed upstream policy lives in `UPSTREAM.md` (repository root). The
+Detailed upstream policy lives in `UPSTREAM1.md`. The
 committed decisions for this phase:
 
 ```text

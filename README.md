@@ -187,13 +187,15 @@ Upstream Firefox is treated as an input/artifact, not as the place where Aequera
 
 - `docs/engineering/DEVELOPMENT.md` — day-to-day development loop.
 - `docs/engineering/CLI.md` — intent-oriented Aequera CLI.
-- `docs/engineering/UPSTREAM.md` — Firefox source pinning and synchronization.
+- `docs/engineering/UPSTREAM1.md` — Firefox source pinning and synchronization.
+- `docs/engineering/UPSTREAM2.md` — upstream track policy for this phase.
 - `docs/engineering/PATCHING.md` — patch-stack structure, lifecycle, metadata, and conflict handling.
 - `docs/engineering/PERFORMANCE.md` — performance model and budgets.
 - `docs/engineering/SECURITY.md` — security/privacy requirements and threat areas.
 - `docs/engineering/COMPATIBILITY.md` — Firefox/WebExtension/platform compatibility policy.
 - `docs/engineering/TESTING.md` — test hierarchy and acceptance gates.
 - `docs/engineering/RELEASE.md` — release, versioning, reproducibility, and rollback.
+- `docs/engineering/RELEASE_EVIDENCE_AND_TRUST.md` — proposed release evidence and trust policy.
 
 ### Delivery
 

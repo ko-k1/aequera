@@ -31,8 +31,8 @@ Per-platform guides:
    checkout. Builds happen in the generated `worktree/firefox/` tree (W3).
 3. **Expect weight.** A Firefox checkout plus build tree needs tens of GB of
    free disk and a multi-hour first build on typical hardware. If that is
-   unacceptable, wait for artifact-build profiles (see `UPSTREAM.md`,
-   "Development Builds") instead of starving a laptop.
+   unacceptable, wait for artifact-build profiles (see
+   `docs/engineering/UPSTREAM1.md`, "Development Builds") instead of starving a laptop.
 4. **Network activity is limited to toolchain installs and the pinned fetch.**
    `aequera upstream fetch` downloads Git objects only; it never moves the
    baseline, never applies patches, never phones anywhere else.

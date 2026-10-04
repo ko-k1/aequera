@@ -23,7 +23,7 @@ exists.
 | Long-term LTS target | Firefox ESR (`lts-esr`, future) |
 | CLI implementation language | Rust |
 | Bootstrap platform scope | Windows + Linux + macOS from day one |
-| Upstream source model | `docs/engineering/UPSTREAM.md`: clean `upstream/firefox` tree plus machine-readable `firefox.lock`; fetched and pinned by tooling, never vendored into git, never hand-edited |
+| Upstream source model | `docs/engineering/UPSTREAM1.md`: clean `upstream/firefox` tree plus machine-readable `firefox.lock`; fetched and pinned by tooling, never vendored into git, never hand-edited |
 
 Phase 0 fetches and builds the Release track only. The `preview-mc` and
 `lts-esr` tracks exist in Phase 0 as schema fields and pin policy (preview

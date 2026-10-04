@@ -47,9 +47,11 @@ docs/engineering/DEVELOPMENT.md
 docs/engineering/PATCHING.md
 docs/engineering/PERFORMANCE.md
 docs/engineering/RELEASE.md
+docs/engineering/RELEASE_EVIDENCE_AND_TRUST.md
 docs/engineering/SECURITY.md
 docs/engineering/TESTING.md
-docs/engineering/UPSTREAM.md
+docs/engineering/UPSTREAM1.md
+docs/engineering/UPSTREAM2.md
 patches/browser/.gitkeep
 patches/build/.gitkeep
 patches/gecko/.gitkeep
@@ -68,7 +70,6 @@ tools/build/.gitkeep
 tools/ci/.gitkeep
 tools/patch/.gitkeep
 tools/upstream/.gitkeep
-upstream/firefox/.gitkeep
 upstream/manifests/patchsets/.gitkeep
 worktree/firefox/.gitkeep
 ```

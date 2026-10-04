@@ -1,7 +1,7 @@
 # Generated Firefox tree
 worktree/firefox/
 
-# Managed upstream Firefox checkout (see UPSTREAM.md).
+# Managed upstream Firefox checkout (see docs/engineering/UPSTREAM1.md).
 # Only upstream/manifests/* is committed; the checkout is reproduced by tooling.
 upstream/firefox/
 

@@ -29,13 +29,15 @@ aequera/
 │   ├── engineering/
 │   │   ├── DEVELOPMENT.md
 │   │   ├── CLI.md
-│   │   ├── UPSTREAM.md
+│   │   ├── UPSTREAM1.md
+│   │   ├── UPSTREAM2.md
 │   │   ├── PATCHING.md
 │   │   ├── PERFORMANCE.md
 │   │   ├── SECURITY.md
 │   │   ├── COMPATIBILITY.md
 │   │   ├── TESTING.md
-│   │   └── RELEASE.md
+│   │   ├── RELEASE.md
+│   │   └── RELEASE_EVIDENCE_AND_TRUST.md
 │   └── adr/
 │       ├── 0001-project-direction.md
 │       └── 0002-upstream-and-patch-model.md
