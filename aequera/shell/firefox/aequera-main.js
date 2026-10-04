@@ -16,6 +16,7 @@ for (const name of [
   "workspaces/aequera-workspaces.js",
   "bookmarks/aequera-bookmarks.js",
   "layout/aequera-layout.js",
+  "narrow/aequera-narrow.js",
 ]) {
   try {
     Services.scriptloader.loadSubScriptWithOptions(`chrome://browser/content/aequera/${name}`, {

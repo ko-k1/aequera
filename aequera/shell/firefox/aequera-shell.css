@@ -51,3 +51,59 @@
 #nav-bar #vertical-spacer {
   display: none;
 }
+
+/* Narrow windows: upstream gives #urlbar-container a 275px floor under
+ * vertical tabs with flex-shrink 0, and floors every non-popup window at
+ * 500px plus 161px more for captions and drag space (661px on Windows).
+ * Aequera answers with a responsive address bar, reusing upstream's own
+ * values and precedents, scoped to the rail so Firefox's defaults are
+ * untouched. What stays fixed at any width: back, forward, extensions,
+ * the app menu, and the OS caption buttons.
+ *   always: 140px urlbar floor (upstream's smallest step) with the
+ *     popup-window shrink allowance; base window floor 240px (401px on
+ *     Windows), matching the responsive chrome's worst case;
+ *   <= 700px: the developer button steps aside (upstream hides page
+ *     actions under 680px); devtools stay in the menu and on shortcut;
+ *   <= 600px: 100px urlbar floor, zoom button steps aside (upstream
+ *     hides it under 550px); zoom stays in the View menu;
+ *   <= 560px: 80px urlbar floor, springs collapse fully, stop/reload and
+ *     downloads join the overflow menu (aequera-narrow.js); all return
+ *     when the window widens. */
+:root[aequera-rail] {
+  --urlbar-container-min-width: 140px;
+  --window-min-width: 240px;
+}
+
+:root[aequera-rail] #navigator-toolbox,
+:root[aequera-rail] #nav-bar {
+  min-width: 0;
+}
+
+:root[aequera-rail] :is(#urlbar-container, #wrapper-urlbar-container) {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  :root[aequera-rail] #developer-button {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  :root[aequera-rail] {
+    --urlbar-container-min-width: 100px;
+  }
+  :root[aequera-rail] #urlbar-zoom-button {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  :root[aequera-rail] {
+    --urlbar-container-min-width: 80px;
+  }
+  :root[aequera-rail] #nav-bar toolbarspring {
+    min-width: 0;
+  }
+}
