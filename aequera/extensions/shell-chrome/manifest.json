@@ -9,7 +9,7 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "applications": {
+  "browser_specific_settings": {
     "gecko": {
       "id": "shell-chrome@aequera",
       "strict_min_version": "156.0"

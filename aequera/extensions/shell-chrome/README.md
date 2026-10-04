@@ -36,6 +36,23 @@ the exact chord is a later shell-integration decision, not a silent override.
 2. Open `about:debugging#/runtime/this-firefox` → Load Temporary Add-on → pick `manifest.json`.
 3. Exercise: create workspace, open/switch/close/restore/move/pin tabs, fire the command; confirm no errors and `worktree/firefox` shows no source diff.
 
+## Live smoke (proven 2026-09-24, TEMP-only harness, repo untouched)
+
+Heads-up: the repo manifest pins `strict_min_version 156.0` (the lock).
+The smoke runs a throwaway copy under `%TEMP%\aequera-smoke` with the min
+version lowered, plus a TEMP-only `smoke.html` runner — none of it is committed.
+
+1. `web-ext build` the temp copy → `.xpi`.
+2. Launch a real Firefox headless with Marionette on a throwaway profile:
+   `firefox --headless --no-remote --marionette -remote-allow-system-access --profile <tmp>`.
+3. Via Marionette: temp-install the XPI, read the UUID from
+   `extensions.webextensions.uuids` (chrome context), navigate to
+   `moz-extension://<uuid>/src/smoke.html`, read `#out`.
+4. Result (Nightly 153.0a1, real tabs/windows/sessions/storage/history):
+   `listWorkspaces`, open-switch-close round trip, sessions+storage, and
+   palette ranking over live sources — all green, 9/9 cap with
+   Tab/Workspace/Bookmark ordering intact.
+
 ## Acceptance (this slice)
 
 - `cargo test -p aequera-core` green (20 tests).
@@ -43,7 +60,8 @@ the exact chord is a later shell-integration decision, not a silent override.
 - `aequera upstream verify` → verified; `aequera patch status` → base match, applied state matches manifest.
 - `manifest.json` parses; `strict_min_version` == lock version `156.0`; permissions ⊆ {tabs, sessions, storage, history, bookmarks}; `icons` 16/32/48/128 resolve to `icons/` (real mark).
 - `background.js` / `palette.js` contain no `fetch(` / `XMLHttpRequest` / `WebSocket` call sites, no telemetry.
-- Temporary load in the pinned build works without errors (manual; full Firefox build is hours — not run in this slice).
+- Live Marionette smoke in real Firefox green (4/4 steps; see above).
+- Temporary load in the pinned 156.0 build remains the final gate (manual; full Firefox build is hours).
 
 ## Explicit non-goals (v0 + palette)
 
