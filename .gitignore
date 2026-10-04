@@ -12,6 +12,9 @@ obj-*/
 # Local tooling/cache
 .cache/
 
+# Local agent-tool state (Serena MCP)
+.serena/
+
 # Local test/profile state
 .tmp/
 
