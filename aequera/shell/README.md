@@ -76,15 +76,20 @@ with 9px corners, transparent at rest with the prototype's hover and selected
 washes, 12px titles; collapsed, each row is a 30px square whose icon sits on
 the rail's center line and never moves; rows grow with the rail, titles are
 revealed by the widening and fade in (clipped away, then faded out, on
-collapse). Click selects, middle-click and the dim "x" (on hover, widened
-rail only) close, right-click opens Firefox's own tab context menu for that
-row (rows carry `.tab`), drag reorders via `gBrowser.moveTabTo`, hidden tabs
-(other workspaces, extensions) are not listed. New Tab is the same row with a
-dim "+" centered in both states: a 30px square collapsed, a full-width row
-widened. Pinned tabs stay Firefox's (the essentials grid). Not yet: keyboard
-focus and arrow-key navigation of the rows (tabs switch with Ctrl+Tab /
-Ctrl+Page Down meanwhile), tab groups (grouped tabs list as plain rows),
-sound indicators, multiselect, dragging rows to other windows.
+ collapse). Click selects, middle-click and the dim "x" (on hover, widened
+ rail only) close, right-click opens Firefox's own tab context menu for that
+ row (rows carry `.tab`). Dragging reorders with a live slide and a settle
+ glide (`gBrowser.moveTabTo`); dropping outside the rail tears the tab into a
+ new window (`gBrowser.replaceTabsWithWindow`); tabs dragged from another
+ window preview a gap and are adopted at the drop position
+ (`gBrowser.adoptTab`, carrying the native tab-drop type so vanilla Firefox
+ windows interoperate both ways). Hidden tabs (other workspaces, extensions)
+ are not listed. New Tab is the same row with a dim "+" centered in both
+ states: a 30px square collapsed, a full-width row widened. Pinned tabs stay
+ Firefox's (the essentials grid). Not yet: keyboard focus and arrow-key
+ navigation of the rows (tabs switch with Ctrl+Tab / Ctrl+Page Down
+ meanwhile), tab groups (grouped tabs list as plain rows), sound indicators,
+ multiselect.
 
 ### Essentials
 

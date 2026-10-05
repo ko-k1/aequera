@@ -200,7 +200,7 @@ add_task(async function test_hidden_tabs_are_not_listed() {
 
 add_task(async function test_drag_reorders_tabs() {
   const tabs = await openTabs(3);
-  const [a, , c] = tabs;
+  const [a, b, c] = tabs;
   const dataTransfer = new DataTransfer();
   const fire = (type, target, clientY) => {
     const box = target.getBoundingClientRect();
@@ -214,10 +214,45 @@ add_task(async function test_drag_reorders_tabs() {
       })
     );
   };
+  const reducedMotion =
+    window.gReduceMotion || matchMedia("(prefers-reduced-motion: reduce)").matches;
   fire("dragstart", rowFor(a));
   const target = rowFor(c).getBoundingClientRect();
+  // The visible gap chases at most one slot per frame, so a far jump
+  // needs repeated frames to fully open; the drop commits the true gap.
   fire("dragover", rowFor(c), target.bottom - 2);
+  fire("dragover", rowFor(c), target.bottom - 2);
+  if (!reducedMotion) {
+    is(
+      list().getAttribute("movingtab"),
+      "true",
+      "dragging enables moving-tab mode for the live slide"
+    );
+    await TestUtils.waitForCondition(
+      () => rowFor(b).style.transform != "",
+      "siblings slide live during dragover, before any drop"
+    );
+    ok(
+      gBrowser.tabs.indexOf(a) < gBrowser.tabs.indexOf(b),
+      "the live slide previews without committing the order"
+    );
+    ok(rowFor(a).style.transform != "", "the dragged row follows the pointer");
+    ok(
+      rowFor(a).hasAttribute("dragging"),
+      "the dragged row is marked for direct-manipulation tracking"
+    );
+  }
   fire("drop", rowFor(c), target.bottom - 2);
+  if (!reducedMotion) {
+    ok(
+      rowFor(a).style.transform != "",
+      "the drop stages rebased offsets onto the committed slots"
+    );
+    ok(
+      list().hasAttribute("movingtab"),
+      "the transition stays armed through the commit for the glide"
+    );
+  }
   fire("dragend", rowFor(a));
   await TestUtils.waitForCondition(
     () => gBrowser.tabs.indexOf(a) == gBrowser.tabs.indexOf(c) + 1,
@@ -225,6 +260,171 @@ add_task(async function test_drag_reorders_tabs() {
   );
   const order = listedTabs();
   is(order.indexOf(a), order.indexOf(c) + 1, "the rows follow the new order");
+  if (!reducedMotion) {
+    await TestUtils.waitForCondition(
+      () =>
+        list().hasAttribute("movingtab") &&
+        order.every(tab => rowFor(tab).style.transform == ""),
+      "the release frame arms the glide"
+    );
+  }
+  await TestUtils.waitForCondition(
+    () =>
+      order.every(tab => rowFor(tab).style.transform == "") &&
+      !list().hasAttribute("movingtab"),
+    "the settle glide finishes and moving-tab mode ends with the drag"
+  );
+});
+
+add_task(async function test_drag_cancelled_leaves_order_and_visuals() {
+  const tabs = await openTabs(2);
+  const [a, b] = tabs;
+  const before = gBrowser.tabs.indexOf(a);
+  const dataTransfer = new DataTransfer();
+  const fire = (type, target) => {
+    const box = target.getBoundingClientRect();
+    target.dispatchEvent(
+      new DragEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2,
+      })
+    );
+  };
+  fire("dragstart", rowFor(a));
+  fire("dragover", rowFor(b));
+  // No drop: the drag ends outside the list (Escape / drop on the page).
+  fire("dragend", rowFor(a));
+  is(gBrowser.tabs.indexOf(a), before, "cancelling the drag keeps the tab order");
+  for (const tab of listedTabs()) {
+    is(rowFor(tab).style.transform, "", "no slide transform survives a cancelled drag");
+  }
+  ok(!list().hasAttribute("movingtab"), "moving-tab mode ends with the drag");
+});
+
+add_task(async function test_real_drag_reorders_with_slide_and_settle() {
+  // Full platform drag (real dragstart populating a real dataTransfer,
+  // real dropEffect, real dragend delivery), not synthetic events.
+  const tabs = await openTabs(3);
+  const [a, , c] = tabs;
+  const dst = rowFor(c).getBoundingClientRect();
+  EventUtils.synthesizeDrop(
+    rowFor(a),
+    rowFor(c),
+    null,
+    "move",
+    window,
+    window,
+    { clientX: dst.left + dst.width / 2, clientY: dst.bottom - 2 }
+  );
+  EventUtils.synthesizeMouseAtCenter(rowFor(c), { type: "mouseup" }, window);
+  await TestUtils.waitForCondition(
+    () => gBrowser.tabs.indexOf(a) == gBrowser.tabs.indexOf(c) + 1,
+    "a real drop reorders the tabs"
+  );
+  const order = listedTabs();
+  is(order.indexOf(a), order.indexOf(c) + 1, "the rows follow the new order");
+  await TestUtils.waitForCondition(
+    () =>
+      order.every(tab => rowFor(tab) && rowFor(tab).style.transform == "") &&
+      !list().hasAttribute("movingtab"),
+    "visuals and moving-tab mode settle after a real drag"
+  );
+});
+
+// NOTE: no real-drag detach test: ending a platform drag session requires
+// a physical release, which headless synthetic input cannot produce (no
+// dragend fires, verified). Detach logic is covered by
+// test_drag_outside_detaches_to_new_window in a real window, and the real
+// platform dragstart/dragover/drop path by test_real_drag_reorders_*.
+
+add_task(async function test_drop_from_another_window_adopts_tab() {
+  const win = await BrowserTestUtils.openNewBrowserWindow();
+  await TestUtils.waitForCondition(
+    () => win.AequeraTabs && win.AequeraTabs.element,
+    "the other window's rail is ready"
+  );
+  const [tab] = await openTabs(1);
+  const url = tab.linkedBrowser.currentURI.spec;
+  const dataTransfer = new DataTransfer();
+  dataTransfer.mozSetDataAt("application/x-moz-tabbrowser-tab", tab, 0);
+  const otherRows = () => [
+    ...win.document
+      .getElementById("aequera-tabs")
+      .querySelectorAll(".aequera-tab:not(.aequera-newtab)"),
+  ];
+  const fire = (type, target, clientY) => {
+    const box = target.getBoundingClientRect();
+    target.dispatchEvent(
+      new win.DragEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+        clientX: box.left + box.width / 2,
+        clientY: clientY ?? box.top + box.height / 2,
+      })
+    );
+  };
+  const reducedMotion =
+    win.gReduceMotion || win.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const first = otherRows()[0];
+  const firstBox = first.getBoundingClientRect();
+  fire("dragover", first, firstBox.top + 2);
+  if (!reducedMotion) {
+    await TestUtils.waitForCondition(
+      () => otherRows().some(r => r.style.transform != ""),
+      "the other rail opens a gap for the foreign tab"
+    );
+  }
+  fire("drop", first, firstBox.top + 2);
+  await TestUtils.waitForCondition(
+    () => !gBrowser.tabs.includes(tab),
+    "the tab leaves the original window"
+  );
+  const adopted = win.gBrowser.tabs.filter(
+    t => !t.pinned && !t.hidden && t.linkedBrowser.currentURI.spec == url
+  );
+  is(adopted.length, 1, "the other window adopted exactly one tab with its URL");
+  const listed = otherRows().map(r => r.tab);
+  is(listed[0], adopted[0], "the adopted tab lands at the drop position with a row");
+  await BrowserTestUtils.closeWindow(win);
+  ok(true, "the other window closes cleanly");
+});
+
+add_task(async function test_drag_outside_detaches_to_new_window() {
+  const [tab] = await openTabs(1);
+  const newWindowPromise = BrowserTestUtils.waitForNewWindow();
+  const dataTransfer = new DataTransfer();
+  dataTransfer.dropEffect = "none";
+  const row = rowFor(tab);
+  const box = row.getBoundingClientRect();
+  const fire = (type, clientX, clientY) => {
+    row.dispatchEvent(
+      new DragEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+        clientX,
+        clientY,
+        screenX: (window.screenX || 0) + (window.outerWidth || 800) + 200,
+        screenY: (window.screenY || 0) + 200,
+      })
+    );
+  };
+  fire("dragstart", box.left + 10, box.top + 15);
+  // Release far outside the strip: no drop lands on the list, so the
+  // drag ends with effect none and the tab tears off like a native drag.
+  fire("dragend", 5000, 5000);
+  const win = await newWindowPromise;
+  ok(!gBrowser.tabs.includes(tab), "the tab leaves the original window");
+  await TestUtils.waitForCondition(
+    () => !listedTabs().includes(tab),
+    "its row is gone from the rail"
+  );
+  await BrowserTestUtils.closeWindow(win);
+  ok(true, "the detached window closes cleanly");
 });
 
 add_task(async function test_context_menu_is_firefox_tab_menu_for_that_row() {
