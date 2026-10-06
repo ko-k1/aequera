@@ -40,6 +40,11 @@ var AequeraTabs = (() => {
   const EDGE_PAD = 4;
   const DETACH_MARGIN = 15;
   const SETTLE_MS = 250;
+  // Mirror of the CSS glide cap (aequera-tabs.css min(..., 150ms)): the JS
+  // retire timer must cover the capped transition plus a frame buffer, never
+  // the raw pref alone.
+  const SETTLE_GLIDE_CAP_MS = 150;
+  const SETTLE_BUFFER_MS = 100;
 
   const list = {
     element: null,
@@ -228,13 +233,14 @@ var AequeraTabs = (() => {
         return;
       }
       if (this._drag) {
-        this.onDragEnd();
+        this.cancelDrag();
       }
-      // A previous drop's settle retire must not fire mid-drag and wipe
-      // the new drag's transforms; the new drag re-arms movingtab itself.
+      // A previous drop's settle must not fire mid-drag and wipe the new
+      // drag's transforms, nor leave rebased transforms behind (they would
+      // make measureLayout bail and kill the new drag's live slide): retire
+      // it fully; the new drag re-arms movingtab itself below.
       if (this._settleTimer) {
-        clearTimeout(this._settleTimer);
-        this._settleTimer = 0;
+        this.endSettle();
       }
       const box = row.getBoundingClientRect();
       const rm = this.reduceMotion();
@@ -373,8 +379,9 @@ var AequeraTabs = (() => {
       if (!drag.zone) {
         return;
       }
-      this.element.scrollBy(0, drag.zone * EDGE_SCROLL_STEP);
-      this.dragFrame(drag.pending);
+      // Single scroll per tick lives in dragFrame (which recomputes the zone
+      // and scrolls once); scrolling here as well would double-step.
+      this.dragFrame(Number.isFinite(drag.pending) ? drag.pending : drag.lastY);
       this.kickScroll(drag);
     },
 
@@ -568,7 +575,7 @@ var AequeraTabs = (() => {
     /** True when the pointer left the list (relatedTarget is unreliable
      * mid-drag, bug 458613, so coordinates decide row-crossing vs exit). */
     leftList(event) {
-      if (!this.element || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
+      if (!this.element || !Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) {
         return false;
       }
       const rect = this.element.getBoundingClientRect();
@@ -670,7 +677,7 @@ var AequeraTabs = (() => {
         if (this.element) {
           void this.element.offsetHeight;
         }
-        this._settleTimer = setTimeout(() => this.endSettle(), SETTLE_MS);
+        this._settleTimer = setTimeout(() => this.endSettle(), this.settleMs());
         requestAnimationFrame(() => {
           if (this._settleTimer) {
             this.clearDragVisuals();
@@ -746,6 +753,37 @@ var AequeraTabs = (() => {
       this.setMoving(false);
     },
 
+    /** Retire timer matching the CSS glide (min(pref, cap) + buffer). */
+    settleMs() {
+      try {
+        const raw = getComputedStyle(document.documentElement).getPropertyValue(
+          "--aequera-motion-duration"
+        );
+        const pref = parseInt(raw, 10);
+        if (Number.isFinite(pref)) {
+          return Math.min(Math.max(pref, 0), SETTLE_GLIDE_CAP_MS) + SETTLE_BUFFER_MS;
+        }
+      } catch (e) {}
+      return SETTLE_MS;
+    },
+
+    /** Event-free drag teardown (supersede path); returns the drag. */
+    cancelDrag() {
+      const drag = this._drag;
+      if (!drag) {
+        return null;
+      }
+      if (drag.frame) {
+        cancelAnimationFrame(drag.frame);
+        drag.frame = 0;
+      }
+      this.clearDragVisuals();
+      this._drag = null;
+      this.setMoving(false);
+      this.render();
+      return drag;
+    },
+
     dropTargetFromEvent(event, dragged, drag) {
       // Halves are measured against layout tops: a row caught mid-slide
       // reports its visual (shifted) rect, so subtract its applied shift.
@@ -775,7 +813,9 @@ var AequeraTabs = (() => {
       return { target: rest[rest.length - 1], after: true };
     },
 
-    /** A tab dragged from another window (native tab-drop identity). */
+    /** A tab dragged from another window (native tab-drop identity), or a
+     * same-window native drag from outside the rail (e.g. the all-tabs
+     * menu). Own rail drags are handled via _drag, never here. */
     foreignTab(event) {
       const dt = event.dataTransfer;
       if (!dt || typeof dt.mozGetDataAt != "function") {
@@ -787,8 +827,13 @@ var AequeraTabs = (() => {
       } catch (e) {
         return null;
       }
-      if (!tab || tab.localName != "tab" || !tab.isConnected || tab.ownerDocument == document) {
+      if (!tab || tab.localName != "tab" || !tab.isConnected) {
         return null;
+      }
+      if (tab.ownerDocument == document) {
+        // Same-document native drag: only a genuine tab of this window
+        // qualifies (content cannot fabricate a tab in gBrowser.tabs).
+        return gBrowser.tabs.includes(tab) ? tab : null;
       }
       return tab;
     },
@@ -897,28 +942,36 @@ var AequeraTabs = (() => {
     },
 
     onDragEnd(event) {
-      const drag = this._drag;
+      const drag = this.cancelDrag();
       if (!drag) {
         return;
       }
-      if (drag.frame) {
-        cancelAnimationFrame(drag.frame);
-        drag.frame = 0;
+      // Without an event there are no coordinates to judge a tear-off by;
+      // teardown only (supersede path calls with no event).
+      if (!event) {
+        return;
       }
-      this.clearDragVisuals();
-      this._drag = null;
-      this.setMoving(false);
-      this.render();
       const effect = event?.dataTransfer?.dropEffect;
       if (
         !drag.dropped &&
         drag.tab.isConnected &&
         effect === "none" &&
         this.allowDetach() &&
-        !this.nearList(event)
+        this.isOutside(event, drag)
       ) {
         this.detachTab(drag.tab, event, drag);
       }
+    },
+
+    /** Outside judgment: dragend coordinates can be clamped to the window
+     * or report the last inside position on OS drops, so a drag that left
+     * the rail (ghostOutside, armed by dragleave) counts as outside even
+     * when the end coordinates read inside. */
+    isOutside(event, drag) {
+      if (drag?.ghostOutside) {
+        return true;
+      }
+      return !this.nearList(event);
     },
 
     allowDetach() {
@@ -930,7 +983,7 @@ var AequeraTabs = (() => {
     },
 
     nearList(event) {
-      if (!this.element || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
+      if (!this.element || !Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) {
         return false;
       }
       const rect = this.element.getBoundingClientRect();
@@ -943,13 +996,19 @@ var AequeraTabs = (() => {
     },
 
     detachTab(tab, event, drag) {
-      const offsetX = Number.isFinite(drag.offsetX) ? drag.offsetX : 16;
-      const offsetY = Number.isFinite(drag.offsetY) ? drag.offsetY : 16;
+      const offsetX = Number.isFinite(drag?.offsetX) ? drag.offsetX : 16;
+      const offsetY = Number.isFinite(drag?.offsetY) ? drag.offsetY : 16;
+      const screenX = Number.isFinite(event?.screenX)
+        ? event.screenX
+        : (window.screenX ?? 0) + 100;
+      const screenY = Number.isFinite(event?.screenY)
+        ? event.screenY
+        : (window.screenY ?? 0) + 100;
       if (gBrowser.tabs.length <= 1) {
         try {
           window.moveTo(
-            Math.max(window.screen?.availLeft ?? 0, event.screenX - offsetX),
-            Math.max(window.screen?.availTop ?? 0, event.screenY - offsetY)
+            Math.max(window.screen?.availLeft ?? 0, screenX - offsetX),
+            Math.max(window.screen?.availTop ?? 0, screenY - offsetY)
           );
           window.focus();
         } catch (e) {}
@@ -957,8 +1016,8 @@ var AequeraTabs = (() => {
       }
       try {
         gBrowser.replaceTabsWithWindow(tab, {
-          screenX: Math.round(event.screenX - offsetX),
-          screenY: Math.round(event.screenY - offsetY),
+          screenX: Math.round(screenX - offsetX),
+          screenY: Math.round(screenY - offsetY),
         });
       } catch (e) {}
     },

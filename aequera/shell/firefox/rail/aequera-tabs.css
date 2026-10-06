@@ -155,6 +155,8 @@
  * manipulation) while siblings glide; the drop settle uses the same
  * transition to pour into the committed order. Tracking, not staged
  * motion: the duration cap keeps fast drags attached to the pointer.
+ * Keep the 150ms cap in sync with SETTLE_GLIDE_CAP_MS in aequera-tabs.js
+ * (settleMs() retires movingtab as min(pref, cap) + buffer).
  * Outside no-preference there is no slide (instant discrete drop, same
  * final order). */
 @media (prefers-reduced-motion: no-preference) {
