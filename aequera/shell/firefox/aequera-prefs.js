@@ -65,6 +65,26 @@ pref("browser.uiCustomization.defaultExclusions", "alltabs-button");
 // new profiles and Restore Defaults, never to a saved layout.
 pref("browser.uiCustomization.defaultNavbarPlacements", "back-button,forward-button,stop-reload-button,spring,urlbar-container,developer-button,spring,downloads-button");
 
+// Privacy defaults (configs/defaults/privacy.toml schema v1, RESTRICTIONS.md).
+// No telemetry, studies, sponsored UI, vendor service, or silent crash upload
+// by default. Applied here as supported pref defaults (never a Firefox patch,
+// never a web-platform change); an explicit user opt-in via Settings or
+// about:config still wins, and resetting a pref returns here. Update behavior
+// is intentionally untouched here: security updates stay independently visible
+// (docs/engineering/RELEASE.md) and deserve a separate ADR, not a silent pref.
+pref("toolkit.telemetry.enabled", false);
+pref("toolkit.telemetry.unified", false);
+pref("toolkit.telemetry.archive.enabled", false);
+pref("datareporting.policy.dataSubmissionEnabled", false);
+pref("datareporting.healthreport.uploadEnabled", false);
+pref("app.shield.optoutstudies.enabled", false);
+pref("app.normandy.enabled", false);
+pref("browser.newtabpage.activity-stream.showSponsoredTopSites", false);
+pref("browser.newtabpage.activity-stream.showSponsored", false);
+pref("extensions.pocket.enabled", false);
+pref("browser.crashReports.unsubmittedCheck.autoSubmit", false);
+pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
+
 // Frame material: one OS backdrop behind all chrome. On Windows 11 that is
 // Mica (widget.windows.mica below), the native counterpart of the
 // prototype's single #frame glass layer. macOS (vibrancy) and Linux

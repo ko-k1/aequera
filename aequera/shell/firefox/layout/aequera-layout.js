@@ -93,9 +93,12 @@ var AequeraLayout = (() => {
         try {
           STEPS[version - 1]();
         } catch (error) {
-          // A failed step must not block startup or later steps; it is
-          // recorded as done so a broken step cannot retry on every start.
+          // A failed step must not block startup, but it must not be marked
+          // done either: record the failure and retry on next startup so a
+          // broken migration cannot silently skip (CUSTOMIZATION.md recovery:
+          // reject invalid, keep previous valid state, emit diagnostic).
           console.error(`aequera-layout: migration ${version} failed`, error);
+          break;
         }
         Services.prefs.setIntPref(VERSION_PREF, version);
       }

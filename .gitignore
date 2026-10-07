@@ -20,3 +20,8 @@ obj-*/
 
 # Rust build artifacts
 target/
+
+# Python bytecode / caches (tooling only, never source)
+__pycache__/
+*.pyc
+*.pyo

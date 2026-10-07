@@ -2,8 +2,11 @@
 #
 # Product requirement (docs/RESTRICTIONS.md): no telemetry, advertising,
 # sponsored UI, silent remote configuration, or unnecessary vendor services.
-# Every section maps to managed Firefox preferences (`pref:` comments) that a
-# later slice applies as configuration — never as web-platform changes.
+# Every section except [update] maps to managed Firefox preferences (`pref:`
+# comments) applied as defaults in aequera/shell/firefox/aequera-prefs.js —
+# never as web-platform changes. [update] has no pref mapping by design:
+# update behavior is intentionally untouched (see aequera-prefs.js and
+# docs/engineering/RELEASE.md) pending a separate ADR.
 # Security protections (site isolation, sandboxing, certificate validation,
 # Safe Browsing) are NOT weakened here; this file only removes product-level
 # data collection and merchandising.
@@ -37,7 +40,8 @@ sponsored_stories = false
 pocket = false
 
 [crash]
-# pref: browser.crashReports.unsubmittedCheck.autoSubmit
+# pref: browser.crashReports.unsubmittedCheck.autoSubmit, .autoSubmit2
+# (Firefox 156 uses autoSubmit2; both are defaulted off for coverage).
 # Never upload without review; the user may still inspect and send explicitly.
 auto_submit = false
 
