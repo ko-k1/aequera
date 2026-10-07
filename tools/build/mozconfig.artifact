@@ -5,8 +5,8 @@
 # Suits all shell work (aequera/shell, browser patches without C++).
 # Any C++/Rust/Gecko patch needs a full build instead.
 #
-# Use from the MozillaBuild shell, inside worktree/firefox:
-#   export MOZCONFIG=/c/src/aequera/tools/build/mozconfig.artifact
+# Use from any POSIX shell (MozillaBuild on Windows), inside worktree/firefox:
+#   export MOZCONFIG="$PWD/../../tools/build/mozconfig.artifact" (repo-relative)
 
 ac_add_options --enable-project=browser
 ac_add_options --enable-artifact-builds

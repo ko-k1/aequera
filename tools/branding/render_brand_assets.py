@@ -12,9 +12,15 @@ Supersampled Pillow polygons + LANCZOS downscale keep edges clean.
 Private variant reuses the same geometry with remapped fills
 (#4ED5FF -> #8C5ADC, #4EFFFF -> #C4A8FF); see source/README.md.
 
+macOS: firefox.icns / document.icns (multi-resolution, Pillow-assembled
+from the 1024px mark), disk.icns (dmg volume icon), background.png (dmg
+background, 1440x880 like upstream's). Assets.car still needs Xcode's
+actool on a Mac; see tools/branding/build_assets_car.sh.
+
 Usage: python tools/branding/render_brand_assets.py [branding dir]
-  (default: aequera/design/branding). Requires Pillow. Deterministic: the
-  same inputs always produce byte-identical files.
+  (default: aequera/design/branding). Requires Pillow. Deterministic for a
+  fixed Pillow: re-rendering with a different Pillow may re-encode existing
+  rasters, so diff before committing a full re-render.
 """
 
 import math
@@ -153,6 +159,28 @@ def svg_mark(size=512, source=None):
     )
 
 
+def mac_icons(out):
+    """macOS bundle and disk image art.
+
+    v1 placeholder: firefox/document/disk .icns all reuse the same 1024px
+    mark (like upstream shape, unlike upstream differentiated art).
+    browser/app/moz.build copies the .icns files into the app bundle and
+    package-manifest.in requires them plus Assets.car (actool builds that
+    one on a Mac; see tools/branding/build_assets_car.sh).
+    """
+    big = mark(1024)
+    # Pillow's .icns writer downscales with bare resize (nearest) unless a
+    # size is supplied via append_images; hand it LANCZOS scales instead.
+    small = [big.resize((s, s), Image.LANCZOS) for s in (32, 64, 128, 256, 512)]
+    big.save(out / "firefox.icns", append_images=small)
+    big.save(out / "document.icns", append_images=small)
+    big.save(out / "disk.icns", append_images=small)
+    dmg_bg = Image.new("RGB", (1440, 880), (20, 23, 26))
+    logo = mark(256)
+    dmg_bg.paste(logo, ((1440 - 256) // 2, (880 - 256) // 2), logo)
+    dmg_bg.save(out / "background.png", optimize=True)
+
+
 def main(out):
     out.mkdir(parents=True, exist_ok=True)
     for size in (16, 22, 24, 32, 48, 64, 128, 256):
@@ -187,6 +215,7 @@ def main(out):
     logo = mark(160)
     background.paste(logo, ((1344 - 160) // 2, 180), logo)
     background.save(stub / "bgstub.jpg", quality=90)
+    mac_icons(out)
     content = out / "content"
     content.mkdir(exist_ok=True)
     mark(192).save(content / "about-logo.png", optimize=True)

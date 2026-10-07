@@ -3,7 +3,9 @@ $ErrorActionPreference = "Stop"
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $CliDir = Join-Path $Root "tools\cli"
-$Bin = Join-Path $CliDir "target\debug\aequera.exe"
+# Cargo workspace target dir: member builds land in $Root\target, never in
+# tools\cli\target (no such directory exists).
+$Bin = Join-Path $Root "target\debug\aequera.exe"
 
 Push-Location $CliDir
 try {

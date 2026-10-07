@@ -71,6 +71,22 @@ and profiles live in `%APPDATA%\Aequera\Profiles`.
 - Compiled-only identity (registry keys, taskbar AUMID, launcher, default
   browser agent) follows `MOZ_APP_VENDOR`/`MOZ_APP_BASENAME` but is only
   exercised by a compiled build and installer (no installer built yet).
-- macOS assets (`firefox.icns`, `Assets.car`, `dsstore`, disk image art)
-  and `MOZ_MACBUNDLE_ID`'s `org.mozilla.` prefix; the Linux D-Bus name
-  (`org.aequera.browser`). Neither platform is built yet.
+- macOS bundle art: `firefox.icns`, `document.icns`, `disk.icns`, and
+  `background.png` are committed (rendered from `source/aequera-icon.svg`
+  by `tools/branding/render_brand_assets.py`). v1 placeholder: all three
+  `.icns` reuse the same 1024px app mark (byte-identical); differentiated
+  document/disk art is future work. Still open: `Assets.car`,
+  which only Xcode's `actool` can compile — run
+  `tools/branding/build_assets_car.sh` once on a Mac and commit the result;
+  until then no macOS build can link the bundle. The `AppIcon.appiconset`
+  currently caps at 256x256 (mirrors committed `default*.png`, like
+  upstream branding dirs) and the `actool` flags plus the macOS
+  `application.ini` lookup in `aequera-run.sh` are unverified — needs a
+  real Mac bundle-layout check. `MOZ_MACBUNDLE_ID=aequera`
+  follows upstream nightly's bare-name convention.
+- The Linux D-Bus name (`org.aequera.browser`): the `org.mozilla.*`
+  namespace is hardcoded upstream (`widget/gtk/DBusService.cpp`,
+  `toolkit/components/remote/nsDBusRemote{Client,Server}.cpp`, portal id in
+  `widget/gtk/WidgetUtilsGtk.cpp`) and needs narrow Gecko-level patches
+  plus session-bus testing. Neither that rename nor a macOS build has
+  happened yet.

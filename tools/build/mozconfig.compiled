@@ -1,13 +1,13 @@
 # Aequera compiled build (full C++/Rust + front end).
 #
 # Unlike mozconfig.artifact (Mozilla's prebuilt firefox.exe, minutes), this
-# compiles everything: hours on first build, needs Visual Studio 2022 with
-# C++ (see tools/bootstrap/windows.md). It is the only build that carries
+# compiles everything: hours on first build, needs the platform toolchain
+# (see tools/bootstrap/<os>.md). It is the only build that carries
 # the Aequera binary identity end to end: aequera.exe with the Aequera
 # icons embedded, registry keys, taskbar AUMID, and installer.
 #
-# Use from the MozillaBuild shell, inside worktree/firefox:
-#   export MOZCONFIG=/c/src/aequera/tools/build/mozconfig.compiled
+# Use from any POSIX shell (MozillaBuild on Windows), inside worktree/firefox:
+#   export MOZCONFIG="$PWD/../../tools/build/mozconfig.compiled" (repo-relative)
 #
 # The artifact build stays the default for shell/front-end work.
 
@@ -17,10 +17,11 @@ ac_add_options --enable-project=browser
 # Separate from the artifact objdir so both builds can coexist.
 mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-aequera
 
-# Cap parallelism: unrestrained -j OOMs clang-cl on shared machines (this
-# box also runs ML training; even -j4 OOMs giant unified TUs + the gkrust
-# LTO link against ~70GB resident training jobs, so serialize fully).
-mk_add_options MOZ_MAKE_FLAGS="-j1"
+# Cap parallelism: the project's first compiled build shared its box with
+# resident ML training jobs, where even -j4 OOMed giant unified TUs and the
+# gkrust LTO link — hence the -j1 default. Any other host should raise it:
+# export AEQUERA_MAKE_FLAGS="-j$(nproc)" before building.
+mk_add_options MOZ_MAKE_FLAGS="${AEQUERA_MAKE_FLAGS:--j1}"
 
 # Rust toolchain: the tree needs >= 1.90.0, but newer rustc can crash on the
 # gkrust LTO link (stable hit 0xc0000409 here). If so, point RUSTC/CARGO at
