@@ -1,4 +1,4 @@
-Subject: [PATCH 2/2] sidebar: toggleTabstrip without the revamp launcher
+Subject: [PATCH 2/3] sidebar: toggleTabstrip without the revamp launcher
 
 Why Firefox source must change:
   toggleTabstrip (run at init and on every tab-orientation change,

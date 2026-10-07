@@ -4,6 +4,14 @@ on:
   push:
   pull_request:
 
+# Least privilege: smoke only reads the tree and runs local Rust checks.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
     name: smoke (${{ matrix.os }})

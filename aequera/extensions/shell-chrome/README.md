@@ -1,8 +1,10 @@
 # shell-chrome — first-party wireup v0 + unified palette (no Firefox patch)
 
 Proves the prototype tab/workspace/command model against **real Firefox tabs**
-through stable WebExtensions APIs only. Firefox source is untouched:
-`patches/manifest.yaml` stays v0 empty, `worktree/firefox` stays clean.
+through stable WebExtensions APIs only. Firefox source is untouched by this
+extension: it needs no `patches/browser` hook of its own (see
+`patches/manifest.yaml` for the separate shell-chrome overlay and rail hooks);
+`worktree/firefox` stays clean of manual edits.
 
 ## Classification (AGENTS.md)
 
@@ -67,3 +69,10 @@ version lowered, plus a TEMP-only `smoke.html` runner — none of it is committe
 
 Sidebar/panel UI bundling, workspace persistence beyond window values, exact
 `Ctrl+K` chord, touch/a11y audit — all later Phase 1 slices.
+
+## Known residual: manifest_version 2
+
+`manifest.json` stays on `manifest_version: 2` pinned to the `156.0` lock.
+A future MV3 migration is tracked work: it must not silently widen
+permissions (`history`, `bookmarks` stay read-only palette sources) and must
+re-prove the live Marionette smoke before the version pin moves.

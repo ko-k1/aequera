@@ -1,4 +1,4 @@
-Subject: [PATCH] customizableui: pref for the navbar's default order
+Subject: [PATCH 2/2] customizableui: pref for the navbar's default order
 
 Why Firefox source must change:
   The navbar's default placements (new profiles, Restore Defaults) are a

@@ -150,7 +150,7 @@ bash ../../tools/build/test-shell.sh aequera --repeat 4
 - `aequera`: Aequera-owned mochitests (`aequera/shell/firefox/tests`),
   under Aequera defaults.
 - `upstream`: Firefox's own sidebar tests with Firefox's defaults restored
-  (`--setpref`), proving the `sidebar-motion` patches change nothing by
+  (`--setpref`), proving the `aequera-rail` patches change nothing by
   default. Firefox's tests assume Firefox's defaults: run without the
   resets, `browser_sidebar_expand_on_hover.js` fails its first assertion
   because Aequera ships expand-on-hover on.

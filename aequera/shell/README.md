@@ -130,7 +130,7 @@ remote/policy default changes are refused.
 `sidebar.verticalTabs` stays a user choice (the rail steps aside for
 horizontal tabs). The only unlock is `AEQUERA_UNLOCK_SHELL_PREFS=1` in the
 environment, used by `tools/build/test-shell.sh` for Firefox's own tests; no
-pref can unlock them.
+pref can unlock them, and production launchers must never set the variable.
 
 ### Default layout
 

@@ -25,3 +25,12 @@ target/
 __pycache__/
 *.pyc
 *.pyo
+
+# Config migration backups (tools/cli config migrate writes *.bak next to source)
+*.bak
+
+# OS / editor noise (never source)
+.DS_Store
+*.swp
+*.swo
+.vscode/

@@ -1,4 +1,4 @@
-Subject: [PATCH] customizableui: pref to leave widgets out of the default layout
+Subject: [PATCH 1/2] customizableui: pref to leave widgets out of the default layout
 
 Why Firefox source must change:
   Every area's default placements (the layout of a new profile and of
