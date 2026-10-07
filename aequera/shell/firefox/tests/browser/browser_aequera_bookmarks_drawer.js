@@ -41,6 +41,16 @@ async function closeDrawer() {
   }
   leaveTopBar();
   await TestUtils.waitForCondition(() => !isOpen(), "drawer closes");
+  // The attribute clears synchronously, but the close wipe keeps the drawer
+  // painted briefly: visibility flips to hidden only after the motion
+  // duration (aequera-bookmarks.css). Tasks assert the painted state, so wait
+  // for it wherever hiding applies (peek mode, toolbar built).
+  if (ROOT.hasAttribute("aequera-bookmarks-peek") && !toolbar().hasAttribute("collapsed")) {
+    await TestUtils.waitForCondition(
+      () => getComputedStyle(toolbar()).visibility == "hidden",
+      "drawer hides after the close wipe"
+    );
+  }
 }
 
 add_setup(async () => {

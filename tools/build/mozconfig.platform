@@ -12,9 +12,10 @@
 # OOMed against ~70 GB resident jobs; pause training or raise if the box is
 # idle). Linux/macOS stay on mach's automatic default; if the link OOMs,
 # export MOZ_MAKE_FLAGS="-j<N>" in the build shell and re-run mach configure.
+# AEQUERA_MAKE_FLAGS="-j<N>" overrides the Windows default for idle boxes.
 case "$(uname -s)" in
 MINGW*|MSYS*|CYGWIN*)
-  mk_add_options MOZ_MAKE_FLAGS="-j1"
+  mk_add_options MOZ_MAKE_FLAGS="${AEQUERA_MAKE_FLAGS:--j1}"
   ;;
 esac
 

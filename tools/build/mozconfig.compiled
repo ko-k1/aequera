@@ -8,10 +8,9 @@
 # AUMID, and installer; on macOS the Aequera.app bundle; on Linux the aequera
 # binary with the hicolor icons and .desktop entry.
 #
-# Use from a POSIX shell (MozillaBuild on Windows, any terminal on
+# Use from any POSIX shell (MozillaBuild on Windows, any terminal on
 # Linux/macOS), inside worktree/firefox:
-#   export MOZCONFIG="$HOME/aequera/tools/build/mozconfig.compiled"
-# with $HOME/aequera replaced by the actual checkout path.
+#   export MOZCONFIG="$PWD/../../tools/build/mozconfig.compiled" (repo-relative)
 #
 # The artifact build stays the default for shell/front-end work.
 
@@ -22,6 +21,9 @@ ac_add_options --enable-project=browser
 mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-aequera
 
 # Host-platform tuning (parallelism, toolchain notes).
+# Override the default -j with AEQUERA_MAKE_FLAGS="-j<N>" in the build
+# shell when the box is idle (Windows defaults to -j1; Linux/macOS follow
+# mach's default).
 . "$topsrcdir/../../tools/build/mozconfig.platform"
 
 # Product identity and branding (shared with every Aequera mozconfig).

@@ -1,76 +1,88 @@
 #!/bin/bash
 # Run the Aequera build under its own application identity, never Firefox's.
-# Dev loop: run from a POSIX shell with worktree/firefox as the working
-# directory, after ./mach build. Any checkout path works (paths resolve from
-# this script's location, never from a hardcoded prefix):
+# Portable across Linux, macOS, and Windows (MozillaBuild or git-bash):
+# all paths derive from this script's location, so any checkout directory
+# works. Never start a bare exe: the artifact binary would open your Firefox
+# profile, join a running Firefox, and serve shell code from the startup cache.
 #
-#   bash tools/build/aequera-run.sh                 # dev: throwaway profile via mach run
-#   bash tools/build/aequera-run.sh --persistent    # real profile (Linux ~/.aequera,
-#                                                   # macOS ~/Library/.../Aequera,
-#                                                   # Windows %APPDATA%\Aequera)
+#   bash tools/build/aequera-run.sh                 # throwaway dev profile
+#   bash tools/build/aequera-run.sh --persistent    # real Aequera profile
 #
-# Outside a build shell (file manager, taskbar, dock), start the real profile
-# with tools/build/aequera.cmd (Windows) or tools/build/aequera.sh
-# (Linux/macOS): persistent without needing mach.
+# Both pass -app (Aequera identity: remoting "aequera", its own profile root)
+# and -no-remote, so neither instance hands off to a running Firefox, and
+# Firefox's profiles.ini is never touched. -purgecaches drops the startup
+# cache, which otherwise keeps serving pre-rebuild chrome.
 #
-# Both pass -app (Aequera identity: remoting "aequera", its own profile roots
-# per configs/defaults/branding.toml) and -no-remote, so neither instance
-# ever hands off to or talks to a running Firefox, and Firefox's profiles.ini
-# is never touched.
-# -purgecaches drops the startup cache, which otherwise keeps serving Firefox
-# chrome (browser.xhtml, patched scripts) from before a `mach build faster`;
-# Aequera's own scripts bypass it anyway (aequera/shell/README.md).
+# MOZCONFIG: exported as usual for mach (see tools/build/README.md). When
+# unset, the mozconfig matching the selected objdir is used and reported;
+# AEQUERA_BUILD=compiled|artifact overrides that guess for custom objdirs.
 set -euo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# From inside worktree/firefox. Prefers the compiled build when present;
-# probes native names on every OS (.exe under Windows shells, bare names on
-# Linux, .app bundle binaries on macOS).
-if [ -z "${MOZ_OBJDIR:-}" ]; then
-  if [ -x obj-aequera/dist/bin/aequera ] \
-    || [ -x obj-aequera/dist/bin/aequera.exe ] \
-    || [ -x obj-aequera/dist/Aequera.app/Contents/MacOS/aequera ]; then
-    objdir=obj-aequera
-  else
-    objdir=obj-aequera-artifact
-  fi
-else
-  objdir=$MOZ_OBJDIR
-fi
-bin="$objdir/dist/bin"
-exe="$bin/aequera"
-[ -x "$exe" ] || exe="$bin/aequera.exe"
-[ -x "$exe" ] || exe="$bin/firefox"
-[ -x "$exe" ] || exe="$bin/firefox.exe"
-[ -x "$exe" ] || exe="$objdir/dist/Aequera.app/Contents/MacOS/aequera"
-[ -x "$exe" ] || exe="$objdir/dist/Firefox.app/Contents/MacOS/firefox"
-if [ ! -x "$exe" ]; then
-  echo "aequera-run: no build in \"$objdir\"; run ./mach build first (see tools/build/README.md)." 1>&2
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+TOPSRCDIR="$ROOT/worktree/firefox"
+if [ ! -d "$TOPSRCDIR" ]; then
+  echo "aequera-run: no Firefox tree at $TOPSRCDIR; run \`aequera patch apply\` first." >&2
   exit 1
 fi
-ini="$bin/browser/aequera-application.ini"
-mkdir -p "$(dirname "$ini")"
 
-# Like `mach run` (python/mozbuild/mozbuild/mach_commands.py), advertise the
-# developer dirs: local builds symlink front-end files into dist. On Windows
-# the content-process sandbox only resolves those links when
-# MOZ_DEVELOPER_REPO_DIR is set (upstream bug 1916286: without it DevTools
-# cannot open and Ctrl+Shift+I / F12 fail with "builtin-modules.js is not
-# found"); elsewhere the native paths are correct as-is. `mach run` sets
-# these itself, so this is a no-op for that branch and the fix for
-# direct-exe launches. cygpath exists only under Windows POSIX shells
-# (MozillaBuild, Git Bash): use the Windows form there, native elsewhere.
-TOPSRCDIR="$(cd "$SCRIPT_DIR/../../worktree/firefox" && pwd)"
-case "$objdir" in
-/*|[A-Za-z]:*) ABSOBJDIR="$objdir" ;;
-*) ABSOBJDIR="$TOPSRCDIR/$objdir" ;;
+EXE_SUFFIX=""
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) EXE_SUFFIX=".exe" ;;
 esac
-if command -v cygpath >/dev/null 2>&1; then
-  export MOZ_DEVELOPER_REPO_DIR="$(cygpath -w "$TOPSRCDIR")"
-  export MOZ_DEVELOPER_OBJ_DIR="$(cygpath -w "$ABSOBJDIR")"
+
+if [ -z "${MOZ_OBJDIR:-}" ]; then
+  if [ -x "$TOPSRCDIR/obj-aequera/dist/bin/aequera$EXE_SUFFIX" ]; then
+    OBJDIR_NAME=obj-aequera
+  else
+    OBJDIR_NAME=obj-aequera-artifact
+  fi
+  OBJDIR="$TOPSRCDIR/$OBJDIR_NAME"
 else
-  export MOZ_DEVELOPER_REPO_DIR="$TOPSRCDIR"
-  export MOZ_DEVELOPER_OBJ_DIR="$ABSOBJDIR"
+  case "$MOZ_OBJDIR" in
+    /*|[A-Za-z]:*) OBJDIR="$MOZ_OBJDIR" ;;
+    *) OBJDIR="$TOPSRCDIR/$MOZ_OBJDIR" ;;
+  esac
 fi
+
+BIN="$OBJDIR/dist/bin"
+EXE="$BIN/aequera$EXE_SUFFIX"
+[ -x "$EXE" ] || EXE="$BIN/firefox$EXE_SUFFIX"
+if [ ! -x "$EXE" ]; then
+  shopt -s nullglob
+  candidates=("$OBJDIR"/dist/*.app/Contents/MacOS/*)
+  shopt -u nullglob
+  APP_BIN=""
+  for c in ${candidates[@]+"${candidates[@]}"}; do
+    case "$c" in
+      *Aequera.app/Contents/MacOS/*) APP_BIN="$c"; break ;;
+    esac
+  done
+  [ -n "$APP_BIN" ] || APP_BIN="${candidates[0]:-}"
+  if [ -n "$APP_BIN" ] && [ -x "$APP_BIN" ]; then
+    EXE="$APP_BIN"
+  fi
+fi
+[ -x "$EXE" ] || {
+  echo "aequera-run: no build in $BIN; see tools/build/README.md." >&2
+  exit 1
+}
+
+# Native Windows binaries need Windows-style paths when launched from a
+# POSIX shell; everywhere else absolute POSIX paths are correct as-is.
+to_native() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+# Like `mach run`, advertise the developer dirs: local builds symlink
+# front-end files into dist, and the content-process sandbox only resolves
+# those links when the repo dir is advertised (upstream bug 1916286).
+export MOZ_DEVELOPER_REPO_DIR="$(to_native "$TOPSRCDIR")"
+export MOZ_DEVELOPER_OBJ_DIR="$(to_native "$OBJDIR")"
 
 if command -v python3 >/dev/null 2>&1; then
   PYTHON=python3
@@ -79,23 +91,52 @@ elif command -v python >/dev/null 2>&1; then
 else
   PYTHON=""
 fi
+# Bundle binaries stage dist/bin into the .app, so the source ini may live
+# in either place; the launch ini goes next to the binary that uses it.
+# Unverified against a real Mac bundle layout (see tools/build/README.md).
+SRC_INI="$BIN/application.ini"
+case "$EXE" in
+  *.app/Contents/MacOS/*)
+    APP_CONTENTS="$(dirname "$(dirname "$EXE")")"
+    BUNDLE_RESOURCES="$APP_CONTENTS/Resources"
+    INI="$BUNDLE_RESOURCES/browser/aequera-application.ini"
+    mkdir -p "$(dirname "$INI")"
+    [ -f "$SRC_INI" ] || SRC_INI="$BUNDLE_RESOURCES/application.ini"
+    ;;
+  *)
+    INI="$BIN/browser/aequera-application.ini"
+    mkdir -p "$(dirname "$INI")"
+    ;;
+esac
 if [ -z "$PYTHON" ]; then
-  if [ ! -f "$ini" ]; then
-    echo "aequera-run: cannot write \"$ini\" without python3; build once on a machine with python." 1>&2
+  if [ ! -f "$INI" ]; then
+    echo "aequera-run: cannot write \"$INI\" without python3; build once on a machine with python." >&2
     exit 1
   fi
-  echo "aequera-run: python3 not found, starting with the existing \"$ini\"." 1>&2
+  echo "aequera-run: python3 not found, starting with the existing \"$INI\"." >&2
 else
-  "$PYTHON" "$SCRIPT_DIR/aequera_app_ini.py" "$bin/application.ini" "$ini"
+  "$PYTHON" "$ROOT/tools/build/aequera_app_ini.py" "$SRC_INI" "$INI"
 fi
-if command -v cygpath >/dev/null 2>&1; then
-  ini_arg=$(cygpath -w "$ini")
-else
-  ini_arg="$ini"
-fi
+INI_NATIVE="$(to_native "$INI")"
 
 if [ "${1:-}" = "--persistent" ]; then
   shift
-  exec "$exe" -app "$ini_arg" -no-remote -purgecaches "$@"
+  exec "$EXE" -app "$INI_NATIVE" -no-remote -purgecaches "$@"
 fi
-exec ./mach run -- -app "$ini_arg" -no-remote -purgecaches "$@"
+
+cd "$TOPSRCDIR"
+if [ -z "${MOZCONFIG:-}" ]; then
+  case "${AEQUERA_BUILD:-}" in
+    compiled) MOZCONFIG="$ROOT/tools/build/mozconfig.compiled" ;;
+    artifact) MOZCONFIG="$ROOT/tools/build/mozconfig.artifact" ;;
+    "") case "$(basename "$OBJDIR")" in
+      obj-aequera) MOZCONFIG="$ROOT/tools/build/mozconfig.compiled" ;;
+      *) MOZCONFIG="$ROOT/tools/build/mozconfig.artifact" ;;
+    esac ;;
+    *) echo "aequera-run: unknown AEQUERA_BUILD=$AEQUERA_BUILD, want compiled|artifact" >&2
+      exit 1 ;;
+  esac
+  export MOZCONFIG
+  echo "aequera-run: MOZCONFIG unset, using $MOZCONFIG" >&2
+fi
+exec ./mach run -- -app "$INI_NATIVE" -no-remote -purgecaches "$@"

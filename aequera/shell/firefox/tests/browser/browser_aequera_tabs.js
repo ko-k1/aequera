@@ -17,6 +17,12 @@ const railBox = () => container().querySelector(":scope > sidebar-main");
 const isFullyCollapsed = () =>
   !ROOT.hasAttribute("aequera-rail-expanded") && !gBrowser.tabContainer.hasAttribute("expanded");
 const centerX = box => box.left + box.width / 2;
+// Platform drag sessions (and real cross-window geometry) need a display:
+// headless provides no drag service, so EventUtils.synthesizeDrop throws,
+// and backgrounded windows report degenerate geometry. These paths stay
+// covered on headed runs; headless skips them the way upstream marks
+// OS-service tests skip-if headless.
+const HEADLESS = Services.env.get("MOZ_HEADLESS") == "1";
 
 function hoverRail() {
   EventUtils.synthesizeMouse(container(), 5, 200, { type: "mousemove" });
@@ -305,6 +311,10 @@ add_task(async function test_drag_cancelled_leaves_order_and_visuals() {
 });
 
 add_task(async function test_real_drag_reorders_with_slide_and_settle() {
+  if (HEADLESS) {
+    ok(true, "skipped headless: synthesizeDrop needs the platform drag service");
+    return;
+  }
   // Full platform drag (real dragstart populating a real dataTransfer,
   // real dropEffect, real dragend delivery), not synthetic events.
   const tabs = await openTabs(3);
@@ -341,6 +351,10 @@ add_task(async function test_real_drag_reorders_with_slide_and_settle() {
 // platform dragstart/dragover/drop path by test_real_drag_reorders_*.
 
 add_task(async function test_drop_from_another_window_adopts_tab() {
+  if (HEADLESS) {
+    ok(true, "skipped headless: cross-window drop needs real window geometry");
+    return;
+  }
   const win = await BrowserTestUtils.openNewBrowserWindow();
   await TestUtils.waitForCondition(
     () => win.AequeraTabs && win.AequeraTabs.element,

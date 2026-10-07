@@ -6,10 +6,9 @@
 # (aequera/shell, browser patches without C++). Any C++/Rust/Gecko patch
 # needs a full build instead.
 #
-# Use from a POSIX shell (MozillaBuild on Windows, any terminal on
+# Use from any POSIX shell (MozillaBuild on Windows, any terminal on
 # Linux/macOS), inside worktree/firefox:
-#   export MOZCONFIG="$HOME/aequera/tools/build/mozconfig.artifact"
-# with $HOME/aequera replaced by the actual checkout path.
+#   export MOZCONFIG="$PWD/../../tools/build/mozconfig.artifact" (repo-relative)
 
 ac_add_options --enable-project=browser
 ac_add_options --enable-artifact-builds

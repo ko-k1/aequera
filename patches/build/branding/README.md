@@ -81,15 +81,11 @@ dialog read Aequera and profiles live under the per-OS root above.
 - `Assets.car` (macOS): the asset-catalog source ships
   (`macos/Assets.xcassets`, AppIcon set rendered from the mark), but the
   compiled `.car` needs Xcode and is not yet built. On a Mac, from the
-  checkout root:
-  `xcrun actool --output-format human-readable-text --notices --warnings
-  --platform macosx --minimum-deployment-target 10.15 --output-partial-info-plist /tmp/a.plist
-  --app-icon AppIcon --include aequera/design/branding/macos/Assets.xcassets
-  --compile aequera/design/branding`
+  checkout root, run `bash tools/branding/build_assets_car.sh`
   then verify `aequera/design/branding/Assets.car` exists for the next
   `patch apply` (the overlay syncs it into `browser/branding/aequera`, where
   `browser/app/moz.build` stages it into the .app). DMG art (`disk.icns`,
-  `background.png`, `dsstore`) likewise waits for the installer pipeline.
+  `background.png` committed, `dsstore`) likewise waits for the installer pipeline.
 - Runtime validation on real Linux/macOS builds: the D-Bus names, desktop
   entry, bundle ID, and icons above are verified textually (`patch check`)
   and by construction against the pinned source, but no Linux/macOS

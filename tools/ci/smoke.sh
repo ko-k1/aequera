@@ -4,7 +4,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CLI_DIR="$ROOT/tools/cli"
-# Workspace root owns the shared target dir (Cargo.toml [workspace]).
+# Cargo workspace target dir: member builds land in $ROOT/target, never in
+# tools/cli/target (no such directory exists).
 BIN="$ROOT/target/debug/aequera"
 
 pushd "$CLI_DIR" > /dev/null
