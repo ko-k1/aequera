@@ -183,7 +183,11 @@ mod tests {
 
     #[test]
     fn bench_artifact_round_trips() {
-        let dir = std::env::temp_dir().join(format!("aequera-bench-test-{}", std::process::id()));
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static BENCH_COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = BENCH_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir =
+            std::env::temp_dir().join(format!("aequera-bench-test-{}-{}", std::process::id(), n));
         let artifact = dir.join("nested/baseline.json");
         let report = run(&repo_root(), Some(&artifact)).expect("bench with --out");
         let text = std::fs::read_to_string(&artifact).unwrap();

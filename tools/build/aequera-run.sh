@@ -40,8 +40,24 @@ if [ -z "${MOZ_OBJDIR:-}" ]; then
   OBJDIR="$TOPSRCDIR/$OBJDIR_NAME"
 else
   case "$MOZ_OBJDIR" in
-    /*|[A-Za-z]:*) OBJDIR="$MOZ_OBJDIR" ;;
-    *) OBJDIR="$TOPSRCDIR/$MOZ_OBJDIR" ;;
+    /*|[A-Za-z]:[\\/]*) OBJDIR="$MOZ_OBJDIR" ;;
+    *) # Relative: canonicalize (portable: GNU realpath -m, else python3)
+       # and require containment under the repo root.
+       _canonical() {
+         if command -v realpath >/dev/null 2>&1 && realpath -m / >/dev/null 2>&1; then
+           realpath -m "$1"
+         elif command -v python3 >/dev/null 2>&1; then
+           python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"
+         else
+           printf '%s\n' "$1"
+         fi
+       }
+       OBJDIR="$(_canonical "$TOPSRCDIR/$MOZ_OBJDIR")"
+       _TOP_CANON="$(_canonical "$ROOT")"
+       case "$OBJDIR" in
+         "$_TOP_CANON"/*) ;;
+         *) echo "aequera-run: MOZ_OBJDIR escapes repo root ($OBJDIR); refusing." >&2; exit 1 ;;
+       esac ;;
   esac
 fi
 
@@ -53,11 +69,15 @@ if [ ! -x "$EXE" ]; then
   candidates=("$OBJDIR"/dist/*.app/Contents/MacOS/*)
   shopt -u nullglob
   APP_BIN=""
-  for c in ${candidates[@]+"${candidates[@]}"}; do
-    case "$c" in
-      *Aequera.app/Contents/MacOS/*) APP_BIN="$c"; break ;;
-    esac
-  done
+  # Quoted expansion preserves spaces; length guard keeps `set -u`
+  # safe on older bash with an empty array.
+  if [ "${#candidates[@]}" -gt 0 ]; then
+    for c in "${candidates[@]}"; do
+      case "$c" in
+        *Aequera.app/Contents/MacOS/*) APP_BIN="$c"; break ;;
+      esac
+    done
+  fi
   [ -n "$APP_BIN" ] || APP_BIN="${candidates[0]:-}"
   if [ -n "$APP_BIN" ] && [ -x "$APP_BIN" ]; then
     EXE="$APP_BIN"
@@ -109,11 +129,9 @@ case "$EXE" in
     ;;
 esac
 if [ -z "$PYTHON" ]; then
-  if [ ! -f "$INI" ]; then
-    echo "aequera-run: cannot write \"$INI\" without python3; build once on a machine with python." >&2
-    exit 1
-  fi
-  echo "aequera-run: python3 not found, starting with the existing \"$INI\"." >&2
+  # Fail closed: never launch with a possibly stale (Firefox) identity.
+  echo "aequera-run: cannot verify \"$INI\" without python3; refusing to launch." >&2
+  exit 1
 else
   "$PYTHON" "$ROOT/tools/build/aequera_app_ini.py" "$SRC_INI" "$INI"
 fi

@@ -92,12 +92,36 @@ impl Browser {
     /// refused; an empty workspace list is refused (a browser always has a
     /// workspace); dangling pointers are repaired to deterministic
     /// fallbacks so restore can never produce an invalid browser.
+    ///
+    /// Structural corruption (duplicate ids, empty workspace names) is
+    /// refused before mutating `self`: validation is atomic, never
+    /// half-applied.
     pub fn restore(&mut self, snap: &SessionSnapshot) -> Result<(), Error> {
         if snap.version != SNAPSHOT_VERSION {
             return Err(Error::UnsupportedSnapshot(snap.version));
         }
         if snap.workspaces.is_empty() {
             return Err(Error::EmptySnapshot);
+        }
+        // Pre-validate: uniqueness across workspaces, tabs, and closed
+        // tabs; workspace names must be non-empty. Runs before any
+        // mutation so refusal leaves prior state untouched.
+        {
+            use std::collections::HashSet;
+            let mut seen = HashSet::new();
+            for sw in &snap.workspaces {
+                if sw.name.trim().is_empty() {
+                    return Err(Error::EmptyName);
+                }
+                if !seen.insert(sw.id) {
+                    return Err(Error::DuplicateId(sw.id));
+                }
+                for t in sw.tabs.iter().chain(sw.closed.iter().map(|c| &c.tab)) {
+                    if !seen.insert(t.id) {
+                        return Err(Error::DuplicateId(t.id));
+                    }
+                }
+            }
         }
         let mut workspaces = Vec::with_capacity(snap.workspaces.len());
         for sw in &snap.workspaces {
@@ -143,6 +167,9 @@ impl Browser {
             _ => workspaces.first().map(|w| w.id),
         };
         // Reseed above every restored id so future ids never collide.
+        // Reject exhaustion: if the snapshot already sits at u64::MAX,
+        // the next allocation could not succeed without panic/reuse.
+        // Return Err instead of installing an unusable state.
         let max_id = workspaces
             .iter()
             .flat_map(|w| {
@@ -153,6 +180,9 @@ impl Browser {
             .chain(snap.next_id.checked_sub(1))
             .max()
             .unwrap_or(0);
+        if max_id == u64::MAX || snap.next_id == u64::MAX {
+            return Err(Error::IdExhausted);
+        }
         self.workspaces = workspaces;
         self.active = active;
         self.next_id = max_id.saturating_add(1).max(snap.next_id);
@@ -281,5 +311,40 @@ mod tests {
         let w = after.create_workspace("Later").unwrap();
         assert!(t > max_before, "tab id {t} reuses restored range");
         assert!(w > max_before, "workspace id {w} reuses restored range");
+    }
+
+    #[test]
+    fn duplicate_ids_and_empty_names_refused_atomically() {
+        let mut snap = lived_in_browser().snapshot();
+        // Duplicate the first tab id onto the second workspace's first tab.
+        let dup = snap.workspaces[0].tabs[0].id;
+        snap.workspaces[1].tabs[0].id = dup;
+        let mut fresh = Browser::new();
+        let before = fresh.snapshot();
+        assert_eq!(fresh.restore(&snap), Err(Error::DuplicateId(dup)));
+        // Refusal is atomic: prior state untouched.
+        assert_eq!(fresh.snapshot().workspaces.len(), before.workspaces.len());
+
+        let mut snap = lived_in_browser().snapshot();
+        snap.workspaces[0].name = "   ".into();
+        let mut fresh = Browser::new();
+        assert_eq!(fresh.restore(&snap), Err(Error::EmptyName));
+        assert_eq!(fresh.workspaces().len(), 1);
+    }
+
+    #[test]
+    fn exhausted_id_space_refused_not_panicked() {
+        let mut snap = lived_in_browser().snapshot();
+        snap.next_id = u64::MAX;
+        let mut fresh = Browser::new();
+        assert_eq!(fresh.restore(&snap), Err(Error::IdExhausted));
+        // Prior state untouched, still usable.
+        assert_eq!(fresh.workspaces().len(), 1);
+
+        let mut snap = lived_in_browser().snapshot();
+        snap.workspaces[0].tabs[0].id = u64::MAX;
+        snap.next_id = 100;
+        let mut fresh = Browser::new();
+        assert_eq!(fresh.restore(&snap), Err(Error::IdExhausted));
     }
 }

@@ -200,21 +200,25 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
         validate_overlay(root, &wt, overlay)?;
     }
 
-    // Idempotency: identical state + proof that the worktree's tracked files
-    // equal base + the whole ordered series means "already applied".
+    // Idempotency: identical patches + proof that the worktree's tracked
+    // files equal base + the whole ordered series means no patch re-apply
+    // is needed. Overlays are part of the state: a changed overlay list
+    // re-syncs overlays and reports already_applied:false without
+    // re-running `git apply` (which would fail on an already-patched tree).
     if let Ok(state) = read_state(&wt)
         && state.base_sha == lock.upstream.revision.git
         && state.manifest_version == manifest.manifest_version
         && state.applied == want
     {
         verify_worktree_matches_series(root, &wt, &manifest)?;
+        let overlays_changed = state.overlays != overlay_ids(&manifest);
         let overlay_files = sync_overlays(root, &wt, &manifest)?;
         write_state(&wt, &state_for(lock, &manifest))?;
         return Ok(ApplyReport {
             base_sha: lock.upstream.revision.git.clone(),
             worktree_dir: wt.display().to_string(),
             entries_applied: want.len(),
-            already_applied: true,
+            already_applied: !overlays_changed,
             overlays_synced: manifest.overlays.len(),
             overlay_files,
         });
@@ -224,12 +228,10 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
     for entry in &manifest.patches {
         for f in series_files(root, entry)? {
             let rel = f.display().to_string();
-            upstream::git(&wt, &["apply", "--check", &rel]).map_err(|e| {
-                format!(
-                    "series {:?}: pre-apply check failed on {rel}: {e}",
-                    entry.id
-                )
-            })?;
+            // Single `git apply` (no separate `--check`): check-then-apply
+            // is a TOCTOU window where the patch file could change between
+            // the two invocations. Apply fails atomically with the same
+            // diagnostic either way.
             upstream::git(&wt, &["apply", &rel])
                 .map_err(|e| format!("series {:?}: apply failed on {rel}: {e}", entry.id))?;
         }
@@ -293,11 +295,18 @@ fn state_for(lock: &LockFile, manifest: &PatchManifest) -> AppliedState {
 }
 
 /// A manifest path must stay inside its base: relative, no `..`, no root or
-/// drive prefix, not empty.
+/// drive prefix, not empty. Backslash and colon are rejected explicitly so
+/// a manifest validated on Linux cannot traverse when applied on Windows
+/// (where `\` is a separator and `:` introduces a drive).
 fn plain_relative(field: &str, id: &str, value: &str) -> Result<PathBuf, String> {
     use std::path::Component;
+    if value.is_empty() || value.contains(['\\', ':', '\0']) {
+        return Err(format!(
+            "overlay {id:?}: {field} {value:?} must be a plain relative path (no '..', no root, no '\\\\' or ':')"
+        ));
+    }
     let path = PathBuf::from(value);
-    let plain = !value.is_empty() && path.components().all(|c| matches!(c, Component::Normal(_)));
+    let plain = path.components().all(|c| matches!(c, Component::Normal(_)));
     if !plain {
         return Err(format!(
             "overlay {id:?}: {field} {value:?} must be a plain relative path (no '..', no root)"
@@ -334,8 +343,14 @@ fn validate_overlay(root: &Path, wt: &Path, overlay: &OverlayEntry) -> Result<()
 fn sync_overlays(root: &Path, wt: &Path, manifest: &PatchManifest) -> Result<usize, String> {
     let mut total = 0;
     for overlay in &manifest.overlays {
-        let source = root.join(&overlay.source);
-        let dest = wt.join(&overlay.dest);
+        // Re-validate here (never trust raw strings): guarantees `dest`
+        // cannot be empty/root/traversal even if a future caller skips
+        // `validate_overlay`. An empty `dest` would make `wt.join("") == wt`
+        // and `remove_dir_all` would wipe the worktree itself.
+        let source_rel = plain_relative("source", &overlay.id, &overlay.source)?;
+        let dest_rel = plain_relative("dest", &overlay.id, &overlay.dest)?;
+        let source = root.join(source_rel);
+        let dest = wt.join(dest_rel);
         if dest.exists() {
             std::fs::remove_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
         }
@@ -469,18 +484,39 @@ struct ScratchIndex {
 
 impl ScratchIndex {
     fn seeded(wt: &Path) -> Result<Self, String> {
-        let path = std::env::temp_dir().join(format!(
-            "aequera-check-index-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or_default()
-        ));
-        let index = Self { path };
-        upstream::git_with_env(wt, &["read-tree", "HEAD"], &index.env())
-            .map_err(|e| format!("could not seed scratch index: {e}"))?;
-        Ok(index)
+        // Exclusive creation (O_EXCL): a predictable /tmp path without
+        // `create_new` lets an attacker pre-create a symlink and have
+        // `git read-tree/write-tree` follow it. Retry with a per-attempt
+        // counter so parallel processes never collide.
+        for attempt in 0..100 {
+            let path = std::env::temp_dir().join(format!(
+                "aequera-check-index-{}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or_default(),
+                attempt
+            ));
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(_) => {
+                    let index = Self { path };
+                    if let Err(e) = upstream::git_with_env(wt, &["read-tree", "HEAD"], &index.env())
+                    {
+                        std::fs::remove_file(&index.path).ok();
+                        return Err(format!("could not seed scratch index: {e}"));
+                    }
+                    return Ok(index);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(format!("could not create scratch index: {e}")),
+            }
+        }
+        Err("could not create unique scratch index after 100 attempts".into())
     }
 
     fn env(&self) -> [(&str, &Path); 1] {
@@ -799,6 +835,89 @@ mod tests {
         write_manifest(&root, "1111111111111111111111111111111111111111", " []\n");
         let err = apply(&root, &lock).expect_err("drifted base must fail");
         assert!(err.contains("patch drift"), "got: {err}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn overlay_rejects_windows_separator_and_drive() {
+        assert!(plain_relative("dest", "x", "a\\b").is_err());
+        assert!(plain_relative("dest", "x", "C:/evil").is_err());
+        assert!(plain_relative("dest", "x", "").is_err());
+        assert!(plain_relative("dest", "x", "browser/aequera").is_ok());
+    }
+
+    #[test]
+    fn reapply_after_overlay_change_is_not_already_applied() {
+        let (root, lock, sha) = baseline("overlay-idem");
+        let src = root.join("aequera/shell/firefox");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("a.css"), "x\n").unwrap();
+        write_manifest_with_overlays(
+            &root,
+            &sha,
+            "  - id: shell\n    source: aequera/shell/firefox\n    dest: browser/aequera\n",
+        );
+        let first = apply(&root, &lock).expect("apply");
+        assert!(!first.already_applied);
+        // Change the overlay id list: same patches, different overlays.
+        // Must not report already_applied.
+        write_manifest_with_overlays(
+            &root,
+            &sha,
+            "  - id: shell-v2\n    source: aequera/shell/firefox\n    dest: browser/aequera\n",
+        );
+        let second = apply(&root, &lock).expect("re-apply with new overlay");
+        assert!(
+            !second.already_applied,
+            "changed overlays must force a fresh apply, got: {second:?}"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn overlay_change_with_nonempty_series_does_not_reapply_patches() {
+        let (root, lock, sha) = baseline("overlay-series");
+        // One real patch.
+        let origin = root.join("origin");
+        std::fs::write(origin.join("base.txt"), "base\npatched\n").unwrap();
+        let diff = git(&origin, &["diff"]);
+        git(&origin, &["checkout", "--", "base.txt"]);
+        let series = root.join("patches/browser/smoke");
+        std::fs::create_dir_all(&series).unwrap();
+        std::fs::write(series.join("0001-smoke.patch"), format!("{diff}\n")).unwrap();
+        // Overlay source.
+        let src = root.join("aequera/shell/firefox");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("a.css"), "x\n").unwrap();
+        // Manifest with both patches and overlays.
+        let text = format!(
+            "manifest_version: 1\n\nbase:\n  upstream:\n    channel: test\n    version: \"0\"\n    revision: \"{sha}\"\n\npatches:\n  - id: smoke\n    series: browser/smoke\n\noverlays:\n  - id: shell\n    source: aequera/shell/firefox\n    dest: browser/aequera\n"
+        );
+        std::fs::create_dir_all(root.join("patches")).unwrap();
+        std::fs::write(root.join("patches/manifest.yaml"), &text).unwrap();
+
+        let first = apply(&root, &lock).expect("first apply");
+        assert!(!first.already_applied);
+        let content =
+            std::fs::read_to_string(root.join(WORKTREE_RELATIVE).join("base.txt")).unwrap();
+        assert!(content.contains("patched"));
+
+        // Change only the overlay id: patches identical. Must succeed
+        // without re-running `git apply` (which would fail on an
+        // already-patched tree) and report already_applied:false.
+        let text2 = text.replace("- id: shell\n", "- id: shell-v2\n");
+        std::fs::write(root.join("patches/manifest.yaml"), &text2).unwrap();
+        let second = apply(&root, &lock).expect("overlay-only re-apply must succeed");
+        assert!(
+            !second.already_applied,
+            "overlay change must not claim already_applied, got: {second:?}"
+        );
+        let content2 =
+            std::fs::read_to_string(root.join(WORKTREE_RELATIVE).join("base.txt")).unwrap();
+        assert!(
+            content2.contains("patched"),
+            "patch content lost: {content2:?}"
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 }

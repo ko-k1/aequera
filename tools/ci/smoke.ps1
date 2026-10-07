@@ -15,7 +15,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "cargo clippy failed" }
     cargo test --workspace
     if ($LASTEXITCODE -ne 0) { throw "cargo test failed" }
-    cargo build
+    cargo build --workspace
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 }
 finally {

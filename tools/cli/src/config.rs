@@ -382,6 +382,9 @@ fn privacy_policy(file: PrivacyFile) -> Vec<String> {
     );
     off(&mut errors, "crash.auto_submit", file.crash.auto_submit);
     off(&mut errors, "update.background", file.update.background);
+    // Closed enum today (Notify | Manual), but keep an explicit match so a
+    // future variant (e.g. `Auto`) fails to compile here and gets a privacy
+    // review instead of silently passing validation.
     match file.update.mode {
         UpdateMode::Notify | UpdateMode::Manual => {}
     }

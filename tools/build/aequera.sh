@@ -25,9 +25,10 @@ FIREFOX_DIR="$REPO_ROOT/worktree/firefox"
 
 # Resolve the object directory: explicit override wins, else prefer the
 # compiled tree when it already holds a native binary.
+# Absolute means POSIX (`/*`) or Windows drive (`C:/...`, for Git Bash).
 if [ -n "${AEQUERA_OBJDIR:-}" ]; then
   case "$AEQUERA_OBJDIR" in
-    /*) OBJDIR="$AEQUERA_OBJDIR" ;;
+    /*|[A-Za-z]:[\\/]*) OBJDIR="$AEQUERA_OBJDIR" ;;
     *) OBJDIR="$FIREFOX_DIR/$AEQUERA_OBJDIR" ;;
   esac
 else
@@ -37,6 +38,33 @@ else
     || [ -x "$FIREFOX_DIR/obj-aequera/dist/Aequera.app/Contents/MacOS/aequera" ]; then
     OBJDIR="$FIREFOX_DIR/obj-aequera"
   fi
+fi
+
+# Containment: a relative override with `..` must not escape the repo.
+# Absolute overrides are explicit user intent (allowed); relative ones are
+# canonicalized and required to stay under REPO_ROOT.
+# Portable canonicalizer: GNU realpath -m where it works, else python3
+# (macOS BSD readlink has no -m, so it is not used here).
+_canonical() {
+  if command -v realpath >/dev/null 2>&1 && realpath -m / >/dev/null 2>&1; then
+    realpath -m "$1"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+if [ -n "${AEQUERA_OBJDIR:-}" ]; then
+  case "$AEQUERA_OBJDIR" in
+    /*|[A-Za-z]:[\\/]*) OBJDIR="$(_canonical "$OBJDIR")" ;;
+    *) _OBJDIR_CANON="$(_canonical "$OBJDIR")"
+       _REPO_CANON="$(_canonical "$REPO_ROOT")"
+       case "$_OBJDIR_CANON" in
+         "$_REPO_CANON"/*) ;;
+         *) echo "aequera: AEQUERA_OBJDIR escapes repo root ($_OBJDIR_CANON); refusing." 1>&2; exit 1 ;;
+       esac
+       OBJDIR="$_OBJDIR_CANON" ;;
+  esac
 fi
 
 # Locate the browser binary. Order: compiled identity first, then the
@@ -87,11 +115,10 @@ else
   PYTHON=""
 fi
 if [ -z "$PYTHON" ]; then
-  if [ ! -f "$INI" ]; then
-    echo "aequera: cannot write \"$INI\" without python3; run tools/build/aequera-run.sh once." 1>&2
-    exit 1
-  fi
-  echo "aequera: python3 not found, starting with the existing \"$INI\"." 1>&2
+  # Fail closed: a stale INI could carry the wrong (Firefox) identity.
+  # Never launch with an unverified INI.
+  echo "aequera: cannot verify \"$INI\" without python3; refusing to launch with a possibly stale identity." 1>&2
+  exit 1
 else
   "$PYTHON" "$SCRIPT_DIR/aequera_app_ini.py" "$SRC_INI" "$INI"
 fi

@@ -14,32 +14,37 @@ const resultsEl = $("#results");
 let nextId = 1;
 const nid = () => nextId++;
 
+// Single id namespace like aequera-core (workspace and tab ids share
+// `next_id` and must be globally unique): workspaces take 1-2, tabs 3-5.
 const store = {
   activeWs: 1,
   workspaces: [
     {
       id: 1, name: "Personal",
       tabs: [
-        mkTab("aequera:start", "Aequera Start"),
-        mkTab("https://firefox-source-docs.mozilla.org", "Firefox Source Docs"),
+        { id: 3, url: "aequera:start", title: "Aequera Start", pinned: false, fav: fav("aequera:start"), hist: [{ url: "aequera:start", title: "Aequera Start" }], hi: 0 },
+        { id: 4, url: "https://firefox-source-docs.mozilla.org", title: "Firefox Source Docs", pinned: false, fav: fav("https://firefox-source-docs.mozilla.org"), hist: [{ url: "https://firefox-source-docs.mozilla.org", title: "Firefox Source Docs" }], hi: 0 },
       ],
-      activeTab: 2, closed: [],
+      activeTab: 4, closed: [],
     },
     {
-      id: 4, name: "Research",
-      tabs: [mkTab("https://example.org/papers", "Reading list")],
-      activeTab: 3, closed: [],
+      id: 2, name: "Research",
+      tabs: [{ id: 5, url: "https://example.org/papers", title: "Reading list", pinned: false, fav: fav("https://example.org/papers"), hist: [{ url: "https://example.org/papers", title: "Reading list" }], hi: 0 }],
+      activeTab: 5, closed: [],
     },
   ],
 };
 nextId = 6;
 
 /* Library data: history is live-logged by navigate(); bookmarks are curated
-   seeds; recently-closed derives from every workspace's closed stack. */
+   seeds; recently-closed derives from every workspace's closed stack.
+   `at` is a unix-ms timestamp (Date.now()); seeds use offsets so the
+   type matches live entries. Order is insertion order (newest first via
+   unshift), not sorted by `at`. */
 store.history = [
-  { url: "https://developer.mozilla.org", title: "MDN Web Docs", at: 3 },
-  { url: "https://example.org/papers", title: "Reading list", at: 2 },
-  { url: "https://firefox-source-docs.mozilla.org", title: "Firefox Source Docs", at: 1 },
+  { url: "https://developer.mozilla.org", title: "MDN Web Docs", at: Date.now() - 1000 },
+  { url: "https://example.org/papers", title: "Reading list", at: Date.now() - 2000 },
+  { url: "https://firefox-source-docs.mozilla.org", title: "Firefox Source Docs", at: Date.now() - 3000 },
 ];
 store.bookmarks = [
   { url: "https://developer.mozilla.org", title: "MDN Web Docs" },
@@ -92,8 +97,7 @@ function faviconSvg(letter, hue) {
 
 /* ---------------- mutations (core-op mirrors) ---------------- */
 function openTab(w, url, title) {
-  const t = { id: nid(), url, title, pinned: false, fav: fav(url),
-              hist: [{ url, title }], hi: 0 };
+  const t = mkTab(url, title);
   w.tabs.push(t);
   w.activeTab = t.id;
   libraryView = null;

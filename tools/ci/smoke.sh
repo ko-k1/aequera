@@ -12,7 +12,7 @@ pushd "$CLI_DIR" > /dev/null
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo build
+cargo build --workspace
 popd > /dev/null
 
 pushd "$ROOT" > /dev/null

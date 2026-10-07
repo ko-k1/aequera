@@ -90,6 +90,8 @@ def _load_unit_shapes(source=None):
         tag = child.tag.split("}")[-1]
         fill = child.attrib.get("fill", "#4ED5FF")
         if tag == "path":
+            if "d" not in child.attrib:
+                raise ValueError(f"path without d in #unit-sector of {path}")
             shapes.append((fill, _parse_path_d(child.attrib["d"])))
         elif tag == "rect":
             x = float(child.attrib["x"])
@@ -97,6 +99,13 @@ def _load_unit_shapes(source=None):
             w = float(child.attrib["width"])
             h = float(child.attrib["height"])
             shapes.append((fill, [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]))
+        else:
+            # Fail closed: silently dropping circle/polygon/etc would
+            # produce a wrong mark without any error.
+            raise ValueError(
+                f"unsupported shape <{tag}> in #unit-sector of {path}; "
+                "extend the renderer instead of ignoring it"
+            )
     if not shapes:
         raise ValueError(f"no shapes in #unit-sector of {path}")
     return shapes
@@ -107,6 +116,15 @@ def _map_color(fill_hex, private):
     if pair:
         return pair[1] if private else pair[0]
     h = fill_hex.lstrip("#")
+    # Named/keyword paints have no RGB mapping: refuse instead of crashing
+    # on slice indexing.
+    if fill_hex.lower() in ("none", "currentcolor", "transparent"):
+        raise ValueError(f"unsupported fill {fill_hex!r}: keyword paints have no raster color")
+    # Expand #rgb to #rrggbb; anything else must be exactly 6 hex digits.
+    if len(h) == 3 and all(c in "0123456789abcdefABCDEF" for c in h):
+        h = "".join(c * 2 for c in h)
+    if len(h) != 6 or any(c not in "0123456789abcdefABCDEF" for c in h):
+        raise ValueError(f"unsupported fill {fill_hex!r}: want #rrggbb")
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255)
 
 
@@ -150,7 +168,11 @@ def tile(size, background, private=False):
 def svg_mark(size=512, source=None):
     path = Path(source) if source else _source_path()
     text = path.read_text(encoding="utf-8")
-    start = text.index(">") + 1
+    # Find the real <svg> open tag, not the `>` of a `<?xml ...?>` prolog.
+    m = re.search(r"<svg\b[^>]*>", text)
+    if m is None or "</svg>" not in text:
+        raise ValueError(f"no <svg> element found in {path}")
+    start = m.end()
     end = text.rindex("</svg>")
     inner = text[start:end].strip() + "\n"
     return (
@@ -258,6 +280,9 @@ def main(out):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2:
+        print(f"usage: {sys.argv[0]} [branding dir]; extra args refused.", file=sys.stderr)
+        sys.exit(2)
     root = Path(__file__).resolve().parents[2]
     target = Path(sys.argv[1]) if len(sys.argv) > 1 else root / "aequera" / "design" / "branding"
     sys.exit(main(target))

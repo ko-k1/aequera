@@ -102,7 +102,9 @@ pub fn substantive_present(path: &Path) -> bool {
     match std::fs::read_dir(path) {
         Ok(entries) => entries.flatten().any(|e| {
             let name = e.file_name();
-            name == ".git" || name != ".gitkeep"
+            // `.gitkeep` is the skeleton placeholder; anything else
+            // (including `.git`) is substantive state.
+            name != ".gitkeep"
         }),
         Err(_) => false,
     }

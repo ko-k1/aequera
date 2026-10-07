@@ -199,7 +199,8 @@ fn expected_compiler() -> (&'static str, &'static str) {
 }
 
 /// Best-effort PATH probe. Warn-level by design: absence must guide,
-/// never block CLI work.
+/// never block CLI work. Uses direct argv (no shell string) so a future
+/// parameterized probe cannot become shell injection.
 fn compiler_present(compiler: &str) -> bool {
     #[cfg(target_os = "windows")]
     {
@@ -211,9 +212,16 @@ fn compiler_present(compiler: &str) -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let probe = format!("command -v {compiler}");
+        // `command -v` is a shell builtin: keep the shell invocation but
+        // never interpolate untrusted input. Today `compiler` is a
+        // hardcoded "cc"; assert that invariant so future callers cannot
+        // pass through arbitrary strings.
+        debug_assert!(matches!(compiler, "cc" | "cl"));
+        if !matches!(compiler, "cc" | "cl") {
+            return false;
+        }
         Command::new("sh")
-            .args(["-c", probe.as_str()])
+            .args(["-c", "command -v \"$0\"", compiler])
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)

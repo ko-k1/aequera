@@ -10,8 +10,16 @@
 #           Firefox's defaults restored, to prove the patches change nothing
 #           by default.
 set -u
-step=${1:-all}
-shift || true
+# Step parsing: explicit suite or all; leading flags mean "all + flags".
+# Unknown positional steps fail closed (never zero-suite green).
+step=all
+if [ $# -gt 0 ]; then
+  case "$1" in
+    aequera|upstream|all) step="$1"; shift ;;
+    -*) step=all ;;
+    *) echo "test-shell: unknown step '$1'; want [aequera|upstream|all] [--repeat N]" >&2; exit 2 ;;
+  esac
+fi
 extra=("$@")
 
 # Firefox release defaults for every pref aequera-prefs.js overrides.

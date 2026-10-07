@@ -7,7 +7,7 @@ upstream/firefox/
 
 # Build outputs (root-level only; patches/build/ is committed source)
 /build/
-obj-*/
+/obj-*/
 
 # Local tooling/cache
 .cache/

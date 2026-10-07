@@ -29,6 +29,7 @@ pub struct FetchReport {
 /// remote. A fresh skeleton directory (placeholder only) is claimed;
 /// anything else unexpected stops the operation.
 pub fn ensure_repo(root: &Path, lock: &LockFile) -> Result<PathBuf, String> {
+    validate_remote_url(&lock.upstream.repository.url)?;
     let dir = root.join(CHECKOUT_RELATIVE);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     claim_placeholders(&dir)?;
@@ -56,6 +57,7 @@ pub fn ensure_repo(root: &Path, lock: &LockFile) -> Result<PathBuf, String> {
 pub fn fetch(root: &Path, lock: &LockFile) -> Result<FetchReport, String> {
     let dir = ensure_repo(root, lock)?;
     let provenance = &lock.upstream.resolved_from;
+    validate_ref_name(&provenance.ref_name)?;
 
     // Fetch exactly the provenance ref — never a branch tip.
     match provenance.kind.as_str() {
@@ -226,6 +228,68 @@ fn resolve_target(lock: &LockFile, target: &str) -> Result<String, String> {
             lock.upstream.channel
         ))
     }
+}
+
+/// Lock-controlled git ref allow-list: prevents option injection
+/// (`--upload-pack=...`) and rev-parse expansion (`^{...}`, `:`, `@`).
+/// Single-arg `Command` prevents shell injection, but git still parses
+/// leading `-` as an option, so the ref itself must be constrained.
+fn validate_ref_name(r: &str) -> Result<(), String> {
+    let ok = !r.is_empty()
+        && r.len() <= 256
+        && !r.starts_with('-')
+        && !r.starts_with('.')
+        && !r.starts_with('/')
+        && !r.ends_with('/')
+        && !r.ends_with('.')
+        && !r.contains("..")
+        && !r.contains([':', '~', '^', '?', '*', '[', '\\', ' ', '\t', '\n', '\0'])
+        && r.bytes().all(|b| {
+            matches!(
+                b,
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'.' | b'_' | b'-' | b'/'
+            )
+        });
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "refusing lock ref {r:?}: must match [A-Za-z0-9._/-]+, no leading '-', no '..', no git expansion"
+        ))
+    }
+}
+
+/// Remote URLs are passed as a single argv element, but git still
+/// interprets `ext::` / `fd::` as command execution and a leading `-`
+/// as an option. Allow-list safe transports: https/file absolute paths
+/// (production uses https, tests use local absolute paths).
+fn validate_remote_url(url: &str) -> Result<(), String> {
+    if url.is_empty() || url.starts_with('-') || url.contains('\0') || url.contains('\n') {
+        return Err(format!("refusing lock remote URL {url:?}: unsafe value"));
+    }
+    // Block git's command-execution transports (ext::sh -c ..., fd::...).
+    // `https://` contains `://` (single colon), never `::`.
+    if url.contains("::") || url.starts_with("ext:") || url.starts_with("fd:") {
+        return Err(format!(
+            "refusing lock remote URL {url:?}: ext::/fd:: transports allow command execution"
+        ));
+    }
+    let safe = url.starts_with("https://")
+        || url.starts_with("file://")
+        || url.starts_with('/')
+        || url.starts_with("git@")
+        || url.starts_with("ssh://")
+        // Windows absolute path (C:\..., C:/...).
+        || (url.len() >= 3
+            && url.as_bytes()[0].is_ascii_alphabetic()
+            && url.as_bytes()[1] == b':'
+            && (url.as_bytes()[2] == b'\\' || url.as_bytes()[2] == b'/'));
+    if !safe {
+        return Err(format!(
+            "refusing lock remote URL {url:?}: want https://, file://, ssh, or an absolute path"
+        ));
+    }
+    Ok(())
 }
 
 /// Remove skeleton placeholders the tooling owns. Anything else is left
@@ -525,5 +589,51 @@ mod tests {
         assert_eq!(report.checkout.head_sha, sha);
         assert!(report.verify.verified);
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn fetch_rejects_malicious_ref_names() {
+        for bad in [
+            "--upload-pack=touch /tmp/pwn",
+            "-h",
+            "../escape",
+            "tag^{commit}",
+            "a:b",
+            "a\\b",
+            "",
+        ] {
+            assert!(
+                validate_ref_name(bad).is_err(),
+                "malicious ref {bad:?} must be refused"
+            );
+        }
+        assert!(validate_ref_name("FIREFOX_156_0_RELEASE").is_ok());
+        assert!(validate_remote_url("--evil").is_err());
+    }
+
+    #[test]
+    fn remote_url_blocks_command_execution_transports() {
+        for bad in [
+            "ext::sh -c touch /tmp/pwn",
+            "fd::3",
+            "ext::ssh evil",
+            "not-a-url",
+            "",
+        ] {
+            assert!(
+                validate_remote_url(bad).is_err(),
+                "unsafe remote {bad:?} must be refused"
+            );
+        }
+        for good in [
+            "https://github.com/mozilla-firefox/firefox.git",
+            "file:///tmp/origin",
+            "/tmp/origin",
+        ] {
+            assert!(
+                validate_remote_url(good).is_ok(),
+                "safe remote {good:?} must pass"
+            );
+        }
     }
 }

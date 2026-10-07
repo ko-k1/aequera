@@ -96,11 +96,19 @@ impl Workspace {
 }
 
 /// The whole browsing session: ordered workspaces plus the active one.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Browser {
     workspaces: Vec<Workspace>,
     active: Option<WorkspaceId>,
     next_id: u64,
+}
+
+impl Default for Browser {
+    /// `Default` is the valid empty browser: one default workspace, active.
+    /// Never a zero-workspace state (see `new()`).
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,6 +120,8 @@ pub enum Error {
     NothingToRestore(WorkspaceId),
     UnsupportedSnapshot(u32),
     EmptySnapshot,
+    DuplicateId(u64),
+    IdExhausted,
 }
 
 impl std::fmt::Display for Error {
@@ -126,6 +136,8 @@ impl std::fmt::Display for Error {
                 write!(f, "snapshot schema v{v} is not supported by this build")
             }
             Error::EmptySnapshot => write!(f, "snapshot contains no workspaces"),
+            Error::DuplicateId(id) => write!(f, "duplicate id {id} in snapshot"),
+            Error::IdExhausted => write!(f, "id space exhausted"),
         }
     }
 }
@@ -181,7 +193,7 @@ impl Browser {
         if name.is_empty() {
             return Err(Error::EmptyName);
         }
-        let id = self.issue_id();
+        let id = self.try_issue_id()?;
         self.workspaces.push(Workspace {
             id,
             name: name.to_string(),
@@ -239,7 +251,7 @@ impl Browser {
         url: &str,
         title: &str,
     ) -> Result<TabId, Error> {
-        let id = self.issue_id();
+        let id = self.try_issue_id()?;
         let ws = self.get_workspace_mut(workspace)?;
         ws.tabs.push(Tab {
             id,
@@ -290,6 +302,9 @@ impl Browser {
     /// Move a tab across (or within) workspaces. The source repairs exactly
     /// like a close (without recording); the moved tab activates in the
     /// destination so the user's intent stays visible.
+    ///
+    /// Validates both endpoints before mutating: a bad destination or
+    /// unknown tab leaves all state untouched (no tab loss).
     pub fn move_tab(
         &mut self,
         tab: TabId,
@@ -297,8 +312,14 @@ impl Browser {
         to: WorkspaceId,
         index: usize,
     ) -> Result<(), Error> {
-        let source_pos = self.get_workspace(from)?;
-        let source_index = source_pos.position(tab).ok_or(Error::TabNotFound(tab))?;
+        // Validate first: no mutation until both workspaces and the tab
+        // are known to exist.
+        let source_index = self
+            .get_workspace(from)?
+            .position(tab)
+            .ok_or(Error::TabNotFound(tab))?;
+        // Validates `to` exists before the source is touched.
+        self.get_workspace(to)?;
         // Borrow discipline: remove first, then re-borrow the destination.
         let moving = self.get_workspace_mut(from)?.tabs.remove(source_index);
         {
@@ -323,10 +344,19 @@ impl Browser {
         Ok(slot.pinned)
     }
 
-    fn issue_id(&mut self) -> u64 {
+    fn try_issue_id(&mut self) -> Result<u64, Error> {
         let id = self.next_id;
-        self.next_id += 1;
-        id
+        // Fail with Err, never panic or wrap: wrapping would reuse ids and
+        // break the uniqueness invariant. Exhaustion is unreachable except
+        // via a crafted snapshot, which `restore` already rejects.
+        self.next_id = self.next_id.checked_add(1).ok_or(Error::IdExhausted)?;
+        Ok(id)
+    }
+
+    // Legacy name kept for the infallible `new()` path only.
+    fn issue_id(&mut self) -> u64 {
+        self.try_issue_id()
+            .expect("fresh browser id space cannot be exhausted")
     }
 }
 
@@ -378,6 +408,15 @@ mod tests {
         let b = Browser::new();
         assert_eq!(b.workspaces().len(), 1);
         assert_eq!(b.active_workspace(), b.workspaces()[0]);
+        assert_invariants(&b);
+    }
+
+    #[test]
+    fn default_is_a_valid_browser() {
+        let b = Browser::default();
+        assert_eq!(b.workspaces().len(), 1);
+        // Must not panic: Default is a valid browser, not an empty shell.
+        let _ = b.active_workspace();
         assert_invariants(&b);
     }
 
@@ -474,9 +513,18 @@ mod tests {
         assert_eq!(b.get_workspace(dest).unwrap().active_tab(), Some(ids[0]));
         // Source activity repaired to the tab that took its place.
         assert_eq!(b.get_workspace(src).unwrap().active_tab(), Some(ids[1]));
-        // Unknown tab or workspace fails without mutating.
+        // Unknown tab or workspace fails without mutating (no tab loss).
+        let tabs_before = b.get_workspace(src).unwrap().tabs();
         assert!(b.move_tab(999, src, dest, 0).is_err());
+        assert_eq!(b.get_workspace(src).unwrap().tabs(), tabs_before);
+        let tabs_before = b.get_workspace(src).unwrap().tabs();
         assert!(b.move_tab(ids[1], src, 999, 0).is_err());
+        assert_eq!(
+            b.get_workspace(src).unwrap().tabs(),
+            tabs_before,
+            "failed move to unknown workspace must not lose the tab"
+        );
+        assert!(b.get_workspace(src).unwrap().get(ids[1]).is_some());
         assert_invariants(&b);
     }
 

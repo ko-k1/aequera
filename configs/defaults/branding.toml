@@ -1,6 +1,6 @@
-# Aequera branding defaults (schema validation lands in W5: `config validate`).
+# Aequera branding defaults (validated by `aequera config validate`).
 #
-# Until then: human-authored, machine-read later. Do not add keys here without
+# Human-authored, machine-checked. Do not add keys here without
 # updating patches/build/branding/README.md to say what consumes them.
 
 [meta]
@@ -26,7 +26,7 @@ linux = "~/.aequera"
 macos = "~/Library/Application Support/Aequera"
 
 [telemetry_identity]
-# Branding must never re-enable what W5 disables.
+# Branding must never re-enable what privacy defaults disable.
 client_id_enabled = false
 attribution_enabled = false
 studies_enabled = false

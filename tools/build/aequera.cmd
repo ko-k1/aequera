@@ -39,11 +39,9 @@ rem Copied from the build's own (verified to carry the Aequera identity) on
 rem every start, as aequera-run.sh does, so it never drifts from a rebuild.
 where python >nul 2>&1
 if errorlevel 1 (
-  if not exist "%INI%" (
-    echo aequera: cannot write "%INI%" without python; run tools/build/aequera-run.sh once. 1>&2
-    exit /b 1
-  )
-  echo aequera: python not found, starting with the existing "%INI%". 1>&2
+  rem Fail closed: a stale INI could carry the wrong (Firefox) identity.
+  echo aequera: cannot verify "%INI%" without python; refusing to launch with a possibly stale identity. 1>&2
+  exit /b 1
 ) else (
   python "%~dp0aequera_app_ini.py" "%BIN%\application.ini" "%INI%" || exit /b 1
 )

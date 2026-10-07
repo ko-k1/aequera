@@ -184,21 +184,9 @@ fn load_context() -> Result<(std::path::PathBuf, lock::LockFile), ExitCode> {
 }
 
 fn upstream_fetch(json: bool) -> ExitCode {
-    let root = match lock::discover() {
-        None => {
-            eprintln!(
-                "No Aequera repository found: walked up from the current directory without finding upstream/manifests/firefox.lock."
-            );
-            return ExitCode::FAILURE;
-        }
-        Some(root) => root,
-    };
-    let lock = match lock::load(&root) {
-        Err(e) => {
-            eprintln!("Lock file unreadable: {e}");
-            return ExitCode::FAILURE;
-        }
-        Ok(lock) => lock,
+    let (root, lock) = match load_context() {
+        Err(code) => return code,
+        Ok(ctx) => ctx,
     };
     match upstream::fetch(&root, &lock) {
         Err(e) => {
@@ -206,13 +194,18 @@ fn upstream_fetch(json: bool) -> ExitCode {
             ExitCode::FAILURE
         }
         Ok(report) => {
+            let lock_line = if report.matches_lock {
+                "match"
+            } else {
+                "MISMATCH"
+            };
             let human = format!(
                 "Upstream fetch\n\
                  --------------\n\
                  Remote        : {remote}\n\
                  Fetched ref   : {fetched}\n\
                  Resolved SHA  : {sha}\n\
-                 Lock SHA      : match\n\
+                 Lock SHA      : {lock_line}\n\
                  Checkout dir  : {dir}\n\
                  \n\
                  Baseline unchanged: no checkout modified, no lock modified.",

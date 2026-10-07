@@ -46,7 +46,7 @@ aequera upstream fetch
 ```bash
 aequera patch apply
 cd worktree/firefox
-export MOZCONFIG="$HOME/aequera/tools/build/mozconfig.artifact"   # actual checkout path
+export MOZCONFIG="$PWD/../../tools/build/mozconfig.artifact"   # repo-relative; $PWD is worktree/firefox
 ./mach bootstrap   # choose "Firefox for Desktop Artifact Mode"
 ./mach build
 bash tools/build/aequera-run.sh               # throwaway dev profile
