@@ -4,7 +4,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CLI_DIR="$ROOT/tools/cli"
-BIN="$CLI_DIR/target/debug/aequera"
+# Workspace root owns the shared target dir (Cargo.toml [workspace]).
+BIN="$ROOT/target/debug/aequera"
 
 pushd "$CLI_DIR" > /dev/null
 cargo fmt --all --check

@@ -1,0 +1,58 @@
+Subject: [PATCH] toolkit: portal and MPRIS app IDs claim org.aequera, never org.mozilla
+
+Why Firefox source must change:
+  Two freedesktop app IDs are string literals in widget/gtk with no build
+  option, branding, or preference redirect: the xdg-desktop-portal Register
+  call (WidgetUtilsGtk.cpp) passes org.mozilla.firefox, and the MPRIS media
+  key service owns org.mpris.MediaPlayer2.firefox. Left as-is, an Aequera
+  Linux build registers portal permissions under Mozilla's app ID and
+  advertises media players as Firefox.
+
+What it changes:
+  - widget/gtk/WidgetUtilsGtk.cpp: portal Register app ID
+    org.mozilla.firefox -> org.aequera.browser, matching the shipped
+    org.aequera.browser.desktop entry (portals scope permissions by this
+    ID; configs/defaults/branding.toml dbus_service names the same value).
+  - widget/gtk/MPRISServiceHandler.h: MPRIS service/track suffix .firefox
+    -> .aequera. The org.mpris.MediaPlayer2 prefix is the shared standard
+    and stays; only our leaf changes.
+
+Depends on: 0001 (same series; independent hunks, applies alone too).
+Validation: aequera patch check (applies cleanly); Linux build + run:
+  portal file chooser works, busctl shows the Aequera IDs, media keys route
+  to org.mpris.MediaPlayer2.aequera.
+Upstream risk: low. Two literals in stable desktop-integration code.
+
+diff --git a/widget/gtk/MPRISServiceHandler.h b/widget/gtk/MPRISServiceHandler.h
+index b4dbf1989335..83f0934a4aee 100644
+--- a/widget/gtk/MPRISServiceHandler.h
++++ b/widget/gtk/MPRISServiceHandler.h
+@@ -13,11 +13,11 @@
+ #include "nsMimeTypes.h"
+ #include "nsString.h"
+ 
+-#define DBUS_MPRIS_SERVICE_NAME "org.mpris.MediaPlayer2.firefox"
++#define DBUS_MPRIS_SERVICE_NAME "org.mpris.MediaPlayer2.aequera"
+ #define DBUS_MPRIS_OBJECT_PATH "/org/mpris/MediaPlayer2"
+ #define DBUS_MPRIS_INTERFACE "org.mpris.MediaPlayer2"
+ #define DBUS_MPRIS_PLAYER_INTERFACE "org.mpris.MediaPlayer2.Player"
+-#define DBUS_MPRIS_TRACK_PATH "/org/mpris/MediaPlayer2/firefox"
++#define DBUS_MPRIS_TRACK_PATH "/org/mpris/MediaPlayer2/aequera"
+ 
+ namespace mozilla {
+ namespace widget {
+diff --git a/widget/gtk/WidgetUtilsGtk.cpp b/widget/gtk/WidgetUtilsGtk.cpp
+index 482790fb18cf..85cd299b17e3 100644
+--- a/widget/gtk/WidgetUtilsGtk.cpp
++++ b/widget/gtk/WidgetUtilsGtk.cpp
+@@ -200,7 +200,9 @@ static void DoRegisterHostApp() {
+ 
+   GVariantBuilder builder;
+   g_variant_builder_init(&builder, G_VARIANT_TYPE("(sa{sv})"));
+-  g_variant_builder_add(&builder, "s", "org.mozilla.firefox");
++  // Aequera: portal app ID matches the shipped desktop entry
++  // (org.aequera.browser.desktop), so portal permissions scope to us.
++  g_variant_builder_add(&builder, "s", "org.aequera.browser");
+   GVariantBuilder dict_builder;
+   g_variant_builder_init(&dict_builder, G_VARIANT_TYPE("a{sv}"));
+   g_variant_builder_add_value(&builder, g_variant_builder_end(&dict_builder));

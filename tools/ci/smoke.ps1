@@ -3,7 +3,8 @@ $ErrorActionPreference = "Stop"
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $CliDir = Join-Path $Root "tools\cli"
-$Bin = Join-Path $CliDir "target\debug\aequera.exe"
+# Workspace root owns the shared target dir (Cargo.toml [workspace]).
+$Bin = Join-Path $Root "target\debug\aequera.exe"
 
 Push-Location $CliDir
 try {

@@ -25,6 +25,12 @@ gap = 6
 [shape]
 rad = 9
 
+# Material resolves to one OS backdrop behind all chrome (docs/design/MATERIAL.md).
+# Backend mapping, kept in sync with aequera-prefs.js and aequera-rail.css:
+# Windows 11 -> Mica (widget.windows.mica); macOS -> vibrancy (no pref yet,
+# opaque toolbar fallback); Linux -> compositor transparency where present
+# (opaque toolbar fallback otherwise). blur/sat below describe the Aequera
+# side; the OS side stays a platform integration concern, never a token.
 [material]
 blur = 24
 sat = 1.5

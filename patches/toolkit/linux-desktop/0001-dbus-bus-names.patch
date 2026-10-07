@@ -1,0 +1,117 @@
+Subject: [PATCH] toolkit: Linux session-bus names claim org.aequera, never org.mozilla
+
+Why Firefox source must change:
+  Every D-Bus name an Aequera Linux build owns or advertises is baked into
+  Gecko/widget sources as org.mozilla.* literals and templates. No build
+  option, branding directory, or preference redirects them: GetDBusAppName
+  (xpcom/glue/XREAppData.cpp) only supplies the leaf (the lowercased ini
+  Name, aequera), while the vendor prefix lives in the format strings.
+  Left as-is, a running Aequera owns org.mozilla.aequera{,.profile} on the
+  session bus and advertises an org.mozilla interface, violating
+  docs/RESTRICTIONS.md (no org.mozilla.* service is claimed) and colliding
+  conceptually with Firefox's own names.
+
+What it changes (vendor prefix only; derivation unchanged):
+  - widget/gtk/DBusService.cpp: bus template org.mozilla.%s ->
+    org.aequera.%s (a running build owns org.aequera.aequera),
+    object-path template /org/mozilla/%s -> /org/aequera/%s.
+  - toolkit/components/remote/nsDBusRemoteServer.cpp: single-instance
+    remote bus org.mozilla.<app>.<profile> -> org.aequera.<app>.<profile>
+    (including the default fallback), the advertised introspection
+    interface, the interface name incoming calls are matched against, and
+    the /org/mozilla/<app>/Remote object path. Derivation from
+    GetDBusAppName and the MOZ_DBUS_APP_NAME override keep working;
+    -no-remote semantics unchanged. Two stale code comments now name the
+    Aequera form (the remaining org.mozilla mention is a factual reference
+    to Mozilla's own flatpak desktop path, not a claimed name).
+
+Depends on: nothing. Touches unique literals; independent of other series.
+Validation: aequera patch check (applies cleanly); Linux artifact/compiled
+  build + run: bus names and interface visible via busctl/d-feet;
+  single-instance handoff between two Aequera instances still works and
+  never hands off to Firefox.
+Upstream risk: low. String literals in stable desktop-integration code;
+  conflicts only if Mozilla restructures D-Bus naming.
+
+diff --git a/toolkit/components/remote/nsDBusRemoteServer.cpp b/toolkit/components/remote/nsDBusRemoteServer.cpp
+index 226b2dc52874..d5a959cc4c8e 100644
+--- a/toolkit/components/remote/nsDBusRemoteServer.cpp
++++ b/toolkit/components/remote/nsDBusRemoteServer.cpp
+@@ -25,7 +25,7 @@ static const char* introspect_template =
+     "1.0//EN\"\n"
+     "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
+     "<node>\n"
+-    " <interface name=\"org.mozilla.%s\">\n"
++    " <interface name=\"org.aequera.%s\">\n"
+     "   <method name=\"OpenURL\">\n"
+     "     <arg name=\"url\" direction=\"in\" type=\"ay\"/>\n"
+     "   </method>\n"
+@@ -35,7 +35,7 @@ static const char* introspect_template =
+ bool nsDBusRemoteServer::HandleOpenURL(const gchar* aInterfaceName,
+                                        const gchar* aMethodName,
+                                        Span<const gchar> aParam) {
+-  nsPrintfCString ourInterfaceName("org.mozilla.%s", mAppName.get());
++  nsPrintfCString ourInterfaceName("org.aequera.%s", mAppName.get());
+ 
+   if ((strcmp("OpenURL", aMethodName) != 0) ||
+       (strcmp(ourInterfaceName.get(), aInterfaceName) != 0)) {
+@@ -128,7 +128,7 @@ static const GDBusInterfaceVTable gInterfaceVTable = {
+     HandleMethodCall, HandleGetProperty, HandleSetProperty};
+ 
+ void nsDBusRemoteServer::OnBusAcquired(GDBusConnection* aConnection) {
+-  mPathName = nsPrintfCString("/org/mozilla/%s/Remote", mAppName.get());
++  mPathName = nsPrintfCString("/org/aequera/%s/Remote", mAppName.get());
+   if (!g_variant_is_object_path(mPathName.get())) {
+     g_warning("nsDBusRemoteServer: object path is not valid");
+     return;
+@@ -187,7 +187,7 @@ nsresult nsDBusRemoteServer::Startup(const char* aAppName,
+   // Don't even try to start without any profile name
+   if (!aProfileName || aProfileName[0] == '\0') return NS_ERROR_INVALID_ARG;
+ 
+-  // aAppName is remoting name which can be something like org.mozilla.appname
++  // aAppName is remoting name which can be something like org.aequera.appname
+   // or so.
+   // For DBus service we rather use general application DBus identifier
+   // which is shared by all DBus services.
+@@ -199,7 +199,7 @@ nsresult nsDBusRemoteServer::Startup(const char* aAppName,
+ 
+   mozilla::XREAppData::SanitizeNameForDBus(profileName);
+ 
+-  nsPrintfCString busName("org.mozilla.%s.%s", mAppName.get(),
++  nsPrintfCString busName("org.aequera.%s.%s", mAppName.get(),
+                           profileName.get());
+   if (busName.Length() > DBUS_MAXIMUM_NAME_LENGTH) {
+     busName.Truncate(DBUS_MAXIMUM_NAME_LENGTH);
+@@ -207,7 +207,7 @@ nsresult nsDBusRemoteServer::Startup(const char* aAppName,
+ 
+   // We don't have a valid busName yet - try to create a default one.
+   if (!g_dbus_is_name(busName.get())) {
+-    busName = nsPrintfCString("org.mozilla.%s.%s", mAppName.get(), "default");
++    busName = nsPrintfCString("org.aequera.%s.%s", mAppName.get(), "default");
+     if (!g_dbus_is_name(busName.get())) {
+       // We failed completely to get a valid bus name - just quit.
+       g_warning("nsDBusRemoteServer: couldn't get a valid bus name!");
+diff --git a/widget/gtk/DBusService.cpp b/widget/gtk/DBusService.cpp
+index a700307288f3..3e3d331ea276 100644
+--- a/widget/gtk/DBusService.cpp
++++ b/widget/gtk/DBusService.cpp
+@@ -36,8 +36,8 @@ void DBusService::Run() {
+ // Mozilla has old GIO version in build roots
+ #define G_BUS_NAME_OWNER_FLAGS_DO_NOT_QUEUE GBusNameOwnerFlags(1 << 2)
+ 
+-#define DBUS_BUS_NAME_TEMPLATE "org.mozilla.%s"
+-#define DBUS_OBJECT_PATH_TEMPLATE "/org/mozilla/%s"
++#define DBUS_BUS_NAME_TEMPLATE "org.aequera.%s"
++#define DBUS_OBJECT_PATH_TEMPLATE "/org/aequera/%s"
+ 
+ static const char* GetDBusBusName() {
+   static const char* name = []() {
+@@ -285,7 +285,7 @@ bool DBusService::StartFreedesktopListener() {
+   }
+ 
+   mDBusID = g_bus_own_name(
+-      // if org.mozilla.Firefox is taken it means we're already running
++      // if our bus name is taken it means we're already running
+       // so use G_BUS_NAME_OWNER_FLAGS_DO_NOT_QUEUE and quit.
+       G_BUS_TYPE_SESSION, GetDBusBusName(), G_BUS_NAME_OWNER_FLAGS_DO_NOT_QUEUE,
+       [](GDBusConnection* aConnection, const gchar*,

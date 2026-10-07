@@ -3,17 +3,20 @@
 The build writes Aequera's identity into dist/bin/application.ini itself
 (tools/build/mozconfig.branding and patches/build/branding):
 
-  Vendor/Name    -> Aequera (window class, registry, crash/app identity)
+  Vendor/Name    -> Aequera (window class, registry on Windows, crash/app identity)
   RemotingName   -> aequera (single-instance channel: never hands off to or
                     from a running Firefox)
-  Profile        -> Aequera (profile root %APPDATA%\\Aequera\\Profiles and
-                    %LOCALAPPDATA%\\Aequera\\Profiles, its own profiles.ini)
+  Profile        -> Aequera (its own profiles.ini and profile root:
+                    %APPDATA%\\Aequera\\Profiles and %LOCALAPPDATA%\\Aequera\\Profiles
+                    on Windows, ~/.aequera on Linux,
+                    ~/Library/Application Support/Aequera on macOS)
 
-The prebuilt firefox.exe of an artifact build ignores that file and uses the
-identity compiled into it (Mozilla's), unless started with `-app <ini>` from
-the browser/ app directory; this copies it there. A build whose ini lacks
-the identity is refused rather than patched over, so a broken configuration
-shows up here instead of as a launch that shares Firefox's profiles.
+The prebuilt binary of an artifact build (firefox.exe on Windows, firefox on
+Linux, Firefox.app on macOS) ignores that file and uses the identity compiled
+into it (Mozilla's), unless started with `-app <ini>` from the browser/ app
+directory; this copies it there. A build whose ini lacks the identity is
+refused rather than patched over, so a broken configuration shows up here
+instead of as a launch that shares Firefox's profiles.
 
 The copy drops [Crash Reporter] and [AppUpdate]: the artifact binary has
 both compiled in (they cannot be configured out of an artifact build), and

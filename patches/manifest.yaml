@@ -44,6 +44,12 @@ patches:
   # toolkit file; the FAVICON_DEFAULT_URL contract is unchanged.
   - id: default-favicon
     series: toolkit/default-favicon
+  # Linux desktop identity: session-bus names, the GNOME search provider,
+  # the portal app ID, and the MPRIS suffix claim org.aequera, never
+  # org.mozilla (docs/RESTRICTIONS.md). Rationale, validation, and upstream
+  # risk are in each patch header. No behavior change beyond the names.
+  - id: linux-desktop
+    series: toolkit/linux-desktop
 
 overlays:
   # Stage 1 shell: frame-model stylesheet, launcher-width glue, default

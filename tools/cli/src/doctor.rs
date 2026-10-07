@@ -52,6 +52,58 @@ pub fn run(json: bool) -> ExitCode {
         },
     });
 
+    // 3b. Rust toolchain (warn-level): the CLI and Firefox builds need it.
+    let guide = expected_compiler().1;
+    for tool in ["rustc", "cargo"] {
+        checks.push(tool_check(
+            tool,
+            tool,
+            &["--version"],
+            format!(
+                "{tool} not on PATH; install via https://rustup.rs, see tools/bootstrap/{guide}"
+            ),
+        ));
+    }
+
+    // 3c. Host build tooling per OS (warn-level; the bootstrap guides
+    // resolve each one). Never blocks CLI work.
+    #[cfg(target_os = "windows")]
+    checks.push({
+        let shell = std::path::Path::new("C:/mozilla-build/start-shell.bat");
+        Check {
+            name: "mozillabuild",
+            result: if shell.is_file() { "ok" } else { "warn" },
+            detail: if shell.is_file() {
+                "MozillaBuild shell present".into()
+            } else {
+                "no C:\\mozilla-build\\start-shell.bat; see tools/bootstrap/windows.md".into()
+            },
+        }
+    });
+    #[cfg(target_os = "macos")]
+    checks.push(tool_check(
+        "xcode-tools",
+        "xcode-select",
+        &["-p"],
+        "no Xcode command line tools; run xcode-select --install, see tools/bootstrap/macos.md"
+            .into(),
+    ));
+    #[cfg(target_os = "macos")]
+    checks.push(tool_check(
+        "brew",
+        "brew",
+        &["--version"],
+        "no Homebrew on PATH; install the formulae in the official guide, see tools/bootstrap/macos.md"
+            .into(),
+    ));
+    #[cfg(target_os = "linux")]
+    checks.push(tool_check(
+        "clang",
+        "clang",
+        &["--version"],
+        "no clang on PATH; install clang + distro headers, see tools/bootstrap/linux.md".into(),
+    ));
+
     // 4. Repository discovery + lock validity.
     match lock::discover() {
         None => checks.push(Check {
@@ -168,6 +220,36 @@ fn compiler_present(compiler: &str) -> bool {
     }
 }
 
+/// Run `program args`, returning an ok/warn check with the tool's first
+/// output line, or the hint when it cannot run. Warn-level by design:
+/// missing build tooling must guide, never block CLI work.
+fn tool_check(name: &'static str, program: &str, args: &[&str], missing_hint: String) -> Check {
+    match Command::new(program).args(args).output() {
+        Ok(out) if out.status.success() => {
+            let line = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            Check {
+                name,
+                result: "ok",
+                detail: if line.is_empty() {
+                    format!("{program} found on PATH")
+                } else {
+                    line
+                },
+            }
+        }
+        _ => Check {
+            name,
+            result: "warn",
+            detail: missing_hint,
+        },
+    }
+}
+
 /// Presence check that is not fooled by skeleton `.gitkeep` placeholders.
 fn state_check(
     name: &'static str,
@@ -193,5 +275,29 @@ fn state_check(
             result: "warn",
             detail: absent_detail.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compiler_probe_names_a_bootstrap_guide() {
+        let (compiler, guide) = expected_compiler();
+        assert!(!compiler.is_empty());
+        assert!(guide.ends_with(".md"), "got: {guide}");
+    }
+
+    #[test]
+    fn tool_check_reports_missing_tool_as_warn() {
+        let check = tool_check(
+            "no-such-tool",
+            "aequera-definitely-missing-binary-xyz",
+            &["--version"],
+            "hint".into(),
+        );
+        assert_eq!(check.result, "warn");
+        assert_eq!(check.detail, "hint");
     }
 }

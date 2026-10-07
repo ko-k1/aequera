@@ -65,6 +65,11 @@ pref("browser.uiCustomization.defaultExclusions", "alltabs-button");
 // new profiles and Restore Defaults, never to a saved layout.
 pref("browser.uiCustomization.defaultNavbarPlacements", "back-button,forward-button,stop-reload-button,spring,urlbar-container,developer-button,spring,downloads-button");
 
-// Frame material: one OS backdrop behind all chrome (Windows 11 Mica), the
-// native counterpart of the prototype's single #frame glass layer.
+// Frame material: one OS backdrop behind all chrome. On Windows 11 that is
+// Mica (widget.windows.mica below), the native counterpart of the
+// prototype's single #frame glass layer. macOS (vibrancy) and Linux
+// (compositor transparency) have no counterpart pref yet: on those platforms
+// the rail falls back to the opaque toolbar color (aequera-rail.css), the
+// same paint as the top bar, so chrome stays seamless without depending on
+// a backdrop that may not exist. Solid chrome there, never floating text.
 pref("widget.windows.mica", true);

@@ -1,0 +1,27 @@
+# Aequera host-platform tuning, sourced by every Aequera build mozconfig.
+#
+# Firefox's own setup docs are authoritative per OS
+# (https://firefox-source-docs.mozilla.org/setup/); this fragment only holds
+# the small Aequera deltas: build parallelism policy and toolchain notes that
+# differ between Windows, macOS, and Linux. Values mirror
+# tools/bootstrap/<windows,macos,linux>.md.
+
+# Parallelism: unrestrained -j OOMs giant unified translation units and the
+# gkrust LTO link on loaded machines. Windows keeps an explicit serialized
+# default (brought up on a 128 GB box shared with ML training, where even -j4
+# OOMed against ~70 GB resident jobs; pause training or raise if the box is
+# idle). Linux/macOS stay on mach's automatic default; if the link OOMs,
+# export MOZ_MAKE_FLAGS="-j<N>" in the build shell and re-run mach configure.
+case "$(uname -s)" in
+MINGW*|MSYS*|CYGWIN*)
+  mk_add_options MOZ_MAKE_FLAGS="-j1"
+  ;;
+esac
+
+# Rust toolchain: the tree needs >= 1.90.0, but a newer rustc can crash on
+# the gkrust LTO link (on Windows this surfaced as stable hitting 0xc0000409;
+# 1.95.0 is known-good there). If so, point RUSTC/CARGO at an older toolchain
+# in the shell that runs mach (a configure-time setting, so re-run
+# ./mach configure after changing it), e.g. on Windows
+# export RUSTC=.../toolchains/1.95.0-.../bin/rustc.exe
+# and on Linux/macOS the same layout with the POSIX binary path.

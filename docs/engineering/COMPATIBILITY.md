@@ -30,6 +30,14 @@ The project should maintain a machine-readable matrix covering:
 - known deviations;
 - required workarounds.
 
+The matrix lives at `tests/compatibility/matrix.json` (schema_version 1:
+platforms with per-OS status, launchers, validated gates, deviations, and
+workarounds; shell features with per-platform validation; extension
+fixtures, empty until the first built-browser fixtures land). Its
+`firefox` pin must match `upstream/manifests/firefox.lock`; a platform
+moves from `planned` to `supported` only after a real `mach build` + run +
+test gate on that OS, never on textual validation alone.
+
 ## Regression Rule
 
 An upstream update must not be considered complete merely because the browser builds. Extension compatibility and browser-shell behavior must be tested as separate acceptance properties.

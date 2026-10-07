@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "generated_from": {
+    "firefox_lock": "upstream/manifests/firefox.lock",
+    "patchset_manifest": "patches/manifest.yaml"
+  },
+  "firefox": {
+    "channel": "release",
+    "version": "156.0",
+    "revision": "3bf8f468258c2181f455e23d4ffcd6acb8f4cdb1"
+  },
+  "platforms": [
+    {
+      "id": "windows-x86_64",
+      "os": "windows",
+      "arch": "x86_64",
+      "status": "supported",
+      "build_profiles": ["artifact", "compiled"],
+      "launchers": ["tools/build/aequera.cmd", "tools/build/aequera-run.sh"],
+      "validated": [
+        "cli-smoke (PR CI + local)",
+        "artifact build + run",
+        "compiled build + run",
+        "shell mochitests (aequera + upstream suites)"
+      ],
+      "known_deviations": [],
+      "workarounds": [
+        "mozconfig.platform serializes Windows builds to -j1 on loaded hosts; export MOZ_MAKE_FLAGS with a higher -j when the box is idle"
+      ]
+    },
+    {
+      "id": "linux-x86_64",
+      "os": "linux",
+      "arch": "x86_64",
+      "status": "planned",
+      "build_profiles": ["artifact", "compiled"],
+      "launchers": ["tools/build/aequera.sh", "tools/build/aequera-run.sh"],
+      "validated": [
+        "cli-smoke (PR CI)",
+        "patch check: full series applies cleanly against the locked base"
+      ],
+      "known_deviations": [
+        "no Linux mach build + run has exercised the tree yet",
+        "D-Bus / portal / MPRIS / search-provider rename (patches/toolkit/linux-desktop) is textually validated only",
+        "desktop entry, hicolor icons, and search-provider files ship as source; no installer copies them yet"
+      ],
+      "workarounds": []
+    },
+    {
+      "id": "macos-aarch64",
+      "os": "macos",
+      "arch": "aarch64",
+      "status": "planned",
+      "build_profiles": ["artifact", "compiled"],
+      "launchers": ["tools/build/aequera.sh", "tools/build/aequera-run.sh"],
+      "validated": [
+        "cli-smoke (PR CI)",
+        "patch check: full series applies cleanly against the locked base"
+      ],
+      "known_deviations": [
+        "no macOS mach build + run has exercised the tree yet",
+        "Assets.car is not yet compiled (needs Xcode actool on a Mac; source ships in macos/Assets.xcassets, so packaging stays red until then)",
+        "DMG art (disk.icns, background.png, dsstore) waits for the installer pipeline, as on all platforms"
+      ],
+      "workarounds": [
+        "keep to the native /opt/homebrew prefix; never mix x86_64 formulae into an Apple Silicon build environment"
+      ]
+    },
+    {
+      "id": "macos-x86_64",
+      "os": "macos",
+      "arch": "x86_64",
+      "status": "planned",
+      "build_profiles": ["artifact", "compiled"],
+      "launchers": ["tools/build/aequera.sh", "tools/build/aequera-run.sh"],
+      "validated": [
+        "cli-smoke (PR CI)",
+        "patch check: full series applies cleanly against the locked base"
+      ],
+      "known_deviations": [
+        "no macOS mach build + run has exercised the tree yet",
+        "Assets.car is not yet compiled (needs Xcode actool on a Mac; source ships in macos/Assets.xcassets, so packaging stays red until then)",
+        "DMG art (disk.icns, background.png, dsstore) waits for the installer pipeline, as on all platforms"
+      ],
+      "workarounds": []
+    }
+  ],
+  "shell_features": [
+    {
+      "id": "tab-rail",
+      "validated_on": ["windows-x86_64"],
+      "note": "unvalidated elsewhere; material falls back to opaque toolbar color off Windows"
+    },
+    {
+      "id": "workspaces",
+      "validated_on": ["windows-x86_64"],
+      "note": "unvalidated elsewhere; parking model is platform-neutral"
+    },
+    {
+      "id": "bookmarks-drawer",
+      "validated_on": ["windows-x86_64"],
+      "note": "unvalidated elsewhere"
+    },
+    {
+      "id": "essentials-grid",
+      "validated_on": ["windows-x86_64"],
+      "note": "unvalidated elsewhere; macOS 6px inset already parameterized in CSS"
+    },
+    {
+      "id": "narrow-layout",
+      "validated_on": ["windows-x86_64"],
+      "note": "unvalidated elsewhere; caption allowance is per-platform by comment, asserted generically"
+    }
+  ],
+  "extension_fixtures": []
+}

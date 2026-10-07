@@ -1,0 +1,69 @@
+Subject: [PATCH] toolkit: GNOME search provider owns the org.aequera.browser identity
+
+Why Firefox source must change:
+  The GNOME shell search provider's bus name and object path are baked into
+  browser/components/shell as org.mozilla.* templates. No build option,
+  branding directory, or preference redirects them. Left as-is, an Aequera
+  Linux build that enables the provider owns
+  org.mozilla.aequera.SearchProvider, violating docs/RESTRICTIONS.md (no
+  org.mozilla.* service is claimed).
+
+What it changes (1 file):
+  - browser/components/shell/nsGNOMEShellDBusHelper.cpp: bus and object-path
+    templates become the fixed desktop identity org.aequera.browser
+    (.SearchProvider / /org/aequera/browser/SearchProvider), and the two
+    getters return them directly instead of formatting the app-derived leaf.
+    Unlike the main app bus (0001, app-derived so channels and
+    MOZ_DBUS_APP_NAME keep working), the provider is paired 1:1 with the
+    shipped desktop entry, so it shares the desktop entry's identity.
+    Matches the shipped
+    aequera/design/branding/linux/org.aequera.browser.search-provider.ini
+    and .SearchProvider.service, which name exactly this bus.
+
+Depends on: 0001 (same series; independent hunks, applies alone too).
+Validation: aequera patch check (applies cleanly); Linux build + run under
+  GNOME: provider bus visible, search-provider .ini BusName/ObjectPath match
+  the owned names.
+Upstream risk: low. Defines plus two getters in stable desktop-integration
+  code.
+
+diff --git a/browser/components/shell/nsGNOMEShellDBusHelper.cpp b/browser/components/shell/nsGNOMEShellDBusHelper.cpp
+index 2c3157fffdc2..e1e3165ee7ed 100644
+--- a/browser/components/shell/nsGNOMEShellDBusHelper.cpp
++++ b/browser/components/shell/nsGNOMEShellDBusHelper.cpp
+@@ -13,27 +13,19 @@
+ #include "nsImportModule.h"
+ #include "nsIOpenTabsProvider.h"
+ 
+-#define DBUS_BUS_NAME_TEMPLATE "org.mozilla.%s.SearchProvider"
+-#define DBUS_OBJECT_PATH_TEMPLATE "/org/mozilla/%s/SearchProvider"
++// Aequera: the GNOME search provider is paired with the shipped desktop
++// entry (org.aequera.browser.desktop), so it carries the fixed desktop
++// identity, not the app-derived bus leaf. Matches
++// aequera/design/branding/linux/org.aequera.browser.search-provider.ini.
++#define DBUS_BUS_NAME_TEMPLATE "org.aequera.browser.SearchProvider"
++#define DBUS_OBJECT_PATH_TEMPLATE "/org/aequera/browser/SearchProvider"
+ 
+ const char* GetDBusBusName() {
+-  static const char* name = []() {
+-    nsAutoCString appName;
+-    gAppData->GetDBusAppName(appName);
+-    return ToNewCString(nsPrintfCString(DBUS_BUS_NAME_TEMPLATE,
+-                                        appName.get()));  // Intentionally leak
+-  }();
+-  return name;
++  return DBUS_BUS_NAME_TEMPLATE;
+ }
+ 
+ const char* GetDBusObjectPath() {
+-  static const char* path = []() {
+-    nsAutoCString appName;
+-    gAppData->GetDBusAppName(appName);
+-    return ToNewCString(nsPrintfCString(DBUS_OBJECT_PATH_TEMPLATE,
+-                                        appName.get()));  // Intentionally leak
+-  }();
+-  return path;
++  return DBUS_OBJECT_PATH_TEMPLATE;
+ }
+ 
+ static bool GetGnomeSearchTitle(const char* aSearchedTerm,

@@ -3,7 +3,8 @@ rem Start the Aequera build: double-click, or run from any shell.
 rem
 rem Prefers the compiled build (aequera.exe with the Aequera icon embedded),
 rem falls back to the artifact build (Mozilla's prebuilt firefox.exe). Always
-rem use this (or aequera-run.sh), never a bare exe: started bare, the
+rem use this (or aequera.sh on Linux/macOS, aequera-run.sh for the mach dev
+rem loop), never a bare exe: started bare, the
 rem artifact binary opens your Firefox profile, joins a running Firefox, and
 rem serves shell code from that profile's startup cache. This passes the
 rem Aequera identity (-app aequera-application.ini: its own profiles under

@@ -1,12 +1,15 @@
 # Aequera artifact build (front-end only).
 #
 # Downloads Mozilla's prebuilt compiled parts (C++/Rust) for the pinned
-# revision and builds only JS/CSS/XHTML/prefs locally: minutes, no MSVC.
-# Suits all shell work (aequera/shell, browser patches without C++).
-# Any C++/Rust/Gecko patch needs a full build instead.
+# revision and builds only JS/CSS/XHTML/prefs locally: minutes, no host C++
+# toolchain beyond the bootstrap guides. Suits all shell work
+# (aequera/shell, browser patches without C++). Any C++/Rust/Gecko patch
+# needs a full build instead.
 #
-# Use from the MozillaBuild shell, inside worktree/firefox:
-#   export MOZCONFIG=/c/src/aequera/tools/build/mozconfig.artifact
+# Use from a POSIX shell (MozillaBuild on Windows, any terminal on
+# Linux/macOS), inside worktree/firefox:
+#   export MOZCONFIG="$HOME/aequera/tools/build/mozconfig.artifact"
+# with $HOME/aequera replaced by the actual checkout path.
 
 ac_add_options --enable-project=browser
 ac_add_options --enable-artifact-builds
@@ -14,8 +17,12 @@ ac_add_options --enable-artifact-builds
 # Keep build output inside the generated worktree, away from Aequera source.
 mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-aequera-artifact
 
+# Host-platform tuning (parallelism, toolchain notes).
+. "$topsrcdir/../../tools/build/mozconfig.platform"
+
 # Product identity and branding (shared with every Aequera mozconfig).
 . "$topsrcdir/../../tools/build/mozconfig.branding"
-# The binary is Mozilla's prebuilt firefox.exe: keep the app name that names
-# it (the Aequera basename would otherwise make it "aequera").
+# The binary is Mozilla's prebuilt binary (firefox.exe on Windows, firefox on
+# Linux, Firefox.app on macOS): keep the app name that names it (the Aequera
+# basename would otherwise make it "aequera").
 ac_add_options --with-app-name=firefox

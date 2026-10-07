@@ -1,8 +1,9 @@
 #!/bin/bash
-# Aequera shell test gate. Run from the MozillaBuild shell inside
-# worktree/firefox after `aequera patch apply` and `./mach build`.
+# Aequera shell test gate. Run from the build shell inside worktree/firefox
+# after `aequera patch apply` and `./mach build`.
 #
-#   bash /c/src/aequera/tools/build/test-shell.sh [aequera|upstream|all] [--repeat N]
+#   bash tools/build/test-shell.sh [aequera|upstream|all] [--repeat N]
+# (run from worktree/firefox; the script path is relative to the checkout root)
 #
 # aequera:  Aequera-owned tests (browser/aequera/tests), Aequera defaults.
 # upstream: Firefox's own sidebar, tab, and bookmarks-toolbar tests with
@@ -21,13 +22,19 @@ FIREFOX_DEFAULTS=(
   --setpref sidebar.revamp=false
   --setpref sidebar.verticalTabs=false
   --setpref sidebar.verticalTabs.requireRevamp=true
-  --setpref widget.windows.mica=false
   --setpref browser.tabs.parkedHiddenSources=
   --setpref browser.toolbars.bookmarks.visibility=newtab
   --setpref aequera.bookmarks.hoverPeek=false
   --setpref browser.uiCustomization.defaultExclusions=
   --setpref browser.uiCustomization.defaultNavbarPlacements=
 )
+# Frame material is per-OS (Windows 11 Mica; opaque toolbar fallback
+# elsewhere): only reset it where the pref means something.
+case "$(uname -s)" in
+MINGW*|MSYS*|CYGWIN*)
+  FIREFOX_DEFAULTS+=(--setpref widget.windows.mica=false)
+  ;;
+esac
 SIDEBAR_TESTS=browser/components/sidebar/tests/browser
 TAB_TESTS=browser/components/tabbrowser/test/browser/tabs
 PLACES_TESTS=browser/components/places/tests/browser

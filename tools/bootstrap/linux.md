@@ -40,6 +40,25 @@ step 1. Then:
 aequera upstream fetch
 ```
 
+## 5. Build and run (needs the generated worktree)
+
+```bash
+aequera patch apply
+cd worktree/firefox
+export MOZCONFIG="$HOME/aequera/tools/build/mozconfig.artifact"   # actual checkout path
+./mach bootstrap   # choose "Firefox for Desktop Artifact Mode"
+./mach build
+bash tools/build/aequera-run.sh               # throwaway dev profile
+bash tools/build/aequera-run.sh --persistent  # real profile in ~/.aequera
+```
+
+(`tools/build/...` is relative to the checkout root.) Outside a terminal,
+start the real profile with `tools/build/aequera.sh`. Run the shell tests
+with `bash tools/build/test-shell.sh` from `worktree/firefox`. Full flow and
+per-OS notes: `tools/build/README.md`. For a compiled build (hours, full
+Aequera binary identity), switch `MOZCONFIG` to `mozconfig.compiled` and run
+`./mach bootstrap --application-choice browser` once.
+
 ## Notes
 
 - Case-sensitive filesystem is assumed; do not place the checkout on a

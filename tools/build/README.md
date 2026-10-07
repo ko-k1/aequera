@@ -2,94 +2,115 @@
 
 Stage 1 shell work is front-end only (CSS, window JS, prefs), so the default
 is an **artifact build**: Mozilla's prebuilt compiled parts for the pinned
-revision plus a local front-end build. Minutes, not hours; no Visual Studio.
+revision plus a local front-end build. Minutes, not hours; no host C++
+toolchain beyond the bootstrap guides.
 
-## One-time setup (Windows)
+## One-time setup
 
-1. Install **MozillaBuild** (https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe)
-   to the default `C:\mozilla-build`.
-2. Generate the worktree (any shell):
+Pick the toolchain guide for the host OS (`tools/bootstrap/`), then generate
+the worktree (any shell):
 
-   ```powershell
-   aequera patch apply
-   ```
+| OS | Toolchain guide | Build shell |
+|---|---|---|
+| Windows 10/11, 64-bit | `tools/bootstrap/windows.md` (VS2022 + MozillaBuild) | `C:\mozilla-build\start-shell.bat` |
+| macOS (Apple Silicon / Intel) | `tools/bootstrap/macos.md` (Xcode CLT + Homebrew) | any terminal |
+| Linux (Debian/Ubuntu, Fedora, Arch) | `tools/bootstrap/linux.md` (clang + distro headers) | any terminal |
 
-   This checks out Firefox at the lock, applies `patches/` in order, and
-   syncs overlays (`aequera/shell/firefox` -> `worktree/firefox/browser/aequera`).
-3. Open `C:\mozilla-build\start-shell.bat`, then:
+```sh
+aequera patch apply
+```
 
-   ```sh
-   cd /c/src/aequera/worktree/firefox
-   export MOZCONFIG=/c/src/aequera/tools/build/mozconfig.artifact
-   ./mach bootstrap   # choose "Firefox for Desktop Artifact Mode"
-   ```
+This checks out Firefox at the lock, applies `patches/` in order, and
+syncs overlays (`aequera/shell/firefox` -> `worktree/firefox/browser/aequera`).
+Then, inside `worktree/firefox` from the build shell:
+
+```sh
+export MOZCONFIG="$HOME/aequera/tools/build/mozconfig.artifact"   # actual checkout path
+./mach bootstrap   # choose "Firefox for Desktop Artifact Mode"
+```
+
+(On Windows the shell shows MozillaBuild paths such as
+`/c/src/aequera/...`; on Linux/macOS the same lines use `$HOME/...`.
+`aequera` itself runs in any shell.)
 
 ## Build and run
 
 ```sh
 ./mach build
-bash /c/src/aequera/tools/build/aequera-run.sh               # throwaway dev profile
-bash /c/src/aequera/tools/build/aequera-run.sh --persistent  # real Aequera profile
+bash tools/build/aequera-run.sh               # throwaway dev profile
+bash tools/build/aequera-run.sh --persistent  # real Aequera profile
 ```
 
-Outside the MozillaBuild shell (Explorer, cmd, PowerShell), start the real
-Aequera profile with `tools\build\aequera.cmd`: double-click it, or run it
-with extra Firefox arguments. It is `--persistent` without the shell.
+(run from `worktree/firefox`; `tools/build/...` is relative to the checkout
+root, e.g. `bash /c/src/aequera/tools/build/aequera-run.sh` on Windows).
 
-Always start through one of these, never bare `./mach run` or the exe. Both
-launchers prefer the compiled build (`obj-aequera/dist/bin/aequera.exe`,
-own file name and embedded Aequera icon) and fall back to the artifact
-build. Both also export `MOZ_DEVELOPER_REPO_DIR` (and
-`MOZ_DEVELOPER_OBJ_DIR`), like `mach run` does: local builds symlink
-front-end files into `dist`, and the Windows content-process sandbox only
-resolves those links when the repo dir is advertised (upstream bug 1916286).
+Outside the build shell, start the real Aequera profile without mach:
+`tools\build\aequera.cmd` on Windows (double-click it, or run it with extra
+Firefox arguments) or `tools/build/aequera.sh` on Linux/macOS. Either is
+`--persistent` without the shell.
+
+Always start through one of these, never bare `./mach run` or the binary.
+All launchers prefer the compiled build (`obj-aequera`: native `aequera`
+binary with its own file name and embedded Aequera icon, `Aequera.app` on
+macOS) and fall back to the artifact build. All also export
+`MOZ_DEVELOPER_REPO_DIR` (and `MOZ_DEVELOPER_OBJ_DIR`), like `mach run`
+does: local builds symlink front-end files into `dist`, and the Windows
+content-process sandbox only resolves those links when the repo dir is
+advertised (upstream bug 1916286).
 Without it DevTools cannot open (`Ctrl+Shift+I`, `F12`, … fail with
-`builtin-modules.js is not found`). The build is branded Aequera (`mozconfig.branding` +
-`patches/build/branding`: name, logo, vendor, profiles in
-`%APPDATA%\Aequera`, remoting `aequera`, no updater or crash upload), and
-its `application.ini` says so; but an artifact build's `firefox.exe` is
-Mozilla's prebuilt binary, which ignores that file and uses the Firefox
-identity compiled into it, opening your Firefox profile and colliding with
-a Firefox you have open. Both launchers copy the ini to
+`builtin-modules.js is not found`). The build is branded Aequera
+(`mozconfig.branding` + `patches/build/branding`: name, logo, vendor,
+profiles in `%APPDATA%\Aequera` on Windows, `~/.aequera` on Linux,
+`~/Library/Application Support/Aequera` on macOS, remoting `aequera`, no
+updater or crash upload), and its `application.ini` says so; but an artifact
+build's prebuilt binary is Mozilla's, which ignores that file and uses the
+Firefox identity compiled into it, opening your Firefox profile and
+colliding with a Firefox you have open. All launchers copy the ini to
 `browser/aequera-application.ini` (`aequera_app_ini.py` refuses one without
 the Aequera identity) and start with `-app`, `-no-remote`, and
 `-purgecaches`.
 
-## Compiled build (full C++/Rust; the exe icon lives here)
+## Compiled build (full C++/Rust; the app icon lives here)
 
 ```sh
-export MOZCONFIG=/c/src/aequera/tools/build/mozconfig.compiled
-./mach bootstrap --application-choice browser   # once: VS2022 + SDK + toolchains
+export MOZCONFIG="$HOME/aequera/tools/build/mozconfig.compiled"   # actual checkout path
+./mach bootstrap --application-choice browser   # once: host toolchain (VS2022 + SDK on
+                                                 # Windows, Xcode CLT + Homebrew on macOS,
+                                                 # clang + headers on Linux)
 ./mach build
 ```
 
 `mozconfig.compiled` is `mozconfig.artifact` minus artifact mode and the
 `--with-app-name=firefox` pin, plus `--disable-updater
 --disable-crashreporter`, in its own `obj-aequera` dir so both builds
-coexist. First build is hours; later ones are incremental. Machine notes
-from bringing it up (2026-10-03, 128 GB box shared with ML training):
+coexist. Host tuning (parallelism, Rust notes) lives in
+`mozconfig.platform`, sourced by both. First build is hours; later ones are
+incremental. Notes from bringing it up on Windows (2026-10-03, 128 GB box
+shared with ML training) — per-OS guidance, not global defaults:
 
-- Cap parallelism in the mozconfig (`MOZ_MAKE_FLAGS="-j1"` here): even
+- Parallelism is capped to `-j1` on Windows (`mozconfig.platform`): even
   `-j4` OOMs giant unified TUs and the `gkrust` LTO link against resident
-  training jobs. The box idles through it if training is paused.
-- Rust: the tree needs >= 1.90.0, but newer rustc can crash on the
-  `gkrust` LTO link (stable hit `0xc0000409` here); 1.95.0 is known-good.
-  Point `RUSTC`/`CARGO` at it in the build shell (configure-time setting,
-  so re-run `./mach configure` after changing it).
+  training jobs. The box idles through it if training is paused. Linux/macOS
+  stay on mach's default; set `MOZ_MAKE_FLAGS="-j<N>"` if the link OOMs.
+- Rust: the tree needs >= 1.90.0, but a newer rustc can crash on the
+  `gkrust` LTO link (on Windows stable hit `0xc0000409`); 1.95.0 is
+  known-good there. Point `RUSTC`/`CARGO` at it in the build shell
+  (configure-time setting, so re-run `./mach configure` after changing it).
 
 ## Edit loop
 
 1. Edit Aequera source in `aequera/shell/firefox/` (never in the worktree:
    the overlay copy is replaced on every apply).
 2. `aequera patch apply` — re-syncs the overlay; patches stay verified.
-3. In the MozillaBuild shell: `./mach build faster && bash /c/src/aequera/tools/build/aequera-run.sh`
-   (`build faster` repackages front-end files only; seconds).
+3. In the build shell: `./mach build faster && bash tools/build/aequera-run.sh`
+   (run from `worktree/firefox`; `build faster` repackages front-end files
+   only; seconds).
 
 ## Tests
 
 ```sh
-bash /c/src/aequera/tools/build/test-shell.sh            # all
-bash /c/src/aequera/tools/build/test-shell.sh aequera --repeat 4
+bash tools/build/test-shell.sh            # all (from worktree/firefox)
+bash tools/build/test-shell.sh aequera --repeat 4
 ```
 
 - `aequera`: Aequera-owned mochitests (`aequera/shell/firefox/tests`),
@@ -116,4 +137,5 @@ bash /c/src/aequera/tools/build/test-shell.sh aequera --repeat 4
 Artifacts exist only for revisions Mozilla's CI built. If `mach build`
 cannot find artifacts for the pinned release revision, switch to a full
 build: drop `--enable-artifact-builds` from a copy of the mozconfig and
-install Visual Studio 2022 with C++ (see `tools/bootstrap/windows.md`).
+install the host C++ toolchain (`tools/bootstrap/windows.md`,
+`macos.md`, or `linux.md` for the OS).

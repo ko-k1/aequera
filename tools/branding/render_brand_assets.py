@@ -163,6 +163,35 @@ def main(out):
         base.save(out / name, sizes=ico_sizes)
     mark(256).save(out / "firefox64.ico", sizes=[(64, 64)])
     mark(256, private=True).save(out / "pbmode.ico", sizes=ico_sizes)
+    # macOS bundle icons (browser/app/moz.build stages these into the .app):
+    # Pillow expands the 1024 master into the standard icns set on save.
+    master = mark(1024)
+    master.save(out / "firefox.icns")
+    master.save(out / "document.icns")
+    # macOS asset-catalog source: the AppIcon set for Assets.car, compiled
+    # with Xcode actool on a Mac (see patches/build/branding/README.md).
+    # Contents.json is authored; the PNGs are rendered here.
+    xcassets = out / "macos" / "Assets.xcassets" / "AppIcon.appiconset"
+    xcassets.mkdir(parents=True, exist_ok=True)
+    for px, name in (
+        (16, "icon_16x16.png"),
+        (32, "icon_16x16@2x.png"),
+        (32, "icon_32x32.png"),
+        (64, "icon_32x32@2x.png"),
+        (128, "icon_128x128.png"),
+        (256, "icon_128x128@2x.png"),
+        (256, "icon_256x256.png"),
+        (512, "icon_256x256@2x.png"),
+        (512, "icon_512x512.png"),
+        (1024, "icon_512x512@2x.png"),
+    ):
+        mark(px).save(xcassets / name, optimize=True)
+    # Linux hicolor icons for the org.aequera.browser desktop entry: reuse
+    # the default-size rasters under their freedesktop names.
+    for size in (16, 22, 24, 32, 48, 64, 128, 256):
+        icon_dir = out / "hicolor" / f"{size}x{size}" / "apps"
+        icon_dir.mkdir(parents=True, exist_ok=True)
+        mark(size).save(icon_dir / "org.aequera.browser.png", optimize=True)
     tile_bg = (20, 23, 26)
     for size in (70, 150):
         tile(size, tile_bg).save(out / f"VisualElements_{size}.png", optimize=True)

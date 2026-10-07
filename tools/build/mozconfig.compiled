@@ -1,13 +1,17 @@
 # Aequera compiled build (full C++/Rust + front end).
 #
-# Unlike mozconfig.artifact (Mozilla's prebuilt firefox.exe, minutes), this
-# compiles everything: hours on first build, needs Visual Studio 2022 with
-# C++ (see tools/bootstrap/windows.md). It is the only build that carries
-# the Aequera binary identity end to end: aequera.exe with the Aequera
-# icons embedded, registry keys, taskbar AUMID, and installer.
+# Unlike mozconfig.artifact (Mozilla's prebuilt binary, minutes), this
+# compiles everything: hours on first build, needs a host C++ toolchain (see
+# tools/bootstrap/windows.md, macos.md, linux.md for the per-OS setup). It is
+# the only build that carries the Aequera binary identity end to end: on
+# Windows aequera.exe with the Aequera icons embedded, registry keys, taskbar
+# AUMID, and installer; on macOS the Aequera.app bundle; on Linux the aequera
+# binary with the hicolor icons and .desktop entry.
 #
-# Use from the MozillaBuild shell, inside worktree/firefox:
-#   export MOZCONFIG=/c/src/aequera/tools/build/mozconfig.compiled
+# Use from a POSIX shell (MozillaBuild on Windows, any terminal on
+# Linux/macOS), inside worktree/firefox:
+#   export MOZCONFIG="$HOME/aequera/tools/build/mozconfig.compiled"
+# with $HOME/aequera replaced by the actual checkout path.
 #
 # The artifact build stays the default for shell/front-end work.
 
@@ -17,15 +21,8 @@ ac_add_options --enable-project=browser
 # Separate from the artifact objdir so both builds can coexist.
 mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-aequera
 
-# Cap parallelism: unrestrained -j OOMs clang-cl on shared machines (this
-# box also runs ML training; even -j4 OOMs giant unified TUs + the gkrust
-# LTO link against ~70GB resident training jobs, so serialize fully).
-mk_add_options MOZ_MAKE_FLAGS="-j1"
-
-# Rust toolchain: the tree needs >= 1.90.0, but newer rustc can crash on the
-# gkrust LTO link (stable hit 0xc0000409 here). If so, point RUSTC/CARGO at
-# an older toolchain (1.95.0 is known-good on this machine) in the shell
-# that runs mach, e.g. export RUSTC=.../toolchains/1.95.0-.../bin/rustc.exe.
+# Host-platform tuning (parallelism, toolchain notes).
+. "$topsrcdir/../../tools/build/mozconfig.platform"
 
 # Product identity and branding (shared with every Aequera mozconfig).
 . "$topsrcdir/../../tools/build/mozconfig.branding"

@@ -1,0 +1,26 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Aequera
+GenericName=Web Browser
+Comment=Balanced, human-centered, private web browser
+Exec=aequera %U
+Icon=org.aequera.browser
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;application/vnd.mozilla.xul+xml;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/ftp;
+StartupNotify=true
+StartupWMClass=aequera
+Actions=new-window;new-private-window;profile-manager-window;
+
+[Desktop Action new-window]
+Name=Open a New Window
+Exec=aequera --new-window %U
+
+[Desktop Action new-private-window]
+Name=Open a New Private Window
+Exec=aequera --private-window %U
+
+[Desktop Action profile-manager-window]
+Name=Open the Profile Manager
+Exec=aequera --ProfileManager %U

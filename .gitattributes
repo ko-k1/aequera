@@ -5,3 +5,7 @@
 *.sh text eol=lf
 # cmd.exe batch files need CRLF.
 *.cmd text eol=crlf
+# Linux desktop integration files are parsed by freedesktop/dbus tooling
+# (desktop entry, D-Bus service, shell search provider): keep LF so a
+# checkout installs byte-identical files on every OS.
+aequera/design/branding/linux/** text eol=lf
