@@ -129,7 +129,31 @@ pub fn run(json: bool) -> ExitCode {
                             lock::short_sha(&l.upstream.revision.git)
                         ),
                     });
-                    let manifest = root.join(&l.patchset.manifest);
+                    // Validate the lock's manifest pointer before joining: same
+                    // traversal guard as patch::load_manifest (no `..`/abs).
+                    // On failure report fail (no existence oracle outside the
+                    // repo) and continue with remaining checks.
+                    let manifest = match crate::patch::plain_relative(
+                        "manifest",
+                        "patchset",
+                        &l.patchset.manifest,
+                    ) {
+                        Ok(rel) => root.join(&rel),
+                        Err(e) => {
+                            checks.push(Check {
+                                name: "patchset-manifest",
+                                result: "fail",
+                                detail: e,
+                            });
+                            // Sentinel that is never a file: keeps the flow
+                            // below (backend/compat/checkout checks) intact.
+                            root.join("invalid-manifest-pointer")
+                        }
+                    };
+                    let manifest_valid = manifest
+                        .file_name()
+                        .map(|n| n != "invalid-manifest-pointer")
+                        .unwrap_or(true);
                     checks.push(Check {
                         name: "backend",
                         result: if l.upstream.repository.kind == "git" {
@@ -142,11 +166,20 @@ pub fn run(json: bool) -> ExitCode {
                             l.upstream.repository.kind, l.upstream.repository.url
                         ),
                     });
-                    checks.push(Check {
-                        name: "patchset-manifest",
-                        result: if manifest.is_file() { "ok" } else { "fail" },
-                        detail: format!("{}: {}", l.patchset.manifest, exists(manifest.is_file())),
-                    });
+                    if manifest_valid {
+                        checks.push(Check {
+                            name: "patchset-manifest",
+                            result: if manifest.is_file() { "ok" } else { "fail" },
+                            detail: format!(
+                                "{}: {}",
+                                l.patchset.manifest,
+                                exists(manifest.is_file())
+                            ),
+                        });
+                    }
+                    // Compatibility matrix pin (docs/engineering/COMPATIBILITY.md):
+                    // matrix.firefox must equal the lock, or platform claims drift.
+                    checks.push(compat_matrix_check(&root, &l));
                     checks.push(state_check(
                         "checkout",
                         &root.join("upstream/firefox"),
@@ -282,6 +315,56 @@ fn state_check(
             name,
             result: "warn",
             detail: absent_detail.into(),
+        }
+    }
+}
+
+fn compat_matrix_check(root: &std::path::Path, lock: &lock::LockFile) -> Check {
+    let path = root.join("tests/compatibility/matrix.json");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) => {
+            return Check {
+                name: "compat-matrix",
+                result: "warn",
+                detail: format!("matrix.json unreadable: {e}"),
+            };
+        }
+    };
+    let v: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            return Check {
+                name: "compat-matrix",
+                result: "fail",
+                detail: format!("matrix.json invalid JSON: {e}"),
+            };
+        }
+    };
+    let fx = &v["firefox"];
+    let m_channel = fx["channel"].as_str().unwrap_or("");
+    let m_version = fx["version"].as_str().unwrap_or("");
+    let m_revision = fx["revision"].as_str().unwrap_or("");
+    if m_channel == lock.upstream.channel
+        && m_version == lock.upstream.version
+        && m_revision == lock.upstream.revision.git
+    {
+        Check {
+            name: "compat-matrix",
+            result: "ok",
+            detail: format!("matrix firefox {m_channel} {m_version} matches lock"),
+        }
+    } else {
+        Check {
+            name: "compat-matrix",
+            result: "fail",
+            detail: format!(
+                "matrix firefox {m_channel} {m_version} {} != lock {} {} {}",
+                lock::short_sha(m_revision),
+                lock.upstream.channel,
+                lock.upstream.version,
+                lock::short_sha(&lock.upstream.revision.git)
+            ),
         }
     }
 }

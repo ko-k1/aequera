@@ -234,7 +234,7 @@ impl Browser {
                 Ok(CommandOutcome::WorkspaceSwitched(*workspace))
             }
             CommandAction::OpenUrl { url, title } => {
-                let active = self.active_workspace();
+                let active = self.try_active_workspace()?;
                 self.open_tab(active, url, title)
                     .map(CommandOutcome::TabOpened)
             }
@@ -246,12 +246,19 @@ impl Browser {
 /// per-tab switch/close in the active workspace, restore when something is
 /// restorable, and the global workspace commands. The shell renders these;
 /// ranking and filtering live in [`CommandRegistry`].
+///
+/// Never panics: a broken invariant yields fewer commands (fail-closed to a
+/// known-good subset), never a shell crash during palette render.
 pub fn commands_for(browser: &Browser) -> Vec<Command> {
     let mut out = Vec::new();
-    let active = browser.active_workspace();
+    let Ok(active) = browser.try_active_workspace() else {
+        return out;
+    };
 
     for id in browser.workspaces() {
-        let ws = &browser.get_workspace(id).expect("listed workspace exists");
+        let Ok(ws) = browser.get_workspace(id) else {
+            continue;
+        };
         out.push(Command::named(
             &format!("workspace.switch.{id}"),
             format!("Switch to {}", ws.name),
@@ -260,11 +267,13 @@ pub fn commands_for(browser: &Browser) -> Vec<Command> {
         ));
     }
 
-    let ws = browser
-        .get_workspace(active)
-        .expect("active workspace exists");
+    let Ok(ws) = browser.get_workspace(active) else {
+        return out;
+    };
     for tab_id in ws.tabs() {
-        let tab = ws.get(tab_id).expect("listed tab exists");
+        let Some(tab) = ws.get(tab_id) else {
+            continue;
+        };
         let label = if tab.title.is_empty() {
             tab.url.clone()
         } else {

@@ -48,11 +48,26 @@ function assertWindowId(windowId) {
 // rejected so tests must exercise the real path.
 function isTrustedSender(sender) {
   try {
+    const url = (sender && sender.url) || "";
+    if (!url) return false;
+    // Prefer an exact own-extension prefix when available: any other
+    // moz-extension:// uuid must not pass (RESTRICTIONS.md: extension
+    // privilege boundaries).
+    if (
+      typeof browser !== "undefined" &&
+      browser.runtime &&
+      typeof browser.runtime.getURL === "function"
+    ) {
+      const ownPrefix = browser.runtime.getURL("");
+      if (ownPrefix && url.startsWith(ownPrefix)) return true;
+      if (browser.runtime.id && sender && sender.id) {
+        return sender.id === browser.runtime.id && url.startsWith("moz-extension://");
+      }
+      return false;
+    }
     if (typeof browser !== "undefined" && browser.runtime && browser.runtime.id) {
       if (sender && sender.id && sender.id !== browser.runtime.id) return false;
     }
-    const url = (sender && sender.url) || "";
-    if (!url) return false;
     return url.startsWith("moz-extension://");
   } catch {
     return false;
@@ -84,21 +99,26 @@ async function createWorkspace(name) {
 }
 
 async function switchWorkspace(windowId) {
+  assertWindowId(windowId);
   await browser.windows.update(windowId, { focused: true });
 }
 
 async function openTab(windowId, url) {
+  assertWindowId(windowId);
+  if (!isAllowedUrl(url)) throw new Error("refusing to open non-http(s)/about URL");
   const tab = await browser.tabs.create({ windowId, url });
   return tab.id;
 }
 
 async function switchTab(tabId) {
+  assertTabId(tabId);
   await browser.tabs.update(tabId, { active: true });
   const tab = await browser.tabs.get(tabId);
   await browser.windows.update(tab.windowId, { focused: true });
 }
 
 async function closeTab(tabId) {
+  assertTabId(tabId);
   await browser.tabs.remove(tabId);
 }
 
@@ -110,10 +130,16 @@ async function restoreClosed() {
 }
 
 async function moveTab(tabId, windowId, index) {
+  assertTabId(tabId);
+  assertWindowId(windowId);
+  if (index !== undefined && (!Number.isInteger(index) || index < 0)) {
+    throw new Error("index must be a non-negative integer");
+  }
   await browser.tabs.move(tabId, { windowId, index });
 }
 
 async function togglePin(tabId) {
+  assertTabId(tabId);
   const tab = await browser.tabs.get(tabId);
   await browser.tabs.update(tabId, { pinned: !tab.pinned });
   return !tab.pinned;

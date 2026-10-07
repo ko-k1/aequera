@@ -2,6 +2,14 @@
 
 Generated documentation skeleton for Aequera.
 
+> Historical record: this lists the skeleton at generation time. The repo has
+> since grown implementation (`aequera/core`, `aequera/shell/firefox`,
+> `aequera/design/tokens.toml+branding`, `aequera/extensions/shell-chrome`,
+> `patches/*/`, `patches/manifest.yaml`, `tools/cli|branding|patch`,
+> `prototype/`, `Cargo.*`). See `TREE.md` for the current intended shape.
+> No `.gitmodules`: upstream is a managed checkout per
+> `docs/engineering/UPSTREAM1.md`, not a submodule.
+
 ```text
 .gitignore
 .gitmodules

@@ -27,6 +27,12 @@ if (Services.env.get("AEQUERA_UNLOCK_SHELL_PREFS") === "1") {
   ]) {
     Services.prefs.unlockPref(pref);
   }
+  // Test-harness leak, not a supported configuration: surface it so a shipped
+  // environment with the variable set cannot silently break the rail and
+  // discard parked workspaces (SECURITY.md: review privilege-adjacent env).
+  console.warn(
+    "aequera: AEQUERA_UNLOCK_SHELL_PREFS=1 — structural shell prefs unlocked for tests only"
+  );
 }
 
 var AequeraFrame = (() => {
@@ -52,10 +58,18 @@ var AequeraFrame = (() => {
     },
 
     publishMotion() {
-      ROOT.style.setProperty(
-        "--aequera-motion-duration",
-        `${Math.max(0, Services.prefs.getIntPref(DURATION_PREF, 250))}ms`
-      );
+      // Reduced motion is a hard accessibility requirement (RESTRICTIONS.md:
+      // no motion that blocks direct manipulation): clamp to 0 so CSS
+      // transitions become instant when the OS requests it.
+      let duration = Math.max(0, Services.prefs.getIntPref(DURATION_PREF, 250));
+      try {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          duration = 0;
+        }
+      } catch {
+        // matchMedia unavailable (tests): keep the configured duration.
+      }
+      ROOT.style.setProperty("--aequera-motion-duration", `${duration}ms`);
       ROOT.style.setProperty("--aequera-motion-easing", this.easing());
     },
 

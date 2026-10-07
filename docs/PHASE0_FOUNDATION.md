@@ -8,11 +8,12 @@ This document is the executable breakdown of the Phase 0 roadmap stage
 those documents, the authority order in `AGENTS.md` applies, and the conflict
 must be resolved explicitly rather than by silent drift.
 
-Current stage: architecture and foundation. No implementation exists yet
-(single commit, documentation skeleton only). Phase 0 must therefore make the
+Current stage: architecture and foundation. The documentation skeleton has
+since grown implementation (Rust core + CLI, shell chrome, patch series,
+branding, privacy defaults). Phase 0 must therefore make the
 vision's hardest constraint — a reproducible upstream boundary plus auditable
-privacy plus measurable responsiveness — testable before any shell feature
-exists.
+privacy plus measurable responsiveness — testable before further shell features
+land.
 
 ## Locked Decisions
 

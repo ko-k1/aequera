@@ -110,7 +110,10 @@ pub struct ApplyReport {
 
 /// Load and minimally validate the patchset manifest named by the lock.
 pub fn load_manifest(root: &Path, lock: &LockFile) -> Result<PatchManifest, String> {
-    let path = root.join(&lock.patchset.manifest);
+    // The lock is an input file: its `manifest` pointer must not escape the
+    // repo (e.g. `../../etc/evil.yaml`). Validate before joining.
+    let manifest_rel = plain_relative("manifest", "patchset", &lock.patchset.manifest)?;
+    let path = root.join(&manifest_rel);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let manifest: PatchManifest = serde_yaml::from_str(&text)
         .map_err(|e| format!("{}: invalid YAML: {e}", path.display()))?;
@@ -125,6 +128,10 @@ pub fn load_manifest(root: &Path, lock: &LockFile) -> Result<PatchManifest, Stri
 
 pub fn status(root: &Path, lock: &LockFile) -> Result<StatusReport, String> {
     let manifest = load_manifest(root, lock)?;
+    // Offline pointer validation (PR-CI friendly, no upstream objects needed):
+    // a broken `series`/`source`/`dest` must fail `patch status`, not wait for
+    // the nightly full `patch check` that needs GBs of Firefox history.
+    validate_manifest_pointers(root, &manifest)?;
     let base_matches = manifest.base.upstream.revision == lock.upstream.revision.git;
     let wt = root.join(WORKTREE_RELATIVE);
     let worktree_present = lock::substantive_present(&wt);
@@ -298,18 +305,18 @@ fn state_for(lock: &LockFile, manifest: &PatchManifest) -> AppliedState {
 /// drive prefix, not empty. Backslash and colon are rejected explicitly so
 /// a manifest validated on Linux cannot traverse when applied on Windows
 /// (where `\` is a separator and `:` introduces a drive).
-fn plain_relative(field: &str, id: &str, value: &str) -> Result<PathBuf, String> {
+pub(crate) fn plain_relative(field: &str, id: &str, value: &str) -> Result<PathBuf, String> {
     use std::path::Component;
     if value.is_empty() || value.contains(['\\', ':', '\0']) {
         return Err(format!(
-            "overlay {id:?}: {field} {value:?} must be a plain relative path (no '..', no root, no '\\\\' or ':')"
+            "{id:?}: {field} {value:?} must be a plain relative path (no '..', no root, no '\\' or ':')"
         ));
     }
     let path = PathBuf::from(value);
     let plain = path.components().all(|c| matches!(c, Component::Normal(_)));
     if !plain {
         return Err(format!(
-            "overlay {id:?}: {field} {value:?} must be a plain relative path (no '..', no root)"
+            "{id:?}: {field} {value:?} must be a plain relative path (no '..', no root)"
         ));
     }
     Ok(path)
@@ -351,8 +358,21 @@ fn sync_overlays(root: &Path, wt: &Path, manifest: &PatchManifest) -> Result<usi
         let dest_rel = plain_relative("dest", &overlay.id, &overlay.dest)?;
         let source = root.join(source_rel);
         let dest = wt.join(dest_rel);
-        if dest.exists() {
-            std::fs::remove_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+        // Never follow a symlink at `dest`: a planted link to `/` or `$HOME`
+        // must not have its target wiped. Remove the link itself, refuse to
+        // recurse through it.
+        match std::fs::symlink_metadata(&dest) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                std::fs::remove_file(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+            }
+            Ok(meta) if meta.is_dir() => {
+                std::fs::remove_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+            }
+            Ok(_) => {
+                std::fs::remove_file(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("{}: {e}", dest.display())),
         }
         total += copy_tree(&source, &dest)?;
     }
@@ -404,9 +424,46 @@ fn require_base_matches(manifest: &PatchManifest, lock: &LockFile) -> Result<(),
     Ok(())
 }
 
+/// Offline manifest pointer check: every `series`/`source`/`dest` must be a
+/// plain relative path and its directory must exist in the repo. Runs in
+/// `status` so PR CI (no Firefox objects) still catches a renamed or
+/// traversal series before the nightly `check` (which proves applicability).
+fn validate_manifest_pointers(root: &Path, manifest: &PatchManifest) -> Result<(), String> {
+    for entry in &manifest.patches {
+        let series_rel = plain_relative("series", &entry.id, &entry.series)?;
+        let dir = root.join("patches").join(&series_rel);
+        if !dir.is_dir() {
+            return Err(format!(
+                "series {:?}: directory {} missing",
+                entry.id,
+                dir.display()
+            ));
+        }
+    }
+    for overlay in &manifest.overlays {
+        let source_rel = plain_relative("source", &overlay.id, &overlay.source)?;
+        let dest_rel = plain_relative("dest", &overlay.id, &overlay.dest)?;
+        let source = root.join(source_rel);
+        if !source.is_dir() {
+            return Err(format!(
+                "overlay {:?}: source directory {} missing",
+                overlay.id,
+                source.display()
+            ));
+        }
+        // `dest` validity (plain relative) already proven; existence is
+        // worktree state, not repo state, so no filesystem check here.
+        let _ = dest_rel;
+    }
+    Ok(())
+}
+
 /// Resolve a series entry to its ordered patch files.
 fn series_files(root: &Path, entry: &PatchEntry) -> Result<Vec<PathBuf>, String> {
-    let dir = root.join("patches").join(&entry.series);
+    // `series` comes from the manifest: validate before joining so
+    // `../../etc` cannot escape `patches/`.
+    let series_rel = plain_relative("series", &entry.id, &entry.series)?;
+    let dir = root.join("patches").join(&series_rel);
     if !dir.is_dir() {
         return Err(format!(
             "series {:?}: directory {} missing",
@@ -421,6 +478,20 @@ fn series_files(root: &Path, entry: &PatchEntry) -> Result<Vec<PathBuf>, String>
         .filter(|p| p.extension().map(|x| x == "patch").unwrap_or(false))
         .collect();
     files.sort();
+    // A symlinked *.patch would apply bytes from outside the repo. Refuse
+    // rather than follow: patches must be committed repo files.
+    for p in &files {
+        if std::fs::symlink_metadata(p)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false)
+        {
+            return Err(format!(
+                "series {:?}: {} is a symlink; refusing",
+                entry.id,
+                p.display()
+            ));
+        }
+    }
     if files.is_empty() {
         return Err(format!(
             "series {:?}: no *.patch files in {}",
@@ -550,7 +621,23 @@ fn read_state(wt: &Path) -> Result<AppliedState, String> {
 fn write_state(wt: &Path, state: &AppliedState) -> Result<(), String> {
     let path = wt.join(STATE_FILE);
     let text = serde_json::to_string_pretty(state).map_err(|e| format!("state: {e}"))?;
-    std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))
+    // Atomic temp+rename: a crash mid-write must not leave a half JSON file
+    // that `status()` then misreads as valid applied state.
+    let tmp = wt.join(format!("{STATE_FILE}.tmp-{}", std::process::id()));
+    std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+    // Best-effort cleanup of stale tmp files from crashed processes.
+    if let Ok(entries) = std::fs::read_dir(wt) {
+        let prefix = format!("{STATE_FILE}.tmp-");
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with(&prefix) {
+                std::fs::remove_file(entry.path()).ok();
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -844,6 +931,32 @@ mod tests {
         assert!(plain_relative("dest", "x", "C:/evil").is_err());
         assert!(plain_relative("dest", "x", "").is_err());
         assert!(plain_relative("dest", "x", "browser/aequera").is_ok());
+    }
+
+    #[test]
+    fn series_rejects_path_traversal() {
+        let root = scratch("series-traversal");
+        std::fs::create_dir_all(root.join("patches")).unwrap();
+        for evil in ["../escape", "/abs", "a\\b", "C:/evil", ""] {
+            let entry = PatchEntry {
+                id: "evil".into(),
+                series: evil.into(),
+            };
+            let err = series_files(&root, &entry).expect_err("traversal must fail");
+            assert!(err.contains("must be a plain relative path"), "got: {err}");
+        }
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn manifest_pointer_rejects_traversal() {
+        let root = scratch("manifest-traversal");
+        std::fs::create_dir_all(&root).unwrap();
+        let mut lock = lock_for("https://example.invalid/x.git", &"a".repeat(40));
+        lock.patchset.manifest = "../../etc/evil.yaml".into();
+        let err = load_manifest(&root, &lock).expect_err("traversal must fail");
+        assert!(err.contains("must be a plain relative path"), "got: {err}");
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]

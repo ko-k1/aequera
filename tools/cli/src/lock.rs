@@ -57,8 +57,11 @@ pub struct Patchset {
 pub fn discover() -> Option<PathBuf> {
     let mut dir = std::env::current_dir().ok()?;
     loop {
-        if dir.join(LOCK_RELATIVE).is_file() {
-            return Some(dir);
+        // Use symlink_metadata so a planted `firefox.lock` symlink to
+        // outside the repo is not followed: only a regular file counts.
+        match std::fs::symlink_metadata(dir.join(LOCK_RELATIVE)) {
+            Ok(meta) if meta.is_file() && !meta.file_type().is_symlink() => return Some(dir),
+            _ => {}
         }
         if !dir.pop() {
             return None;

@@ -2,13 +2,24 @@
 
 This document describes the intended repository shape. The documentation phase can exist before all implementation directories are created.
 
+> Note: `aequera/ui|services|integrations|customization` and several
+> `tests/*` / `configs/schemas|profiles` entries below are still skeleton
+> placeholders (see `docs/ROADMAP.md`, `docs/QUALITY_GATES.md`). Implemented
+> since the skeleton: `aequera/core`, `aequera/shell/firefox`,
+> `aequera/design/tokens.toml+branding`, `aequera/extensions/shell-chrome`,
+> `patches/*/ + patches/manifest.yaml`, `tools/cli|branding|patch/assemble.py`,
+> `prototype/`, `Cargo.toml/lock`. No `.gitmodules`: upstream is a managed
+> checkout per `docs/engineering/UPSTREAM1.md`, never a submodule.
+> `upstream/firefox/` and `worktree/firefox/` exist on disk but are
+> git-ignored generated state, never source of truth (`docs/SOURCE_LAYOUT.md`).
+
 ```text
 aequera/
 ├── README.md
 ├── AGENTS.md
 ├── LICENSE
+├── Cargo.toml / Cargo.lock     # Rust workspace (aequera/core, tools/cli)
 ├── .gitignore
-├── .gitmodules
 │
 ├── docs/
 │   ├── VISION.md
@@ -20,11 +31,14 @@ aequera/
 │   ├── WORKFLOW.md
 │   ├── ROADMAP.md
 │   ├── QUALITY_GATES.md
+│   ├── PHASE0_FOUNDATION.md
+│   ├── README.md               # doc index
 │   ├── design/
 │   │   ├── UX_PRINCIPLES.md
 │   │   ├── MOTION.md
 │   │   ├── MATERIAL.md
 │   │   ├── CUSTOMIZATION.md
+│   │   ├── EXTENSIONS.md
 │   │   └── WORKSPACE.md
 │   ├── engineering/
 │   │   ├── DEVELOPMENT.md
@@ -60,8 +74,9 @@ aequera/
 ├── patches/
 │   ├── browser/
 │   ├── toolkit/
-│   ├── gecko/
-│   └── build/
+│   ├── gecko/                  # exceptional, empty until justified
+│   ├── build/
+│   └── manifest.yaml           # ordered series + overlays (see patches/)
 │
 ├── configs/
 │   ├── defaults/
@@ -87,10 +102,14 @@ aequera/
 ├── tools/
 │   ├── bootstrap/
 │   ├── upstream/
-│   ├── patch/
+│   ├── patch/                  # assemble.py (Git-native series helper)
 │   ├── build/
 │   ├── benchmark/
+│   ├── branding/               # brand asset renderer
+│   ├── cli/                    # `aequera` Rust CLI
 │   └── ci/
+│
+├── prototype/shell/           # design-spike prototype, not shipped chrome
 │
 └── worktree/
     └── firefox/              # generated, never the source of truth

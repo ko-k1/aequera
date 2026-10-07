@@ -9,3 +9,20 @@
 # (desktop entry, D-Bus service, shell search provider): keep LF so a
 # checkout installs byte-identical files on every OS.
 aequera/design/branding/linux/** text eol=lf
+# Overlays are copied verbatim into worktree/firefox/browser/aequera: CRLF
+# would ship divergent bytes on Windows checkouts (core.autocrlf=true).
+aequera/shell/** text eol=lf
+aequera/design/branding/** text eol=lf
+# Declarative inputs must hash identically on every OS.
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.lock text eol=lf
+*.json text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.ftl text eol=lf
+*.properties text eol=lf
+*.ini text eol=lf
+*.desktop text eol=lf
+*.service text eol=lf

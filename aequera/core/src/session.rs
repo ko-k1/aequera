@@ -103,6 +103,11 @@ impl Browser {
         if snap.workspaces.is_empty() {
             return Err(Error::EmptySnapshot);
         }
+        // `next_id` 0 is never issued by `try_issue_id` (ids start at 1):
+        // a crafted snapshot must not silently reseed the id space.
+        if snap.next_id == 0 {
+            return Err(Error::IdExhausted);
+        }
         // Pre-validate: uniqueness across workspaces, tabs, and closed
         // tabs; workspace names must be non-empty. Runs before any
         // mutation so refusal leaves prior state untouched.
@@ -149,6 +154,10 @@ impl Browser {
                 closed: sw
                     .closed
                     .iter()
+                    // Bound memory on restore: keep the most recent entries.
+                    .rev()
+                    .take(crate::MAX_CLOSED_TABS)
+                    .rev()
                     .map(|c| ClosedTab {
                         tab: Tab {
                             id: c.tab.id,
@@ -346,5 +355,14 @@ mod tests {
         snap.next_id = 100;
         let mut fresh = Browser::new();
         assert_eq!(fresh.restore(&snap), Err(Error::IdExhausted));
+    }
+
+    #[test]
+    fn zero_next_id_refused() {
+        let mut snap = lived_in_browser().snapshot();
+        snap.next_id = 0;
+        let mut fresh = Browser::new();
+        assert_eq!(fresh.restore(&snap), Err(Error::IdExhausted));
+        assert_eq!(fresh.workspaces().len(), 1);
     }
 }

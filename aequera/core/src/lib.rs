@@ -55,6 +55,11 @@ pub struct Workspace {
     closed: Vec<ClosedTab>,
 }
 
+/// Cap for the per-workspace closed-tab stack. The extension palette slice
+/// keeps 10 (`background.js`); core keeps 50 with headroom for consumers:
+/// long sessions must not grow memory without bound.
+pub const MAX_CLOSED_TABS: usize = 50;
+
 impl Workspace {
     /// Tab ids in display order.
     pub fn tabs(&self) -> Vec<TabId> {
@@ -170,8 +175,30 @@ impl Browser {
         self.workspaces.iter().map(|w| w.id).collect()
     }
 
+    /// Fallible active workspace: the shell must never panic on a broken
+    /// invariant (AGENTS.md: configuration failures recover to known-good).
+    pub fn try_active_workspace(&self) -> Result<WorkspaceId, Error> {
+        match self.active {
+            Some(id) if self.workspaces.iter().any(|w| w.id == id) => Ok(id),
+            _ => self
+                .workspaces
+                .first()
+                .map(|w| w.id)
+                .ok_or(Error::EmptySnapshot),
+        }
+    }
+
     pub fn active_workspace(&self) -> WorkspaceId {
-        self.active.expect("browser always has an active workspace")
+        // Non-panicking recovery: debug builds assert the invariant, release
+        // falls back to the first workspace. `0` is never a valid id (ids
+        // start at 1 via `try_issue_id`): callers observe
+        // `WorkspaceNotFound(0)` instead of a panic on impossible empty state.
+        debug_assert!(
+            self.active
+                .is_some_and(|id| self.workspaces.iter().any(|w| w.id == id)),
+            "browser always has an active workspace"
+        );
+        self.try_active_workspace().unwrap_or(0)
     }
 
     pub fn get_workspace(&self, id: WorkspaceId) -> Result<&Workspace, Error> {
@@ -275,6 +302,11 @@ impl Browser {
             index,
         };
         ws.closed.push(closed.clone());
+        // Bound memory: drop the oldest beyond MAX_CLOSED_TABS.
+        if ws.closed.len() > MAX_CLOSED_TABS {
+            let excess = ws.closed.len() - MAX_CLOSED_TABS;
+            ws.closed.drain(0..excess);
+        }
         Ok(closed)
     }
 
@@ -547,5 +579,26 @@ mod tests {
             Error::WorkspaceNotFound(999)
         );
         assert_invariants(&b);
+    }
+
+    #[test]
+    fn closed_stack_is_bounded() {
+        let mut b = Browser::new();
+        let ws = b.active_workspace();
+        for i in 0..(MAX_CLOSED_TABS + 10) {
+            let t = b
+                .open_tab(ws, &format!("https://e{i}.example"), "t")
+                .unwrap();
+            b.close_tab(ws, t).unwrap();
+        }
+        assert_eq!(b.get_workspace(ws).unwrap().closed_count(), MAX_CLOSED_TABS);
+        assert_invariants(&b);
+    }
+
+    #[test]
+    fn try_active_workspace_recovers_without_panic() {
+        let b = Browser::new();
+        assert!(b.try_active_workspace().is_ok());
+        assert_eq!(b.try_active_workspace().unwrap(), b.active_workspace());
     }
 }

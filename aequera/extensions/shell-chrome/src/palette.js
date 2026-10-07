@@ -42,8 +42,8 @@ function rankCandidates(query, sources) {
     if (matchText(q, t.title, t.url)) {
       items.push({
         kind: "Tab",
-        title: t.title,
-        sub: `${t.url} · ${t.workspace}`,
+        title: t.title || "",
+        sub: `${t.url || ""} · ${t.workspace || ""}`,
         action: { type: "switch-tab", tabId: t.tabId, windowId: t.windowId },
       });
     }
@@ -52,8 +52,8 @@ function rankCandidates(query, sources) {
     if (!q || (w.name || "").toLowerCase().includes(q)) {
       items.push({
         kind: "Workspace",
-        title: w.name,
-        sub: `${w.tabCount} tabs`,
+        title: w.name || "",
+        sub: `${w.tabCount || 0} tabs`,
         action: { type: "switch-workspace", windowId: w.windowId },
       });
     }
@@ -62,8 +62,8 @@ function rankCandidates(query, sources) {
     if (matchText(q, h.title, h.url)) {
       items.push({
         kind: "History",
-        title: h.title,
-        sub: h.url,
+        title: h.title || "",
+        sub: h.url || "",
         action: { type: "open-url", url: h.url, title: h.title },
       });
     }
@@ -72,8 +72,8 @@ function rankCandidates(query, sources) {
     if (matchText(q, b.title, b.url)) {
       items.push({
         kind: "Bookmark",
-        title: b.title,
-        sub: b.url,
+        title: b.title || "",
+        sub: b.url || "",
         action: { type: "open-url", url: b.url, title: b.title },
       });
     }
@@ -82,8 +82,8 @@ function rankCandidates(query, sources) {
     if (matchText(q, c.title, c.url)) {
       items.push({
         kind: "Closed",
-        title: c.title,
-        sub: `${c.url} · ${c.workspace}`,
+        title: c.title || "",
+        sub: `${c.url || ""} · ${c.workspace || ""}`,
         action: { type: "open-url", url: c.url, title: c.title },
       });
     }

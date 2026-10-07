@@ -31,6 +31,32 @@
 var AequeraTabs = (() => {
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const DEFAULT_ICON = "chrome://global/skin/icons/defaultFavicon.svg";
+  // Favicons come from web content (tab `image` attribute). An <img> does not
+  // execute script, but a crafted attribute could still load privileged image
+  // bytes into chrome UI (spoofing). Allowlist keeps http(s) + data:image for
+  // web favicons plus chrome:// + resource:// which Firefox itself uses for
+  // internal pages and the default icon below; everything else falls back to
+  // the default icon.
+  function sanitizeIcon(raw) {
+    if (typeof raw !== "string") {
+      return DEFAULT_ICON;
+    }
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return DEFAULT_ICON;
+    }
+    const lower = trimmed.toLowerCase();
+    if (
+      lower.startsWith("http://") ||
+      lower.startsWith("https://") ||
+      lower.startsWith("data:image/") ||
+      lower.startsWith("chrome://") ||
+      lower.startsWith("resource://")
+    ) {
+      return trimmed;
+    }
+    return DEFAULT_ICON;
+  }
   const STRUCTURE_EVENTS = ["TabOpen", "TabClose", "TabMove", "TabPinned", "TabUnpinned", "TabShow", "TabHide"];
   const ROW_EVENTS = ["TabSelect", "TabAttrModified"];
   const DRAG_TYPE = "text/x-moz-aequera-tab";
@@ -98,7 +124,7 @@ var AequeraTabs = (() => {
       row.toggleAttribute("soundplaying", tab.hasAttribute("soundplaying"));
       row.toggleAttribute("muted", tab.hasAttribute("muted"));
       row.querySelector(".aequera-tab-title").textContent = label;
-      const image = tab.getAttribute("image") || DEFAULT_ICON;
+      const image = sanitizeIcon(tab.getAttribute("image"));
       const icon = row.querySelector(".aequera-tab-icon");
       if (icon.getAttribute("src") != image) {
         icon.setAttribute("src", image);
