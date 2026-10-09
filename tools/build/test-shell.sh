@@ -22,7 +22,8 @@ if [ $# -gt 0 ]; then
 fi
 extra=("$@")
 
-# Firefox release defaults for every pref aequera-prefs.js overrides.
+# Firefox release defaults for the prefs aequera-prefs.js overrides that
+# Firefox's tests depend on.
 FIREFOX_DEFAULTS=(
   # Aequera locks sidebar.revamp and friends (aequera-prefs.js); Firefox's own
   # tests must turn the revamp on, so upstream runs (only) unlock them.
@@ -35,6 +36,12 @@ FIREFOX_DEFAULTS=(
   --setpref aequera.bookmarks.hoverPeek=false
   --setpref browser.uiCustomization.defaultExclusions=
   --setpref browser.uiCustomization.defaultNavbarPlacements=
+  # Privacy defaults: with unified telemetry off, Glean interaction events
+  # are not recorded and browser_vertical_tabs.js fails its "must be
+  # recorded" checks. Upload/study/sponsored prefs stay as Firefox's test
+  # profile sets them (testing/profiles), so tests stay offline.
+  --setpref toolkit.telemetry.unified=true
+  --setpref toolkit.telemetry.archive.enabled=true
 )
 # Frame material is per-OS (Windows 11 Mica; opaque toolbar fallback
 # elsewhere): only reset it where the pref means something.
