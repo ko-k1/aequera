@@ -155,6 +155,15 @@ bash ../../tools/build/test-shell.sh aequera --repeat 4
   resets, `browser_sidebar_expand_on_hover.js` fails its first assertion
   because Aequera ships expand-on-hover on.
 
+On NixOS, use the `-nixos` wrappers, which take the same arguments and
+work from any directory:
+`bash tools/build/test-shell-nixos.sh` for the gate and
+`bash tools/build/aequera-run-nixos.sh [--persistent]` to start the
+browser. They run inside `steam-run` because Mozilla's prebuilt binaries
+need an FHS system. They also keep temp files, the fontconfig cache and
+crash dumps under `.tmp/nixos/`, because the shared `~/.cache/fontconfig`
+crashes the browser at startup (`tools/build/nixos-env.sh`).
+
 Headless servers are fine: the suite runs `--headless`, and the two
 platform-drag tab tests skip themselves there (no drag service without a
 display); they stay covered on headed runs.
