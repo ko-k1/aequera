@@ -12,7 +12,16 @@ aequera/design/branding/linux/** text eol=lf
 # Overlays are copied verbatim into worktree/firefox/browser/aequera: CRLF
 # would ship divergent bytes on Windows checkouts (core.autocrlf=true).
 aequera/shell/** text eol=lf
-aequera/design/branding/** text eol=lf
+# Branding overlays are also copied verbatim, but the tree mixes text and
+# binary assets. Scope LF-only to text types; binaries are exempted below
+# (later rules win). A broad `text` rule here strips 0D bytes from PNG
+# magic (89 50 4E 47 0D 0A 1A 0A) and incidental 0D 0A pairs in ICO/ICNS/BMP.
+aequera/design/branding/**/*.svg text eol=lf
+aequera/design/branding/**/*.xml text eol=lf
+aequera/design/branding/**/*.mn text eol=lf
+aequera/design/branding/**/moz.build text eol=lf
+aequera/design/branding/**/*.nsi text eol=lf
+aequera/design/branding/**/*.md text eol=lf
 # Declarative inputs must hash identically on every OS.
 *.toml text eol=lf
 *.yaml text eol=lf
@@ -26,3 +35,11 @@ aequera/design/branding/** text eol=lf
 *.ini text eol=lf
 *.desktop text eol=lf
 *.service text eol=lf
+# Binary assets must never undergo LF normalization. Placed last so they
+# override any broad `text` rules above (later rules win).
+*.png -text -diff
+*.ico -text -diff
+*.icns -text -diff
+*.bmp -text -diff
+*.jpg -text -diff
+*.jpeg -text -diff
