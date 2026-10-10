@@ -24,10 +24,10 @@ Validation: aequera/shell/firefox/tests/browser (exact navbar order after
 Upstream risk: low; one nested call in the same props.set filter as 0001.
 
 diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
+index 279d94300564..2405e010cb07 100644
 --- a/browser/components/customizableui/CustomizableUI.sys.mjs
 +++ b/browser/components/customizableui/CustomizableUI.sys.mjs
-@@ -76,7 +76,31 @@ function withoutDefaultExclusions(placements) {
-   return excluded.size
+@@ -77,6 +77,30 @@ function withoutDefaultExclusions(placements) {
      ? placements.filter(id => !excluded.has(id))
      : placements;
  }
@@ -58,26 +58,16 @@ diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/
  // When false, vertical tabs and the revamped sidebar are independent: a
  // browser shell that hosts the vertical tab strip itself can run vertical
  // tabs with the legacy sidebar. Default true keeps them coupled.
-@@ -1218,12 +1243,16 @@ var CustomizableUIInternal = {
-       ) {
-         throw new Error("An area cannot change the property for '" + key + "'");
-       }
--      props.set(
--        key,
--        kDefaultPlacementKeys.has(key)
+@@ -1224,7 +1248,11 @@ var CustomizableUIInternal = {
+       props.set(
+         key,
+         kDefaultPlacementKeys.has(key)
 -          ? withoutDefaultExclusions(aProperties[key])
--          : aProperties[key]
--      );
-+      props.set(
-+        key,
-+        kDefaultPlacementKeys.has(key)
 +          ? withoutDefaultExclusions(
 +              aName == CustomizableUI.AREA_NAVBAR
 +                ? withDefaultNavbarPlacements(aName, aProperties[key])
 +                : aProperties[key]
 +            )
-+          : aProperties[key]
-+      );
+           : aProperties[key]
+       );
      }
-     // Default to a toolbar:
-     if (!props.has("type")) {

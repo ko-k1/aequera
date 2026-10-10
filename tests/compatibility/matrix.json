@@ -6,8 +6,8 @@
   },
   "firefox": {
     "channel": "release",
-    "version": "156.0",
-    "revision": "3bf8f468258c2181f455e23d4ffcd6acb8f4cdb1"
+    "version": "157.0.1",
+    "revision": "0c469c2352451630bc69fc328c9f0c589c6c534d"
   },
   "platforms": [
     {

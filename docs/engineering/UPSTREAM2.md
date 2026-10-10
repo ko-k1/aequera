@@ -96,7 +96,7 @@ mozilla-central  = forward-compatibility preview (independent channels/central.l
 ESR              = optional future LTS baseline (independent channels/esr.lock, later)
 ```
 
-Phase 0 pins and builds the Release track only (`156.0`,
-`FIREFOX_156_0_RELEASE`). Preview and LTS tracks exist as schema plus policy
+Phase 0 pins and builds the Release track only (`157.0.1`,
+`FIREFOX_157_0_1_RELEASE`). Preview and LTS tracks exist as schema plus policy
 until a later phase activates them. A failing central preview check must
 produce a maintenance signal, never invalidate the Release baseline.

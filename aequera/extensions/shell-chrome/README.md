@@ -34,13 +34,13 @@ the exact chord is a later shell-integration decision, not a silent override.
 
 ## Load against the real tree
 
-1. Build or run the pinned tree: `aequera patch apply && <firefox build/run from worktree/firefox @ 3bf8f468>`.
+1. Build or run the pinned tree: `aequera patch apply && <firefox build/run from worktree/firefox @ 0c469c23>`.
 2. Open `about:debugging#/runtime/this-firefox` → Load Temporary Add-on → pick `manifest.json`.
 3. Exercise: create workspace, open/switch/close/restore/move/pin tabs, fire the command; confirm no errors and `worktree/firefox` shows no source diff.
 
 ## Live smoke (proven 2026-09-24, TEMP-only harness, repo untouched)
 
-Heads-up: the repo manifest pins `strict_min_version 156.0` (the lock).
+Heads-up: the repo manifest pins `strict_min_version 157.0.1` (the lock).
 The smoke runs a throwaway copy under `%TEMP%\aequera-smoke` with the min
 version lowered, plus a TEMP-only `smoke.html` runner — none of it is committed.
 
@@ -60,10 +60,10 @@ version lowered, plus a TEMP-only `smoke.html` runner — none of it is committe
 - `cargo test -p aequera-core` green (20 tests).
 - `node --test src/palette.test.js` green (6 tests: order, case-folding, gating, cap).
 - `aequera upstream verify` → verified; `aequera patch status` → base match, applied state matches manifest.
-- `manifest.json` parses; `strict_min_version` == lock version `156.0`; permissions ⊆ {tabs, sessions, storage, history, bookmarks}; `icons` 16/32/48/128 resolve to `icons/` (real mark).
+- `manifest.json` parses; `strict_min_version` == lock version `157.0.1`; permissions ⊆ {tabs, sessions, storage, history, bookmarks}; `icons` 16/32/48/128 resolve to `icons/` (real mark).
 - `background.js` / `palette.js` contain no `fetch(` / `XMLHttpRequest` / `WebSocket` call sites, no telemetry.
 - Live Marionette smoke in real Firefox green (4/4 steps; see above).
-- Temporary load in the pinned 156.0 build remains the final gate (manual; full Firefox build is hours).
+- Temporary load in the pinned 157.0.1 build remains the final gate (manual; full Firefox build is hours).
 
 ## Explicit non-goals (v0 + palette)
 
@@ -72,7 +72,7 @@ Sidebar/panel UI bundling, workspace persistence beyond window values, exact
 
 ## Known residual: manifest_version 2
 
-`manifest.json` stays on `manifest_version: 2` pinned to the `156.0` lock.
+`manifest.json` stays on `manifest_version: 2` pinned to the `157.0.1` lock.
 A future MV3 migration is tracked work: it must not silently widen
 permissions (`history`, `bookmarks` stay read-only palette sources) and must
 re-prove the live Marionette smoke before the version pin moves.

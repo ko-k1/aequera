@@ -42,7 +42,7 @@ index b4dbf1989335..83f0934a4aee 100644
  namespace mozilla {
  namespace widget {
 diff --git a/widget/gtk/WidgetUtilsGtk.cpp b/widget/gtk/WidgetUtilsGtk.cpp
-index 482790fb18cf..85cd299b17e3 100644
+index c1474f74fa68..b59c1a524979 100644
 --- a/widget/gtk/WidgetUtilsGtk.cpp
 +++ b/widget/gtk/WidgetUtilsGtk.cpp
 @@ -200,7 +200,9 @@ static void DoRegisterHostApp() {

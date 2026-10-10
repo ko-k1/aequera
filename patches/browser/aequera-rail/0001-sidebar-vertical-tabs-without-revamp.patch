@@ -26,7 +26,7 @@ Validation: aequera/shell/firefox/tests/browser (rail with revamp off;
 Upstream risk: low-medium; conditions at the three coupling sites.
 
 diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
-index 875f8b03d979..36229bd8cd53 100644
+index 04e60a96a3ec..53ac6df4e027 100644
 --- a/browser/components/customizableui/CustomizableUI.sys.mjs
 +++ b/browser/components/customizableui/CustomizableUI.sys.mjs
 @@ -49,6 +49,10 @@ const kPrefHomeButtonUsed = "browser.engagement.home-button.has-used";
@@ -40,7 +40,7 @@ index 875f8b03d979..36229bd8cd53 100644
  const kPrefSidebarVerticalTabsEnabled = "sidebar.verticalTabs";
  const kPrefSidebarPositionStartEnabled = "sidebar.position_start";
  
-@@ -5322,10 +5326,14 @@ var CustomizableUIInternal = {
+@@ -5337,10 +5341,14 @@ var CustomizableUIInternal = {
      lazy.log.debug(
        `reconcileSidebarPrefs, kPrefSidebarRevampEnabled: {sidebarRevampEnabled}, kPrefSidebarVerticalTabsEnabled: ${verticalTabsEnabled}`
      );
@@ -56,7 +56,7 @@ index 875f8b03d979..36229bd8cd53 100644
            Services.prefs.setBoolPref(kPrefSidebarRevampEnabled, true);
          }
          break;
-@@ -5343,7 +5351,7 @@ var CustomizableUIInternal = {
+@@ -5358,7 +5366,7 @@ var CustomizableUIInternal = {
          props.set("defaultPlacements", defaults);
          gAreas.set(CustomizableUI.AREA_NAVBAR, props);
          // We need to also disable vertical tabs if sidebar.revamp is no longer enabled
@@ -66,7 +66,7 @@ index 875f8b03d979..36229bd8cd53 100644
              `{kPrefSidebarRevampEnabled} disabled, so also disabling ${kPrefSidebarVerticalTabsEnabled}`
            );
 diff --git a/browser/components/sidebar/SidebarManager.sys.mjs b/browser/components/sidebar/SidebarManager.sys.mjs
-index ec118e4179f4..7de10cd1bc98 100644
+index b6882c4b737c..8432ec79b0c6 100644
 --- a/browser/components/sidebar/SidebarManager.sys.mjs
 +++ b/browser/components/sidebar/SidebarManager.sys.mjs
 @@ -38,6 +38,17 @@ ChromeUtils.defineESModuleGetters(lazy, {
@@ -98,10 +98,10 @@ index ec118e4179f4..7de10cd1bc98 100644
 +      if (verticalTabsRequireRevamp()) {
 +        Services.prefs.setBoolPref("sidebar.verticalTabs", false);
 +      }
-     } else if (newVal && !lazy.verticalTabsEnabled) {
-       // Horizontal tabs with sidebar.revamp default to "hide-on-close"; users
-       // can opt into the switcher-only "hide-launcher" from the customize panel.
-@@ -210,8 +224,12 @@ class SidebarManager extends EventTarget {
+     }
+   }
+ );
+@@ -203,8 +217,12 @@ class SidebarManager extends EventTarget {
        // know if we were _really_ removed or just moved elsewhere.
        await Promise.resolve();
        if (!lazy.CustomizableUI.getPlacementOfWidget(aWidgetId)) {

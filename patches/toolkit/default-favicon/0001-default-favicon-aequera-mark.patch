@@ -41,7 +41,7 @@ index 46ccd0fe6c0e..40f89f1c8995 100644
 +<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="16" height="16" role="img" aria-labelledby="title desc">
 +<title id="title">Aequera icon</title>
 +  <desc id="desc">Aequera geometric icon constructed from one congruent three-face block repeated by exact 120 degree rotations.</desc>
-
+ 
 -@media -moz-pref("browser.nova.enabled") {
 -  .proton { display: none; }
 -  .nova { display: revert; }

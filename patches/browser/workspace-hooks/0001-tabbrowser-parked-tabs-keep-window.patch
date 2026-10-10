@@ -24,10 +24,10 @@ Validation: aequera/shell/firefox/tests/browser/browser_aequera_workspaces.js
 Upstream risk: low; one condition in #beginRemoveTab plus a private helper.
 
 diff --git a/browser/components/tabbrowser/Tabbrowser.sys.mjs b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-index f68e37926001..f97552413483 100644
+index e41d07a03d56..66c3a497de68 100644
 --- a/browser/components/tabbrowser/Tabbrowser.sys.mjs
 +++ b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-@@ -6354,6 +6354,36 @@ export class Tabbrowser {
+@@ -6435,6 +6435,36 @@ export class Tabbrowser {
      return true;
    }
  
@@ -64,7 +64,7 @@ index f68e37926001..f97552413483 100644
    #hasBeforeUnload(aTab) {
      let browser = aTab.linkedBrowser;
      if (browser.isRemoteBrowser && browser.frameLoader) {
-@@ -6464,7 +6494,8 @@ export class Tabbrowser {
+@@ -6546,7 +6576,8 @@ export class Tabbrowser {
      var newTab = false;
      if (this.#isLastTabInWindow(aTab)) {
        closeWindow =

@@ -41,7 +41,7 @@ pocket = false
 
 [crash]
 # pref: browser.crashReports.unsubmittedCheck.autoSubmit, .autoSubmit2
-# (Firefox 156 uses autoSubmit2; both are defaulted off for coverage).
+# (Firefox 157, the lock, uses autoSubmit2; both are defaulted off for coverage).
 # Never upload without review; the user may still inspect and send explicitly.
 auto_submit = false
 

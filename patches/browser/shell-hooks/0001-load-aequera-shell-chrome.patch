@@ -24,7 +24,7 @@ Upstream risk: low. Conflicts only if these exact lines move (DIRS list,
   package manifest).
 
 diff --git a/browser/base/content/browser.xhtml b/browser/base/content/browser.xhtml
-index ba48e8a2be64..ebd4993f0ee8 100644
+index 9a7d30d91085..51bee48be1a1 100644
 --- a/browser/base/content/browser.xhtml
 +++ b/browser/base/content/browser.xhtml
 @@ -57,6 +57,7 @@
@@ -35,7 +35,7 @@ index ba48e8a2be64..ebd4993f0ee8 100644
  
    <link rel="localization" href="branding/brand.ftl"/>
    <link rel="localization" href="browser/allTabsMenu.ftl"/>
-@@ -111,6 +112,7 @@
+@@ -112,6 +113,7 @@
  
    <script src="chrome://browser/content/global-scripts.js"></script>
    <script src="chrome://browser/content/browser-main.js"></script>

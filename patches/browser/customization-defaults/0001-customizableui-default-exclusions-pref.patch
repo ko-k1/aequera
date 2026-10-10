@@ -20,7 +20,7 @@ Validation: aequera/shell/firefox/tests/browser (List all tabs absent from
 Upstream risk: low; one filter where area properties are stored.
 
 diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
-index 8056b70c0dbf..3e7a3baccd55 100644
+index 4d589f3a9f4a..279d94300564 100644
 --- a/browser/components/customizableui/CustomizableUI.sys.mjs
 +++ b/browser/components/customizableui/CustomizableUI.sys.mjs
 @@ -49,6 +49,34 @@ const kPrefHomeButtonUsed = "browser.engagement.home-button.has-used";

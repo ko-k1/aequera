@@ -16,10 +16,10 @@ Validation: aequera rail tests (orientation switches with revamp off, no
 Upstream risk: low; two guards in toggleTabstrip.
 
 diff --git a/browser/components/sidebar/browser-sidebar.js b/browser/components/sidebar/browser-sidebar.js
-index eef1a75aa745..899dd9fa6046 100644
+index 6a9110289903..9e9bbbfee20c 100644
 --- a/browser/components/sidebar/browser-sidebar.js
 +++ b/browser/components/sidebar/browser-sidebar.js
-@@ -2554,9 +2554,13 @@ var SidebarController = {
+@@ -2560,9 +2560,13 @@ var SidebarController = {
      );
      verticalToolbar.toggleAttribute("visible", toVerticalTabs);
      // Re-render sidebar-main so that templating is updated
