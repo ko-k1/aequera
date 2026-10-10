@@ -388,8 +388,12 @@ pub fn adopt(
     std::fs::remove_file(&candidate_path)
         .map_err(|e| format!("{}: {e}", candidate_path.display()))?;
 
-    // 6. Move worktree/firefox onto the new baseline and apply the series.
+    // 6. Move the managed checkout and worktree/firefox onto the new
+    //    baseline (so `upstream verify` holds), then apply the series.
     let adopted = lock::load(root)?;
+    upstream::checkout(root, &adopted, &adopted.upstream.channel).map_err(|e| {
+        format!("baseline files are rewritten (review with `git diff`), but moving the managed checkout failed: {e}")
+    })?;
     if ff_present {
         upstream::git(&ff, &["reset", "--quiet", "--hard", &state.candidate_sha])?;
         let applied_state = ff.join(patch::STATE_FILE);
@@ -1032,6 +1036,11 @@ mod tests {
         assert_eq!(manifest.base.upstream.version, "1");
         assert!(!root.join(lock::CANDIDATE_RELATIVE).exists());
         assert!(!cand_wt.exists(), "candidate worktree removed");
+        let verified = upstream::verify(root, &lock).unwrap();
+        assert!(
+            verified.verified,
+            "managed checkout follows the lock: {verified:?}"
+        );
 
         // worktree/firefox moved: new base + rewritten series, verified.
         let ff = root.join(patch::WORKTREE_RELATIVE);
