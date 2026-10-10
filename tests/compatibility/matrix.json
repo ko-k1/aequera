@@ -32,19 +32,29 @@
       "id": "linux-x86_64",
       "os": "linux",
       "arch": "x86_64",
-      "status": "planned",
+      "status": "supported",
       "build_profiles": ["artifact", "compiled"],
-      "launchers": ["tools/build/aequera.sh", "tools/build/aequera-run.sh"],
+      "launchers": [
+        "tools/build/aequera.sh",
+        "tools/build/aequera-run.sh",
+        "tools/build/aequera-run-nixos.sh"
+      ],
       "validated": [
-        "cli-smoke (PR CI)",
-        "patch check: full series applies cleanly against the locked base"
+        "cli-smoke (PR CI + local)",
+        "patch check: full series applies cleanly against the locked base",
+        "artifact build + run (NixOS 26.05 and 26.11)",
+        "shell mochitests (aequera + upstream suites): 868 passed, 0 failed (NixOS 26.05 and 26.11)"
       ],
       "known_deviations": [
-        "no Linux mach build + run has exercised the tree yet",
-        "D-Bus / portal / MPRIS / search-provider rename (patches/toolkit/linux-desktop) is textually validated only",
+        "compiled build not exercised yet: artifact builds run Mozilla's prebuilt binary",
+        "D-Bus / portal / MPRIS / search-provider rename (patches/toolkit/linux-desktop) is C++, so artifact builds do not exercise it; textually validated only until a compiled build runs",
         "desktop entry, hicolor icons, and search-provider files ship as source; no installer copies them yet"
       ],
-      "workarounds": []
+      "workarounds": [
+        "NixOS: Mozilla's prebuilt binaries need an FHS environment; use tools/build/test-shell-nixos.sh and aequera-run-nixos.sh (steam-run, setup in nixos-env.sh)",
+        "NixOS 26.11+: the steam FHS no longer ships GTK 3; add gtk3, at-spi2-core, and libxcomposite via programs.steam.package extraLibraries",
+        "NixOS: after switching system generations, move .tmp/nixos/cache/fontconfig aside; a cache written by another fontconfig version crashes startup"
+      ]
     },
     {
       "id": "macos-aarch64",
