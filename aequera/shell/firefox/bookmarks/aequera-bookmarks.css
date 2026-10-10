@@ -56,9 +56,14 @@
  * later in the tree at the same level, still stacks above it), and its
  * drawer area, sized by aequera-bookmarks.js, is hit-testable from the
  * first frame: a pointer reaching a bookmark before the wipe has revealed it
- * is on the drawer, not the page. */
+ * is on the drawer, not the page. The drawer and that area lie below the
+ * toolbox's own box, so the toolbox must not clip while the drawer is open:
+ * Firefox clips it under the Nova theme (browser.nova.enabled, default from
+ * 157) and under lightweight themes, which would hide the drawer and pass
+ * the pointer through to the page. */
 :root[aequera-bookmarks-peek][aequera-bookmarks-open] #navigator-toolbox {
   z-index: var(--browser-area-z-index-toolbox-while-animating, 4);
+  overflow: visible;
 
   &::after {
     content: "";
