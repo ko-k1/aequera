@@ -10,7 +10,8 @@
 #   - XDG_CACHE_HOME under .tmp/: the host ~/.cache/fontconfig crashes the
 #     browser at startup (SIGSEGV in FcNameUnparseLangSet);
 #   - MINIDUMP_SAVE_PATH under .tmp/: crash dumps survive temp profiles.
-# Expects ROOT (repo root) to be set by the caller.
+# Expects ROOT (repo root) to be set by the caller. Runs in
+# worktree/${AEQUERA_WORKTREE:-firefox} (candidate: the rebased candidate).
 
 nixos_fhs_exec() {
   if ! command -v steam-run >/dev/null 2>&1; then
@@ -19,7 +20,13 @@ nixos_fhs_exec() {
   fi
   local state="$ROOT/.tmp/nixos"
   mkdir -p "$state/tmp" "$state/cache" "$state/dumps"
-  cd "$ROOT/worktree/firefox"
+  local wt="${AEQUERA_WORKTREE:-firefox}"
+  case "$wt" in
+    ""|.|..|*[!A-Za-z0-9._-]*)
+      echo "nixos: AEQUERA_WORKTREE must name a directory under worktree/ (got '$wt')" >&2
+      exit 2 ;;
+  esac
+  cd "$ROOT/worktree/$wt"
   exec env -u LD_LIBRARY_PATH \
     TMPDIR="$state/tmp" \
     XDG_CACHE_HOME="$state/cache" \

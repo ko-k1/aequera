@@ -20,7 +20,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TOPSRCDIR="$ROOT/worktree/firefox"
+# AEQUERA_WORKTREE=candidate runs the rebased candidate (aequera patch rebase).
+WORKTREE_NAME="${AEQUERA_WORKTREE:-firefox}"
+case "$WORKTREE_NAME" in
+  ""|.|..|*[!A-Za-z0-9._-]*)
+    echo "aequera-run: AEQUERA_WORKTREE must name a directory under worktree/ (got '$WORKTREE_NAME')" >&2
+    exit 1 ;;
+esac
+TOPSRCDIR="$ROOT/worktree/$WORKTREE_NAME"
 if [ ! -d "$TOPSRCDIR" ]; then
   echo "aequera-run: no Firefox tree at $TOPSRCDIR; run \`aequera patch apply\` first." >&2
   exit 1

@@ -78,6 +78,18 @@ Firefox base keeps the objdir. Objdirs from before this layout
 (`worktree/firefox/obj-aequera*`) are no longer used; delete them and
 rebuild once.
 
+To gate a Firefox update before adopting it, build and test the rebased
+candidate (`aequera patch rebase`, docs/engineering/UPSTREAM1.md) the same
+way from `worktree/candidate`; its objdir is `obj/candidate/…`. The
+launchers and the NixOS wrappers take `AEQUERA_WORKTREE=candidate`
+(default `firefox`):
+
+```sh
+cd worktree/candidate && ./mach build
+AEQUERA_WORKTREE=candidate bash tools/build/test-shell-nixos.sh
+AEQUERA_WORKTREE=candidate bash tools/build/aequera-run.sh
+```
+
 `aequera-run.sh` works in any POSIX shell on all three platforms (it finds
 the repo from its own location, so any checkout directory works). When
 `MOZCONFIG` is unset it picks the mozconfig matching the objdir

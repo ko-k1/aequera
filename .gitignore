@@ -1,5 +1,7 @@
-# Generated Firefox tree
+# Generated Firefox trees: the baseline and the rebase candidate
+# (aequera patch rebase).
 worktree/firefox/
+worktree/candidate/
 
 # Managed upstream Firefox checkout (see docs/engineering/UPSTREAM1.md).
 # Only upstream/manifests/* is committed; the checkout is reproduced by tooling.

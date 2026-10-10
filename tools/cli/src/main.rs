@@ -15,6 +15,7 @@ mod doctor;
 mod lock;
 mod output;
 mod patch;
+mod rebase;
 mod upstream;
 
 use clap::{Parser, Subcommand};
@@ -95,6 +96,15 @@ enum UpstreamOp {
         #[arg(long)]
         to: String,
     },
+    /// Make a fully rebased candidate the baseline: export the patch
+    /// files, rewrite the manifest base and firefox.lock, move
+    /// worktree/firefox, and remove the candidate.
+    Adopt {
+        /// Run every check (including the export proof) and report what
+        /// would change, without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Remove generated upstream state (W3).
     Clean,
 }
@@ -109,8 +119,15 @@ enum PatchOp {
         candidate: bool,
     },
     Apply,
+    /// Replay the series onto the staged candidate in worktree/candidate
+    /// (one commit per patch file; stops on conflict).
     Rebase {
-        revision: String,
+        /// Commit the resolved conflict and continue.
+        #[arg(long = "continue", conflicts_with = "abort")]
+        resume: bool,
+        /// Discard worktree/candidate and its resolutions (candidate lock stays).
+        #[arg(long)]
+        abort: bool,
     },
     Export,
 }
@@ -148,6 +165,7 @@ fn main() -> ExitCode {
             UpstreamOp::Verify => upstream_verify(cli.json),
             UpstreamOp::Checkout { target } => upstream_checkout(cli.json, &target),
             UpstreamOp::Update { to } => upstream_update(cli.json, &to),
+            UpstreamOp::Adopt { dry_run } => upstream_adopt(cli.json, dry_run),
             UpstreamOp::Clean => todo_cmd("upstream clean", "W3 patch pipeline"),
         },
         Command::Patch { op } => match op {
@@ -155,7 +173,7 @@ fn main() -> ExitCode {
             PatchOp::Check { candidate: false } => patch_check(cli.json),
             PatchOp::Check { candidate: true } => patch_check_candidate(cli.json),
             PatchOp::Apply => patch_apply(cli.json),
-            PatchOp::Rebase { .. } => todo_cmd("patch rebase", "update flow (later slice)"),
+            PatchOp::Rebase { resume, abort } => patch_rebase(cli.json, resume, abort),
             PatchOp::Export => todo_cmd("patch export", "later slice"),
         },
         Command::Config { op } => match op {
@@ -449,23 +467,9 @@ fn patch_check(json: bool) -> ExitCode {
 }
 
 fn patch_check_candidate(json: bool) -> ExitCode {
-    let (root, lock) = match load_context() {
+    let (root, lock, candidate) = match load_candidate_context() {
         Err(code) => return code,
         Ok(ctx) => ctx,
-    };
-    let candidate = match lock::load_candidate(&root, &lock) {
-        Err(e) => {
-            eprintln!("Candidate lock unreadable: {e}");
-            return ExitCode::FAILURE;
-        }
-        Ok(None) => {
-            eprintln!(
-                "No candidate staged ({}); run `aequera upstream update --to <release-tag>` first.",
-                lock::CANDIDATE_RELATIVE
-            );
-            return ExitCode::FAILURE;
-        }
-        Ok(Some(c)) => c,
     };
     match patch::check_candidate(&root, &lock, &candidate) {
         Err(e) => {
@@ -509,6 +513,165 @@ fn patch_check_candidate(json: bool) -> ExitCode {
             } else {
                 ExitCode::FAILURE
             }
+        }
+    }
+}
+
+/// Root, lock, and the staged candidate, or report why there is none.
+fn load_candidate_context() -> Result<(std::path::PathBuf, lock::LockFile, lock::LockFile), ExitCode>
+{
+    let (root, lock) = load_context()?;
+    match lock::load_candidate(&root, &lock) {
+        Err(e) => {
+            eprintln!("Candidate lock unreadable: {e}");
+            Err(ExitCode::FAILURE)
+        }
+        Ok(None) => {
+            eprintln!(
+                "No candidate staged ({}); run `aequera upstream update --to <release-tag>` first.",
+                lock::CANDIDATE_RELATIVE
+            );
+            Err(ExitCode::FAILURE)
+        }
+        Ok(Some(c)) => Ok((root, lock, c)),
+    }
+}
+
+fn applicability_tag(result: patch::Applicability) -> &'static str {
+    match result {
+        patch::Applicability::Clean => "clean",
+        patch::Applicability::ThreeWay => "3-way",
+        patch::Applicability::Conflict => "resolved",
+    }
+}
+
+fn patch_rebase(json: bool, resume: bool, abort: bool) -> ExitCode {
+    if abort {
+        let (root, _lock) = match load_context() {
+            Err(code) => return code,
+            Ok(ctx) => ctx,
+        };
+        return match rebase::abort(&root) {
+            Err(e) => {
+                eprintln!("Rebase abort failed: {e}");
+                ExitCode::FAILURE
+            }
+            Ok(report) => {
+                let human = format!(
+                    "Patch rebase aborted\n--------------------\nRemoved {} (candidate lock kept).",
+                    report.worktree_dir
+                );
+                output::emit(json, &human, &report);
+                ExitCode::SUCCESS
+            }
+        };
+    }
+    let (root, lock, candidate) = match load_candidate_context() {
+        Err(code) => return code,
+        Ok(ctx) => ctx,
+    };
+    let result = if resume {
+        rebase::resume(&root, &lock, &candidate)
+    } else {
+        rebase::start(&root, &lock, &candidate)
+    };
+    match result {
+        Err(e) => {
+            eprintln!("Patch rebase failed: {e}");
+            ExitCode::FAILURE
+        }
+        Ok(report) => {
+            let mut human = format!(
+                "Patch rebase\n\
+                 ------------\n\
+                 Candidate     : {} ({})\n\
+                 Worktree      : {}\n\
+                 Committed     : {}/{}",
+                candidate.upstream.version,
+                lock::short_sha(&report.candidate_sha),
+                report.worktree_dir,
+                report.committed.len(),
+                report.total,
+            );
+            for f in &report.committed {
+                human.push_str(&format!("\n  [{}] {}", applicability_tag(f.result), f.file));
+            }
+            if let Some(stop) = &report.stopped {
+                human.push_str(&format!("\n  [STOPPED] {}", stop.file));
+                for path in &stop.unmerged {
+                    human.push_str(&format!("\n      unmerged: {path}"));
+                }
+                if stop.unmerged.is_empty() {
+                    human.push_str(&format!(
+                        "\n      does not apply, even 3-way: {}\n      apply its intent by hand in the worktree",
+                        stop.detail
+                    ));
+                }
+                human.push_str(
+                    "\n\nResolve in the candidate worktree, `git add` the files, then\n\
+                     `aequera patch rebase --continue` (or `--abort` to discard).",
+                );
+            } else {
+                human.push_str(&format!(
+                    "\n\nSeries rebased; overlays synced ({} files).\n\
+                     Next: build and test it (AEQUERA_WORKTREE=candidate, tools/build/README.md),\n\
+                     then `aequera upstream adopt`.",
+                    report.overlay_files
+                ));
+            }
+            output::emit(json, &human, &report);
+            if report.done {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+    }
+}
+
+fn upstream_adopt(json: bool, dry_run: bool) -> ExitCode {
+    let (root, lock, candidate) = match load_candidate_context() {
+        Err(code) => return code,
+        Ok(ctx) => ctx,
+    };
+    match rebase::adopt(&root, &lock, &candidate, dry_run) {
+        Err(e) => {
+            eprintln!("Adopt failed: {e}");
+            ExitCode::FAILURE
+        }
+        Ok(report) => {
+            let mut human = format!(
+                "Upstream adopt\n\
+                 --------------\n\
+                 Baseline      : {} ({}) -> {} ({})\n\
+                 Patch files   : {} rewritten, {} unchanged",
+                report.from_version,
+                lock::short_sha(&report.from_sha),
+                report.to_version,
+                lock::short_sha(&report.to_sha),
+                report.patches_rewritten.len(),
+                report.patches_unchanged,
+            );
+            for f in &report.patches_rewritten {
+                human.push_str(&format!("\n  [rewritten] {f}"));
+            }
+            if report.dry_run {
+                human.push_str(
+                    "\n\nDry run: every check passed (the exported series rebuilds the\n\
+                     candidate tree exactly); nothing was written.",
+                );
+            } else {
+                human.push_str(&format!(
+                    "\nWorktree      : {} ({} entries applied)\n\
+                     \n\
+                     firefox.lock, the manifest base, and the patch files are rewritten;\n\
+                     candidate.lock and worktree/candidate are removed. Review with\n\
+                     `git diff`, build and test worktree/firefox, then commit.",
+                    report.worktree_dir, report.entries_applied
+                ));
+            }
+            output::emit(json, &human, &report);
+            ExitCode::SUCCESS
         }
     }
 }

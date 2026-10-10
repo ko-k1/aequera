@@ -16,11 +16,12 @@ aequera upstream fetch
 aequera upstream status
 aequera upstream update --to <release-tag>   # stages candidate.lock; lock untouched
 aequera upstream checkout <revision>
+aequera upstream adopt [--dry-run]          # finished rebase -> new baseline
 
 aequera patch status
 aequera patch check [--candidate]           # --candidate: exact, then 3-way, per file
 aequera patch apply
-aequera patch rebase <revision>
+aequera patch rebase [--continue|--abort]  # series onto the candidate
 aequera patch export
 
 aequera config validate

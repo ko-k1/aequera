@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 pub const WORKTREE_RELATIVE: &str = "worktree/firefox";
 
 /// Applied-state record, relative to the worktree root.
-const STATE_FILE: &str = ".aequera-applied.json";
+pub(crate) const STATE_FILE: &str = ".aequera-applied.json";
 
 #[derive(Debug, Deserialize)]
 pub struct PatchManifest {
@@ -99,7 +99,7 @@ pub struct CheckReport {
 }
 
 /// How one patch file lands on a candidate baseline.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Applicability {
     /// Applies byte-for-byte.
@@ -363,7 +363,7 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
 /// dependent series is applied cumulatively, as `apply` does), compared with
 /// the worktree's tracked files. Untracked output (overlays, objdir) is out
 /// of scope; any tracked difference is drift.
-fn verify_worktree_matches_series(
+pub(crate) fn verify_worktree_matches_series(
     root: &Path,
     wt: &Path,
     manifest: &PatchManifest,
@@ -425,7 +425,11 @@ pub(crate) fn plain_relative(field: &str, id: &str, value: &str) -> Result<PathB
     Ok(path)
 }
 
-fn validate_overlay(root: &Path, wt: &Path, overlay: &OverlayEntry) -> Result<(), String> {
+pub(crate) fn validate_overlay(
+    root: &Path,
+    wt: &Path,
+    overlay: &OverlayEntry,
+) -> Result<(), String> {
     let source = root.join(plain_relative("source", &overlay.id, &overlay.source)?);
     plain_relative("dest", &overlay.id, &overlay.dest)?;
     if !source.is_dir() {
@@ -450,7 +454,11 @@ fn validate_overlay(root: &Path, wt: &Path, overlay: &OverlayEntry) -> Result<()
 
 /// Replace every overlay dest with a fresh copy of its source. Returns the
 /// number of files copied across all overlays.
-fn sync_overlays(root: &Path, wt: &Path, manifest: &PatchManifest) -> Result<usize, String> {
+pub(crate) fn sync_overlays(
+    root: &Path,
+    wt: &Path,
+    manifest: &PatchManifest,
+) -> Result<usize, String> {
     let mut total = 0;
     for overlay in &manifest.overlays {
         // Re-validate here (never trust raw strings): guarantees `dest`
@@ -508,7 +516,10 @@ fn copy_tree(from: &Path, to: &Path) -> Result<usize, String> {
     Ok(count)
 }
 
-fn require_base_matches(manifest: &PatchManifest, lock: &LockFile) -> Result<(), String> {
+pub(crate) fn require_base_matches(
+    manifest: &PatchManifest,
+    lock: &LockFile,
+) -> Result<(), String> {
     // Revision is authoritative; channel is policy metadata that must also
     // agree (a Release series on an ESR lock is a category error).
     // Version stays informational and is surfaced in status output.
@@ -562,7 +573,7 @@ fn validate_manifest_pointers(root: &Path, manifest: &PatchManifest) -> Result<(
 }
 
 /// Resolve a series entry to its ordered patch files.
-fn series_files(root: &Path, entry: &PatchEntry) -> Result<Vec<PathBuf>, String> {
+pub(crate) fn series_files(root: &Path, entry: &PatchEntry) -> Result<Vec<PathBuf>, String> {
     // `series` comes from the manifest: validate before joining so
     // `../../etc` cannot escape `patches/`.
     let series_rel = plain_relative("series", &entry.id, &entry.series)?;
@@ -636,6 +647,9 @@ fn ensure_worktree_shell(root: &Path, lock: &LockFile) -> Result<PathBuf, String
             repo.display()
         ));
     }
+    // A worktree directory deleted by hand stays registered, and `worktree
+    // add` refuses a registered path: drop such stale records first.
+    upstream::git(&repo, &["worktree", "prune"])?;
     upstream::git(
         &repo,
         &[
@@ -653,12 +667,12 @@ fn ensure_worktree_shell(root: &Path, lock: &LockFile) -> Result<PathBuf, String
 /// A temporary Git index file, seeded from a tree-ish and deleted on drop.
 /// Patches applied with `--cached` land only here, never in a working tree
 /// or its real index.
-struct ScratchIndex {
+pub(crate) struct ScratchIndex {
     path: PathBuf,
 }
 
 impl ScratchIndex {
-    fn seeded(wt: &Path, treeish: &str) -> Result<Self, String> {
+    pub(crate) fn seeded(wt: &Path, treeish: &str) -> Result<Self, String> {
         // Exclusive creation (O_EXCL): a predictable /tmp path without
         // `create_new` lets an attacker pre-create a symlink and have
         // `git read-tree/write-tree` follow it. Retry with a per-attempt
@@ -699,7 +713,7 @@ impl ScratchIndex {
         [("GIT_INDEX_FILE", self.path.as_path())]
     }
 
-    fn apply(&self, wt: &Path, patch: &Path) -> Result<(), String> {
+    pub(crate) fn apply(&self, wt: &Path, patch: &Path) -> Result<(), String> {
         let patch = patch.display().to_string();
         upstream::git_with_env(wt, &["apply", "--cached", &patch], &self.env()).map(|_| ())
     }
@@ -759,7 +773,7 @@ impl ScratchIndex {
     }
 
     /// Write the index as a tree object; returns its id.
-    fn write_tree(&self, wt: &Path) -> Result<String, String> {
+    pub(crate) fn write_tree(&self, wt: &Path) -> Result<String, String> {
         upstream::git_with_env(wt, &["write-tree"], &self.env())
             .map_err(|e| format!("could not write expected tree: {e}"))
     }

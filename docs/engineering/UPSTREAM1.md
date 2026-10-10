@@ -534,8 +534,36 @@ with the unmerged paths). Conflicted paths stay at the candidate's content
 and the patch's other paths are kept, so one conflict does not cascade into
 later patches. Exit status is non-zero while any conflict remains.
 
-Not yet implemented: rebasing the series onto the candidate, exporting the
-refreshed patch files, and adopting the candidate as the lock.
+#### Rebase and adopt
+
+```bash
+aequera patch rebase              # replay the series in worktree/candidate
+aequera patch rebase --continue   # after resolving a conflict and `git add`
+aequera patch rebase --abort      # discard worktree/candidate
+AEQUERA_WORKTREE=candidate ...    # build, test, and run the candidate
+aequera upstream adopt --dry-run  # every check, no writes
+aequera upstream adopt
+```
+
+`patch rebase` creates `worktree/candidate` (a linked worktree at the
+candidate SHA) and commits each patch file in order: exact apply, else
+3-way, else it stops with the unmerged paths. Each commit message is the
+patch header verbatim plus an `Aequera-Patch: <file>` trailer; amend a
+commit to update a header's rationale. It refuses an empty patch (already
+upstream) and staged conflict markers. When the series is done, the
+overlays are synced so the candidate builds like `worktree/firefox`
+(objdir `obj/candidate/…`).
+
+`upstream adopt` makes the finished candidate the baseline. Before writing
+anything it exports every commit (header + `git diff`, git defaults
+pinned), proves the exported series rebuilds the candidate tree exactly,
+and checks that `worktree/firefox` holds nothing but base + series. It then
+rewrites the changed patch files, the manifest base, and `firefox.lock`
+(comments kept), deletes `candidate.lock`, moves `worktree/firefox` to the
+new SHA and re-applies (the objdir survives), and removes
+`worktree/candidate`. Run the build and test gates on the candidate
+before adopting; the previous baseline stays recoverable from Git history
+until the adoption is committed.
 
 ---
 

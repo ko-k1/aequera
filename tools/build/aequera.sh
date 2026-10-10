@@ -21,7 +21,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-FIREFOX_DIR="$REPO_ROOT/worktree/firefox"
+# AEQUERA_WORKTREE=candidate starts the rebased candidate's build.
+WORKTREE_NAME="${AEQUERA_WORKTREE:-firefox}"
+case "$WORKTREE_NAME" in
+  ""|.|..|*[!A-Za-z0-9._-]*)
+    echo "aequera: AEQUERA_WORKTREE must name a directory under worktree/ (got '$WORKTREE_NAME')" 1>&2
+    exit 1 ;;
+esac
+FIREFOX_DIR="$REPO_ROOT/worktree/$WORKTREE_NAME"
 
 # Resolve the object directory: explicit override wins, else prefer the
 # compiled tree when it already holds a native binary.
@@ -32,7 +39,7 @@ if [ -n "${AEQUERA_OBJDIR:-}" ]; then
     *) OBJDIR="$FIREFOX_DIR/$AEQUERA_OBJDIR" ;;
   esac
 else
-  OBJ_ROOT="$REPO_ROOT/obj/firefox"
+  OBJ_ROOT="$REPO_ROOT/obj/$WORKTREE_NAME"
   OBJDIR="$OBJ_ROOT/artifact"
   if [ -x "$OBJ_ROOT/compiled/dist/bin/aequera" ] \
     || [ -x "$OBJ_ROOT/compiled/dist/bin/aequera.exe" ] \
