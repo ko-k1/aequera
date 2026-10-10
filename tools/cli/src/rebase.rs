@@ -906,6 +906,9 @@ mod tests {
         let origin = root.join("origin");
         std::fs::create_dir_all(&origin).unwrap();
         git(&origin, &["init", "-q"]);
+        // Byte-exact checkouts whatever core.autocrlf says (Windows runners set
+        // it system-wide for the CLI's git calls, not for this helper's).
+        std::fs::write(origin.join(".gitattributes"), "* -text\n").unwrap();
         std::fs::write(origin.join("a.txt"), lines("a")).unwrap();
         std::fs::write(origin.join("b.txt"), "b\n").unwrap();
         std::fs::write(origin.join("c.txt"), "c\n").unwrap();
