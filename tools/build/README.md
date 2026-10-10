@@ -72,10 +72,16 @@ bash ../../tools/build/aequera-run.sh               # throwaway dev profile
 bash ../../tools/build/aequera-run.sh --persistent  # real Aequera profile
 ```
 
+Build output goes to `obj/<worktree>/artifact` (or `compiled`) at the repo
+root, not inside `worktree/firefox`: recreating the worktree on a new
+Firefox base keeps the objdir. Objdirs from before this layout
+(`worktree/firefox/obj-aequera*`) are no longer used; delete them and
+rebuild once.
+
 `aequera-run.sh` works in any POSIX shell on all three platforms (it finds
 the repo from its own location, so any checkout directory works). When
 `MOZCONFIG` is unset it picks the mozconfig matching the objdir
-(`obj-aequera` -> compiled, anything else -> artifact); `AEQUERA_BUILD`
+(`obj/firefox/compiled` -> compiled, anything else -> artifact); `AEQUERA_BUILD`
 (`compiled`|`artifact`) overrides that guess for custom objdirs. On
 Windows outside the MozillaBuild shell (Explorer, cmd, PowerShell), start
 the real Aequera profile with `tools\build\aequera.cmd`: double-click it,
@@ -83,7 +89,7 @@ or run it with extra Firefox arguments; on Linux/macOS use
 `tools/build/aequera.sh`. Either is `--persistent` without the shell.
 
 Always start through one of these, never bare `./mach run` or the binary.
-All launchers prefer the compiled build (`obj-aequera`: native `aequera`
+All launchers prefer the compiled build (`obj/firefox/compiled`: native `aequera`
 binary with its own file name and embedded Aequera icon, `Aequera.app` on
 macOS) and fall back to the artifact build. All also export
 `MOZ_DEVELOPER_REPO_DIR` (and `MOZ_DEVELOPER_OBJ_DIR`), like `mach run`
@@ -115,8 +121,8 @@ export MOZCONFIG="$PWD/../../tools/build/mozconfig.compiled"
 
 `mozconfig.compiled` is `mozconfig.artifact` minus artifact mode and the
 `--with-app-name=firefox` pin, plus `--disable-updater
---disable-crashreporter`, in its own `obj-aequera` dir so both builds
-coexist. Host tuning (parallelism, Rust notes) lives in
+--disable-crashreporter`, in its own `obj/firefox/compiled` dir so both
+builds coexist. Host tuning (parallelism, Rust notes) lives in
 `mozconfig.platform`, sourced by both. First build is hours; later ones are
 incremental. Notes from bringing it up on Windows (2026-10-03, 128 GB box
 shared with ML training) — per-OS guidance, not global defaults:

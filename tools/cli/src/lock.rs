@@ -3,20 +3,25 @@
 //! The lock (`upstream/manifests/firefox.lock`) is the canonical pin.
 //! Channel, version, and ref are provenance; the full SHA is authoritative.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// File name searched upward from the current directory.
 pub const LOCK_RELATIVE: &str = "upstream/manifests/firefox.lock";
 
-#[derive(Debug, Deserialize)]
+/// Staged candidate baseline written by `aequera upstream update`. Same
+/// schema as the lock, never authoritative: builds and `patch apply` keep
+/// using the lock until the candidate is adopted.
+pub const CANDIDATE_RELATIVE: &str = "upstream/manifests/candidate.lock";
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LockFile {
     pub schema_version: u32,
     pub upstream: Upstream,
     pub patchset: Patchset,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Upstream {
     pub name: String,
     pub repository: Repository,
@@ -27,19 +32,19 @@ pub struct Upstream {
     pub pinned_at: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Repository {
     #[serde(rename = "type")]
     pub kind: String,
     pub url: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Revision {
     pub git: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ResolvedFrom {
     #[serde(rename = "type")]
     pub kind: String,
@@ -47,7 +52,7 @@ pub struct ResolvedFrom {
     pub ref_name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Patchset {
     pub manifest: String,
     pub version: u32,
@@ -71,8 +76,40 @@ pub fn discover() -> Option<PathBuf> {
 
 /// Load and minimally validate the lock file.
 pub fn load(root: &Path) -> Result<LockFile, String> {
-    let path = root.join(LOCK_RELATIVE);
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{path:?}: {e}"))?;
+    load_file(&root.join(LOCK_RELATIVE))
+}
+
+/// Load the staged candidate, if one exists. It must describe the same
+/// upstream as the lock (name, remote, channel, patchset manifest): only the
+/// revision moves in an update, so anything else is refused rather than
+/// trusted.
+pub fn load_candidate(root: &Path, lock: &LockFile) -> Result<Option<LockFile>, String> {
+    let path = root.join(CANDIDATE_RELATIVE);
+    match std::fs::symlink_metadata(&path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("{path:?}: {e}")),
+        Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
+            return Err(format!("{path:?}: not a regular file; refusing"));
+        }
+        Ok(_) => {}
+    }
+    let candidate = load_file(&path)?;
+    let (c, l) = (&candidate.upstream, &lock.upstream);
+    if c.name != l.name
+        || c.repository.kind != l.repository.kind
+        || c.repository.url != l.repository.url
+        || c.channel != l.channel
+        || candidate.patchset.manifest != lock.patchset.manifest
+    {
+        return Err(format!(
+            "{path:?} describes a different upstream than the lock (only the revision may move); delete it and re-run `aequera upstream update`"
+        ));
+    }
+    Ok(Some(candidate))
+}
+
+fn load_file(path: &Path) -> Result<LockFile, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{path:?}: {e}"))?;
     let lock: LockFile =
         serde_yaml::from_str(&text).map_err(|e| format!("{path:?}: invalid YAML: {e}"))?;
     if lock.schema_version != 1 {

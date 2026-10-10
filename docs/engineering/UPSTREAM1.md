@@ -513,6 +513,30 @@ build + test + benchmark
 
 An update should produce a reviewable lock-file change and a recorded compatibility result.
 
+#### Candidate baseline (implemented: stage + check)
+
+```bash
+aequera upstream update --to FIREFOX_157_0_1_RELEASE
+aequera patch check --candidate
+```
+
+`update` fetches exactly the given release tag, resolves it to a full SHA,
+and writes `upstream/manifests/candidate.lock` (lock schema, generated
+header). It refuses betas/ESR/build tags, versions not newer than the lock,
+and replacing a different staged candidate. `firefox.lock`, the managed
+checkout's HEAD, and the worktree are untouched, so the known-good baseline
+stays the build input. Deleting `candidate.lock` abandons the candidate.
+
+`patch check --candidate` applies the series cumulatively to a scratch index
+seeded from the candidate SHA: each patch file is reported `clean`, `3-way`
+(content merges; the patch file is stale), or `conflict` (manual rebase,
+with the unmerged paths). Conflicted paths stay at the candidate's content
+and the patch's other paths are kept, so one conflict does not cascade into
+later patches. Exit status is non-zero while any conflict remains.
+
+Not yet implemented: rebasing the series onto the candidate, exporting the
+refreshed patch files, and adopting the candidate as the lock.
+
 ---
 
 ## Verification

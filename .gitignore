@@ -5,8 +5,11 @@ worktree/firefox/
 # Only upstream/manifests/* is committed; the checkout is reproduced by tooling.
 upstream/firefox/
 
-# Build outputs (root-level only; patches/build/ is committed source)
+# Build outputs (root-level only; patches/build/ is committed source).
+# obj/<worktree>/{artifact,compiled}: the mozconfigs' objdirs, kept out of
+# the generated worktree so they survive its recreation.
 /build/
+/obj/
 /obj-*/
 
 # Local tooling/cache

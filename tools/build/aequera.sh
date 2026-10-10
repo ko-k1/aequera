@@ -15,8 +15,8 @@
 #
 # Usage: tools/build/aequera.sh [Firefox arguments...]
 #   AEQUERA_OBJDIR overrides the build directory (absolute, or relative to
-#   worktree/firefox). Default: worktree/firefox/obj-aequera when it holds a
-#   native Aequera binary, else worktree/firefox/obj-aequera-artifact.
+#   worktree/firefox). Default: obj/firefox/compiled when it holds a native
+#   Aequera binary, else obj/firefox/artifact (the mozconfigs' objdirs).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -32,11 +32,12 @@ if [ -n "${AEQUERA_OBJDIR:-}" ]; then
     *) OBJDIR="$FIREFOX_DIR/$AEQUERA_OBJDIR" ;;
   esac
 else
-  OBJDIR="$FIREFOX_DIR/obj-aequera-artifact"
-  if [ -x "$FIREFOX_DIR/obj-aequera/dist/bin/aequera" ] \
-    || [ -x "$FIREFOX_DIR/obj-aequera/dist/bin/aequera.exe" ] \
-    || [ -x "$FIREFOX_DIR/obj-aequera/dist/Aequera.app/Contents/MacOS/aequera" ]; then
-    OBJDIR="$FIREFOX_DIR/obj-aequera"
+  OBJ_ROOT="$REPO_ROOT/obj/firefox"
+  OBJDIR="$OBJ_ROOT/artifact"
+  if [ -x "$OBJ_ROOT/compiled/dist/bin/aequera" ] \
+    || [ -x "$OBJ_ROOT/compiled/dist/bin/aequera.exe" ] \
+    || [ -x "$OBJ_ROOT/compiled/dist/Aequera.app/Contents/MacOS/aequera" ]; then
+    OBJDIR="$OBJ_ROOT/compiled"
   fi
 fi
 

@@ -32,12 +32,13 @@ case "$(uname -s)" in
 esac
 
 if [ -z "${MOZ_OBJDIR:-}" ]; then
-  if [ -x "$TOPSRCDIR/obj-aequera/dist/bin/aequera$EXE_SUFFIX" ]; then
-    OBJDIR_NAME=obj-aequera
+  # Same layout as the mozconfigs: obj/<worktree>/{compiled,artifact}.
+  OBJ_ROOT="$ROOT/obj/$(basename "$TOPSRCDIR")"
+  if [ -x "$OBJ_ROOT/compiled/dist/bin/aequera$EXE_SUFFIX" ]; then
+    OBJDIR="$OBJ_ROOT/compiled"
   else
-    OBJDIR_NAME=obj-aequera-artifact
+    OBJDIR="$OBJ_ROOT/artifact"
   fi
-  OBJDIR="$TOPSRCDIR/$OBJDIR_NAME"
 else
   case "$MOZ_OBJDIR" in
     /*|[A-Za-z]:[\\/]*) OBJDIR="$MOZ_OBJDIR" ;;
@@ -148,7 +149,7 @@ if [ -z "${MOZCONFIG:-}" ]; then
     compiled) MOZCONFIG="$ROOT/tools/build/mozconfig.compiled" ;;
     artifact) MOZCONFIG="$ROOT/tools/build/mozconfig.artifact" ;;
     "") case "$(basename "$OBJDIR")" in
-      obj-aequera) MOZCONFIG="$ROOT/tools/build/mozconfig.compiled" ;;
+      compiled) MOZCONFIG="$ROOT/tools/build/mozconfig.compiled" ;;
       *) MOZCONFIG="$ROOT/tools/build/mozconfig.artifact" ;;
     esac ;;
     *) echo "aequera-run: unknown AEQUERA_BUILD=$AEQUERA_BUILD, want compiled|artifact" >&2

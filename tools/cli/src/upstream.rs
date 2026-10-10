@@ -4,7 +4,7 @@
 //! they resolve to the locked SHA. It never moves the baseline, never edits
 //! the lock, never checks anything out. See UPSTREAM.md ("Fetch vs Update").
 
-use crate::lock::LockFile;
+use crate::lock::{self, LockFile};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -217,6 +217,167 @@ pub fn bootstrap(root: &Path, lock: &LockFile) -> Result<BootstrapReport, String
         checkout: checkout_report,
         verify: verify_report,
     })
+}
+
+#[derive(Debug, Serialize)]
+pub struct UpdateReport {
+    pub from_version: String,
+    pub from_sha: String,
+    pub to_version: String,
+    pub to_sha: String,
+    pub to_ref: String,
+    pub candidate_path: String,
+    /// The same candidate was already staged; nothing was written.
+    pub already_staged: bool,
+}
+
+/// Stage a newer release as the candidate baseline (UPSTREAM1.md, "update").
+///
+/// Fetches exactly `tag`, resolves it to a full SHA, and writes
+/// `candidate.lock`. The lock, the managed checkout's HEAD, and the worktree
+/// stay untouched: the known-good baseline remains the build input until the
+/// series is rebased onto the candidate and the gates pass.
+pub fn update(root: &Path, lock: &LockFile, tag: &str) -> Result<UpdateReport, String> {
+    validate_ref_name(tag)?;
+    if lock.upstream.channel != "release" {
+        return Err(format!(
+            "upstream update supports the release channel only (lock channel {:?})",
+            lock.upstream.channel
+        ));
+    }
+    let to_version = release_tag_version(tag).ok_or_else(|| {
+        format!("{tag:?} is not a release tag (want FIREFOX_<major>_<minor>[_<patch>]_RELEASE)")
+    })?;
+    if !version_newer(&to_version, &lock.upstream.version)? {
+        return Err(format!(
+            "{tag} ({to_version}) is not newer than the locked {}; update only moves forward",
+            lock.upstream.version
+        ));
+    }
+    // An existing candidate is in-progress work: never replaced implicitly.
+    let existing = lock::load_candidate(root, lock)?;
+    if let Some(c) = &existing
+        && c.upstream.resolved_from.ref_name != tag
+    {
+        return Err(format!(
+            "{} already stages {} ({}); delete it to stage another release",
+            lock::CANDIDATE_RELATIVE,
+            c.upstream.version,
+            c.upstream.resolved_from.ref_name
+        ));
+    }
+
+    let dir = ensure_repo(root, lock)?;
+    git(&dir, &["fetch", "--no-tags", "origin", "tag", tag])?;
+    let to_sha = git(&dir, &["rev-parse", &format!("{tag}^{{commit}}")])?;
+    if to_sha == lock.upstream.revision.git {
+        return Err(format!("{tag} resolves to the locked revision {to_sha}"));
+    }
+
+    let mut report = UpdateReport {
+        from_version: lock.upstream.version.clone(),
+        from_sha: lock.upstream.revision.git.clone(),
+        to_version: to_version.clone(),
+        to_sha: to_sha.clone(),
+        to_ref: format!("tag:{tag}"),
+        candidate_path: lock::CANDIDATE_RELATIVE.to_string(),
+        already_staged: false,
+    };
+    if let Some(c) = existing {
+        if c.upstream.revision.git != to_sha {
+            return Err(format!(
+                "{} pins {} for {tag}, but the remote now resolves it to {to_sha}; refusing (delete the candidate to re-stage)",
+                lock::CANDIDATE_RELATIVE,
+                c.upstream.revision.git
+            ));
+        }
+        report.already_staged = true;
+        return Ok(report);
+    }
+
+    let mut candidate = lock.clone();
+    candidate.upstream.version = to_version;
+    candidate.upstream.revision.git = to_sha;
+    candidate.upstream.resolved_from.kind = "tag".into();
+    candidate.upstream.resolved_from.ref_name = tag.to_string();
+    candidate.upstream.pinned_at = Some(today_utc());
+    write_candidate(root, &candidate)?;
+    // Prove the written file loads back as the same candidate.
+    match lock::load_candidate(root, lock)? {
+        Some(c) if c.upstream.revision.git == candidate.upstream.revision.git => Ok(report),
+        _ => Err(format!(
+            "{} did not round-trip after writing",
+            lock::CANDIDATE_RELATIVE
+        )),
+    }
+}
+
+/// `FIREFOX_157_0_1_RELEASE` -> `157.0.1`. Betas, ESR, and build tags are
+/// not release baselines and yield `None`.
+fn release_tag_version(tag: &str) -> Option<String> {
+    let body = tag.strip_prefix("FIREFOX_")?.strip_suffix("_RELEASE")?;
+    let parts: Vec<&str> = body.split('_').collect();
+    let numeric = parts
+        .iter()
+        .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
+    (numeric && (2..=3).contains(&parts.len())).then(|| parts.join("."))
+}
+
+/// Dotted numeric comparison; missing components count as 0 (156.0 < 156.0.1).
+fn version_newer(candidate: &str, current: &str) -> Result<bool, String> {
+    let parse = |v: &str| -> Result<Vec<u64>, String> {
+        v.split('.')
+            .map(|p| p.parse::<u64>())
+            .collect::<Result<_, _>>()
+            .map_err(|_| format!("unparsable version {v:?}"))
+    };
+    let (mut a, mut b) = (parse(candidate)?, parse(current)?);
+    let len = a.len().max(b.len());
+    a.resize(len, 0);
+    b.resize(len, 0);
+    Ok(a > b)
+}
+
+fn write_candidate(root: &Path, candidate: &LockFile) -> Result<(), String> {
+    let body = serde_yaml::to_string(candidate).map_err(|e| format!("candidate: {e}"))?;
+    let text = format!(
+        "# Aequera Firefox upstream CANDIDATE — generated by `aequera upstream update`.\n\
+         #\n\
+         # Not the pin: builds and `patch apply` use firefox.lock until this\n\
+         # candidate is adopted. Check the series with `aequera patch check\n\
+         # --candidate`. Delete this file to abandon the candidate.\n\
+         \n{body}"
+    );
+    let path = root.join(lock::CANDIDATE_RELATIVE);
+    // Atomic temp+rename: a crash must not leave a half-written candidate.
+    let tmp = path.with_extension(format!("lock.tmp-{}", std::process::id()));
+    std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Current UTC date as YYYY-MM-DD (the lock's `pinned_at` format).
+fn today_utc() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    let (y, m, d) = civil_from_days((secs / 86_400) as i64);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Days since 1970-01-01 to a proleptic Gregorian date (H. Hinnant's
+/// `civil_from_days`).
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    (y, m, d)
 }
 
 fn resolve_target(lock: &LockFile, target: &str) -> Result<String, String> {
@@ -635,5 +796,123 @@ mod tests {
                 "safe remote {good:?} must pass"
             );
         }
+    }
+
+    #[test]
+    fn release_tag_version_accepts_only_release_tags() {
+        assert_eq!(
+            release_tag_version("FIREFOX_157_0_1_RELEASE").as_deref(),
+            Some("157.0.1")
+        );
+        assert_eq!(
+            release_tag_version("FIREFOX_157_0_RELEASE").as_deref(),
+            Some("157.0")
+        );
+        for bad in [
+            "FIREFOX_157_0b5_RELEASE",
+            "FIREFOX_157_0_BUILD1",
+            "FIREFOX_140_3_0esr_RELEASE",
+            "FIREFOX_157_RELEASE",
+            "FIREFOX__0_RELEASE",
+            "FIXTURE_1",
+        ] {
+            assert_eq!(release_tag_version(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn version_newer_pads_missing_components() {
+        assert!(version_newer("157.0.1", "156.0").unwrap());
+        assert!(version_newer("156.0.1", "156.0").unwrap());
+        assert!(!version_newer("156.0", "156.0").unwrap());
+        assert!(!version_newer("155.9.9", "156.0").unwrap());
+        assert!(version_newer("157.0", "15x").is_err());
+    }
+
+    #[test]
+    fn civil_from_days_known_dates() {
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(19_782), (2024, 2, 29));
+        assert_eq!(civil_from_days(20_736), (2026, 10, 10));
+        assert_eq!(civil_from_days(-1), (1969, 12, 31));
+    }
+
+    fn tag(origin: &Path, name: &str) {
+        let out = Command::new("git")
+            .args(["tag", name])
+            .current_dir(origin)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+    }
+
+    /// Origin with FIREFOX_1_0_RELEASE (locked) and FIREFOX_1_1_RELEASE;
+    /// returns (root, release lock on 1.0, 1.1 sha).
+    fn release_fixture(name: &str) -> (PathBuf, LockFile, String) {
+        let root = scratch(name);
+        let (origin, base) = fixture_origin(&root);
+        tag(&origin, "FIREFOX_1_0_RELEASE");
+        let next = commit_file(&origin, "g.txt");
+        tag(&origin, "FIREFOX_1_1_RELEASE");
+        std::fs::create_dir_all(root.join("upstream/manifests")).unwrap();
+        let mut lock = lock_for(origin.to_str().unwrap(), &base);
+        lock.upstream.channel = "release".into();
+        lock.upstream.version = "1.0".into();
+        lock.upstream.resolved_from.ref_name = "FIREFOX_1_0_RELEASE".into();
+        (root, lock, next)
+    }
+
+    #[test]
+    fn update_stages_candidate_without_moving_the_baseline() {
+        let (root, lock, next) = release_fixture("update-ok");
+        let report = update(&root, &lock, "FIREFOX_1_1_RELEASE").expect("update");
+        assert!(!report.already_staged);
+        assert_eq!(report.to_sha, next);
+        assert_eq!(report.to_version, "1.1");
+
+        let candidate = lock::load_candidate(&root, &lock)
+            .expect("loads")
+            .expect("staged");
+        assert_eq!(candidate.upstream.revision.git, next);
+        assert_eq!(candidate.upstream.version, "1.1");
+        assert_eq!(
+            candidate.upstream.resolved_from.ref_name,
+            "FIREFOX_1_1_RELEASE"
+        );
+        assert!(candidate.upstream.pinned_at.is_some());
+        // Nothing checked out: the managed repo has no HEAD yet.
+        assert!(git(&root.join(CHECKOUT_RELATIVE), &["rev-parse", "HEAD"]).is_err());
+
+        let again = update(&root, &lock, "FIREFOX_1_1_RELEASE").expect("idempotent");
+        assert!(again.already_staged);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn update_refuses_old_foreign_or_replacing_targets() {
+        let (root, lock, _next) = release_fixture("update-refuse");
+        let err = update(&root, &lock, "FIREFOX_1_0_RELEASE").expect_err("not newer");
+        assert!(err.contains("not newer"), "got: {err}");
+        let err = update(&root, &lock, "FIXTURE_1").expect_err("not a release tag");
+        assert!(err.contains("not a release tag"), "got: {err}");
+        let err = update(&root, &lock, "--upload-pack=x").expect_err("unsafe ref");
+        assert!(err.contains("refusing lock ref"), "got: {err}");
+
+        update(&root, &lock, "FIREFOX_1_1_RELEASE").expect("stage 1.1");
+        let err = update(&root, &lock, "FIREFOX_1_2_RELEASE").expect_err("already staged");
+        assert!(err.contains("already stages 1.1"), "got: {err}");
+
+        // A candidate pointing at another remote is refused, not trusted.
+        let path = root.join(lock::CANDIDATE_RELATIVE);
+        let text = std::fs::read_to_string(&path).unwrap();
+        let url = &lock.upstream.repository.url;
+        std::fs::write(
+            &path,
+            text.replace(url.as_str(), "https://example.invalid/x.git"),
+        )
+        .unwrap();
+        let err = lock::load_candidate(&root, &lock).expect_err("foreign remote");
+        assert!(err.contains("different upstream"), "got: {err}");
+        std::fs::remove_dir_all(&root).ok();
     }
 }

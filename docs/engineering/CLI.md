@@ -14,11 +14,11 @@ aequera doctor
 aequera upstream fetch
 
 aequera upstream status
-aequera upstream update <revision>
+aequera upstream update --to <release-tag>   # stages candidate.lock; lock untouched
 aequera upstream checkout <revision>
 
 aequera patch status
-aequera patch check
+aequera patch check [--candidate]           # --candidate: exact, then 3-way, per file
 aequera patch apply
 aequera patch rebase <revision>
 aequera patch export

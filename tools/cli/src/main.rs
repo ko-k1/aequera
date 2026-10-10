@@ -88,8 +88,13 @@ enum UpstreamOp {
         /// Channel name or exact revision.
         target: String,
     },
-    /// Resolve and adopt a new baseline revision (W3).
-    Update,
+    /// Stage a newer release as the candidate baseline (writes
+    /// upstream/manifests/candidate.lock; the lock is untouched).
+    Update {
+        /// Release tag to stage, e.g. FIREFOX_157_0_1_RELEASE.
+        #[arg(long)]
+        to: String,
+    },
     /// Remove generated upstream state (W3).
     Clean,
 }
@@ -97,9 +102,16 @@ enum UpstreamOp {
 #[derive(Subcommand)]
 enum PatchOp {
     Status,
-    Check,
+    Check {
+        /// Check against the staged candidate baseline instead of the lock
+        /// (exact apply, then 3-way fallback; reports per patch file).
+        #[arg(long)]
+        candidate: bool,
+    },
     Apply,
-    Rebase { revision: String },
+    Rebase {
+        revision: String,
+    },
     Export,
 }
 
@@ -135,12 +147,13 @@ fn main() -> ExitCode {
             UpstreamOp::Fetch => upstream_fetch(cli.json),
             UpstreamOp::Verify => upstream_verify(cli.json),
             UpstreamOp::Checkout { target } => upstream_checkout(cli.json, &target),
-            UpstreamOp::Update => todo_cmd("upstream update", "W3 patch pipeline"),
+            UpstreamOp::Update { to } => upstream_update(cli.json, &to),
             UpstreamOp::Clean => todo_cmd("upstream clean", "W3 patch pipeline"),
         },
         Command::Patch { op } => match op {
             PatchOp::Status => patch_status(cli.json),
-            PatchOp::Check => patch_check(cli.json),
+            PatchOp::Check { candidate: false } => patch_check(cli.json),
+            PatchOp::Check { candidate: true } => patch_check_candidate(cli.json),
             PatchOp::Apply => patch_apply(cli.json),
             PatchOp::Rebase { .. } => todo_cmd("patch rebase", "update flow (later slice)"),
             PatchOp::Export => todo_cmd("patch export", "later slice"),
@@ -242,6 +255,45 @@ fn upstream_checkout(json: bool, target: &str) -> ExitCode {
                 sha = report.resolved_sha,
                 head = report.head_sha,
                 dir = report.checkout_dir,
+            );
+            output::emit(json, &human, &report);
+            ExitCode::SUCCESS
+        }
+    }
+}
+
+fn upstream_update(json: bool, tag: &str) -> ExitCode {
+    let (root, lock) = match load_context() {
+        Err(code) => return code,
+        Ok(ctx) => ctx,
+    };
+    match upstream::update(&root, &lock, tag) {
+        Err(e) => {
+            eprintln!("Update failed: {e}");
+            ExitCode::FAILURE
+        }
+        Ok(report) => {
+            let human = format!(
+                "Upstream update\n\
+                 ---------------\n\
+                 Locked        : {from_version} ({from_sha})\n\
+                 Candidate     : {to_version} ({to_sha})\n\
+                 Resolved from : {to_ref}\n\
+                 Candidate lock: {path}{staged}\n\
+                 \n\
+                 Baseline unchanged: firefox.lock, checkout, and worktree untouched.\n\
+                 Next: aequera patch check --candidate",
+                from_version = report.from_version,
+                from_sha = lock::short_sha(&report.from_sha),
+                to_version = report.to_version,
+                to_sha = lock::short_sha(&report.to_sha),
+                to_ref = report.to_ref,
+                path = report.candidate_path,
+                staged = if report.already_staged {
+                    " (already staged)"
+                } else {
+                    " (written)"
+                },
             );
             output::emit(json, &human, &report);
             ExitCode::SUCCESS
@@ -392,6 +444,71 @@ fn patch_check(json: bool) -> ExitCode {
             }
             output::emit(json, &human, &report);
             ExitCode::SUCCESS
+        }
+    }
+}
+
+fn patch_check_candidate(json: bool) -> ExitCode {
+    let (root, lock) = match load_context() {
+        Err(code) => return code,
+        Ok(ctx) => ctx,
+    };
+    let candidate = match lock::load_candidate(&root, &lock) {
+        Err(e) => {
+            eprintln!("Candidate lock unreadable: {e}");
+            return ExitCode::FAILURE;
+        }
+        Ok(None) => {
+            eprintln!(
+                "No candidate staged ({}); run `aequera upstream update --to <release-tag>` first.",
+                lock::CANDIDATE_RELATIVE
+            );
+            return ExitCode::FAILURE;
+        }
+        Ok(Some(c)) => c,
+    };
+    match patch::check_candidate(&root, &lock, &candidate) {
+        Err(e) => {
+            eprintln!("Patch check failed: {e}");
+            ExitCode::FAILURE
+        }
+        Ok(report) => {
+            let mut human = format!(
+                "Patch check (candidate)\n\
+                 -----------------------\n\
+                 Authored on   : {} ({})\n\
+                 Candidate     : {} ({})\n\
+                 Files         : {} clean, {} 3-way, {} conflict",
+                report.base_version,
+                lock::short_sha(&report.base_sha),
+                report.candidate_version,
+                lock::short_sha(&report.candidate_sha),
+                report.clean,
+                report.three_way,
+                report.conflicts,
+            );
+            for f in &report.files {
+                let tag = match f.result {
+                    patch::Applicability::Clean => "clean",
+                    patch::Applicability::ThreeWay => "3-way",
+                    patch::Applicability::Conflict => "CONFLICT",
+                };
+                human.push_str(&format!("\n  [{tag}] {}", f.file));
+                for path in &f.conflicts {
+                    human.push_str(&format!("\n      unmerged: {path}"));
+                }
+            }
+            if report.conflicts > 0 {
+                human.push_str(
+                    "\n\nUnmerged paths stay at the candidate's content; the other paths of a\nconflicting patch are kept for the patches after it.",
+                );
+            }
+            output::emit(json, &human, &report);
+            if report.conflicts == 0 {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
         }
     }
 }
@@ -595,6 +712,23 @@ fn upstream_status(json: bool) -> ExitCode {
             Ok(l) => {
                 let checkout_present = lock::substantive_present(&root.join("upstream/firefox"));
                 let worktree_present = lock::substantive_present(&root.join("worktree/firefox"));
+                // Reported, never fatal: a bad candidate must not hide the lock.
+                let (candidate_json, candidate_line) = match lock::load_candidate(&root, &l) {
+                    Ok(None) => (serde_json::Value::Null, "none".to_string()),
+                    Ok(Some(c)) => (
+                        serde_json::json!({
+                            "version": c.upstream.version,
+                            "sha": c.upstream.revision.git,
+                            "resolved_from": format!("{}:{}", c.upstream.resolved_from.kind, c.upstream.resolved_from.ref_name),
+                        }),
+                        format!(
+                            "{} ({}...)",
+                            c.upstream.version,
+                            lock::short_sha(&c.upstream.revision.git)
+                        ),
+                    ),
+                    Err(e) => (serde_json::json!({ "error": e }), format!("INVALID ({e})")),
+                };
                 let status = serde_json::json!({
                     "name": l.upstream.name,
                     "repository": l.upstream.repository.url,
@@ -608,6 +742,7 @@ fn upstream_status(json: bool) -> ExitCode {
                     "patchset_manifest": l.patchset.manifest,
                     "checkout_present": checkout_present,
                     "worktree_present": worktree_present,
+                    "candidate": candidate_json,
                 });
                 let human = format!(
                     "Aequera Upstream\n\
@@ -620,6 +755,7 @@ fn upstream_status(json: bool) -> ExitCode {
                      Patchset      : v{ps} ({manifest})\n\
                      Checkout      : {co}\n\
                      Worktree      : {wt}\n\
+                     Candidate     : {candidate_line}\n\
                      \n\
                      status: lock-only (no checkout yet; verify/checkout land in W2/W3)",
                     repo = l.upstream.repository.url,

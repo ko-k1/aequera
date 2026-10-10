@@ -13,11 +13,11 @@ rem -purgecaches.
 rem
 rem Usage: aequera.cmd [Firefox arguments...]
 rem   AEQUERA_OBJDIR overrides the build directory
-rem   (default: worktree\firefox\obj-aequera when it holds aequera.exe,
-rem   else worktree\firefox\obj-aequera-artifact in this repository).
+rem   (default: obj\firefox\compiled when it holds aequera.exe,
+rem   else obj\firefox\artifact in this repository).
 setlocal
-set "OBJDIR=%~dp0..\..\worktree\firefox\obj-aequera"
-if not exist "%OBJDIR%\dist\bin\aequera.exe" set "OBJDIR=%~dp0..\..\worktree\firefox\obj-aequera-artifact"
+set "OBJDIR=%~dp0..\..\obj\firefox\compiled"
+if not exist "%OBJDIR%\dist\bin\aequera.exe" set "OBJDIR=%~dp0..\..\obj\firefox\artifact"
 if defined AEQUERA_OBJDIR set "OBJDIR=%AEQUERA_OBJDIR%"
 rem Like `mach run`, advertise the developer dirs: local builds symlink
 rem front-end files into dist, and the Windows content-process sandbox only

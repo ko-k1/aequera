@@ -98,6 +98,39 @@ pub struct CheckReport {
     pub entries: Vec<CheckEntry>,
 }
 
+/// How one patch file lands on a candidate baseline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Applicability {
+    /// Applies byte-for-byte.
+    Clean,
+    /// Applies only through a 3-way merge: correct content, stale patch file.
+    ThreeWay,
+    /// Needs a manual rebase.
+    Conflict,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CandidateFile {
+    pub id: String,
+    pub file: String,
+    pub result: Applicability,
+    pub conflicts: Vec<String>,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CandidateCheckReport {
+    pub base_version: String,
+    pub base_sha: String,
+    pub candidate_version: String,
+    pub candidate_sha: String,
+    pub clean: usize,
+    pub three_way: usize,
+    pub conflicts: usize,
+    pub files: Vec<CandidateFile>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ApplyReport {
     pub base_sha: String,
@@ -170,7 +203,7 @@ pub fn check(root: &Path, lock: &LockFile) -> Result<CheckReport, String> {
     // the tree as the preceding files leave it. The series is applied, in
     // order, to a throwaway index seeded from the locked HEAD: cumulative,
     // independent of the worktree's current state, and never touching it.
-    let index = ScratchIndex::seeded(&wt)?;
+    let index = ScratchIndex::seeded(&wt, "HEAD")?;
     let mut entries = Vec::new();
     for entry in &manifest.patches {
         let files = series_files(root, entry)?;
@@ -193,6 +226,76 @@ pub fn check(root: &Path, lock: &LockFile) -> Result<CheckReport, String> {
         entries_checked: entries.len(),
         all_clean: true,
         entries,
+    })
+}
+
+/// Dry-run the series against a staged candidate baseline (read-only).
+///
+/// Same cumulative scratch-index method as `check`, seeded from the
+/// candidate SHA inside the managed checkout (whose HEAD, index, and files
+/// are never touched). Each file is tried exactly, then by 3-way merge;
+/// the merge reads the preimage blobs of the series' authored base, so the
+/// manifest base must still equal the lock. In a conflicting file, the
+/// conflicted paths stay at their pre-patch content and the cleanly merged
+/// paths are kept, so one conflict does not cascade into every later patch
+/// that only builds on the file's other hunks. A file that fails without
+/// unmerged paths is rolled back whole.
+pub fn check_candidate(
+    root: &Path,
+    lock: &LockFile,
+    candidate: &LockFile,
+) -> Result<CandidateCheckReport, String> {
+    let manifest = load_manifest(root, lock)?;
+    require_base_matches(&manifest, lock)?;
+    let repo = root.join(upstream::CHECKOUT_RELATIVE);
+    if !repo.join(".git").exists() {
+        return Err(format!(
+            "no managed checkout at {}; run `aequera bootstrap` first",
+            repo.display()
+        ));
+    }
+    let want = &candidate.upstream.revision.git;
+    if upstream::git(&repo, &["cat-file", "-e", &format!("{want}^{{commit}}")]).is_err() {
+        return Err(format!(
+            "candidate {want} is not present locally; run `aequera upstream update --to {}`",
+            candidate.upstream.resolved_from.ref_name
+        ));
+    }
+
+    let index = ScratchIndex::seeded(&repo, want)?;
+    let mut files = Vec::new();
+    for entry in &manifest.patches {
+        for f in series_files(root, entry)? {
+            let before = index.write_tree(&repo)?;
+            let (result, conflicts, detail) = match index.apply_with_fallback(&repo, &f) {
+                Ok(result) => (result, Vec::new(), None),
+                Err(e) => {
+                    let conflicts = index.keep_ours_on_conflicts(&repo)?;
+                    if conflicts.is_empty() {
+                        index.reset_to(&repo, &before)?;
+                    }
+                    (Applicability::Conflict, conflicts, Some(e))
+                }
+            };
+            files.push(CandidateFile {
+                id: entry.id.clone(),
+                file: f.strip_prefix(root).unwrap_or(&f).display().to_string(),
+                result,
+                conflicts,
+                detail,
+            });
+        }
+    }
+    let count = |r: Applicability| files.iter().filter(|f| f.result == r).count();
+    Ok(CandidateCheckReport {
+        base_version: lock.upstream.version.clone(),
+        base_sha: lock.upstream.revision.git.clone(),
+        candidate_version: candidate.upstream.version.clone(),
+        candidate_sha: want.clone(),
+        clean: count(Applicability::Clean),
+        three_way: count(Applicability::ThreeWay),
+        conflicts: count(Applicability::Conflict),
+        files,
     })
 }
 
@@ -265,7 +368,7 @@ fn verify_worktree_matches_series(
     wt: &Path,
     manifest: &PatchManifest,
 ) -> Result<(), String> {
-    let index = ScratchIndex::seeded(wt)?;
+    let index = ScratchIndex::seeded(wt, "HEAD")?;
     for entry in &manifest.patches {
         for f in series_files(root, entry)? {
             index.apply(wt, &f).map_err(|e| {
@@ -547,14 +650,15 @@ fn ensure_worktree_shell(root: &Path, lock: &LockFile) -> Result<PathBuf, String
     Ok(wt)
 }
 
-/// A temporary Git index file, seeded from HEAD and deleted on drop. Patches
-/// applied with `--cached` land only here, never in the worktree or its index.
+/// A temporary Git index file, seeded from a tree-ish and deleted on drop.
+/// Patches applied with `--cached` land only here, never in a working tree
+/// or its real index.
 struct ScratchIndex {
     path: PathBuf,
 }
 
 impl ScratchIndex {
-    fn seeded(wt: &Path) -> Result<Self, String> {
+    fn seeded(wt: &Path, treeish: &str) -> Result<Self, String> {
         // Exclusive creation (O_EXCL): a predictable /tmp path without
         // `create_new` lets an attacker pre-create a symlink and have
         // `git read-tree/write-tree` follow it. Retry with a per-attempt
@@ -576,7 +680,8 @@ impl ScratchIndex {
             {
                 Ok(_) => {
                     let index = Self { path };
-                    if let Err(e) = upstream::git_with_env(wt, &["read-tree", "HEAD"], &index.env())
+                    if let Err(e) =
+                        upstream::git_with_env(wt, &["read-tree", treeish], &index.env())
                     {
                         std::fs::remove_file(&index.path).ok();
                         return Err(format!("could not seed scratch index: {e}"));
@@ -597,6 +702,60 @@ impl ScratchIndex {
     fn apply(&self, wt: &Path, patch: &Path) -> Result<(), String> {
         let patch = patch.display().to_string();
         upstream::git_with_env(wt, &["apply", "--cached", &patch], &self.env()).map(|_| ())
+    }
+
+    /// Exact apply first; on failure, a 3-way merge from the preimage blobs
+    /// named in the patch's `index` lines. A 3-way conflict leaves unmerged
+    /// entries in this index (see `keep_ours_on_conflicts`, `reset_to`).
+    fn apply_with_fallback(&self, wt: &Path, patch: &Path) -> Result<Applicability, String> {
+        if self.apply(wt, patch).is_ok() {
+            return Ok(Applicability::Clean);
+        }
+        let patch = patch.display().to_string();
+        upstream::git_with_env(wt, &["apply", "--cached", "-3", &patch], &self.env())
+            .map(|_| Applicability::ThreeWay)
+    }
+
+    /// Paths left unmerged by a failed 3-way apply, sorted and deduplicated.
+    /// Resolve every unmerged path to its pre-patch content (stage 2, or
+    /// absent if it had none), keeping the patch's cleanly merged paths so
+    /// later patches that build on them still see them. Returns the
+    /// resolved paths in index order.
+    fn keep_ours_on_conflicts(&self, wt: &Path) -> Result<Vec<String>, String> {
+        let out = upstream::git_with_env(wt, &["ls-files", "-u", "-z"], &self.env())?;
+        let mut paths: Vec<&str> = Vec::new();
+        let mut ours = Vec::new();
+        // NUL-terminated `<mode> <object> <stage>\t<path>`, one per stage.
+        for record in out.split('\0').filter(|r| !r.is_empty()) {
+            let Some((meta, path)) = record.split_once('\t') else {
+                continue;
+            };
+            if paths.last() != Some(&path) {
+                paths.push(path);
+            }
+            if let [mode, object, "2"] = meta.split(' ').collect::<Vec<_>>()[..] {
+                ours.push(format!("{mode},{object},{path}"));
+            }
+        }
+        if paths.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut remove = vec!["update-index", "--force-remove", "--"];
+        remove.extend(&paths);
+        upstream::git_with_env(wt, &remove, &self.env())?;
+        for info in &ours {
+            upstream::git_with_env(
+                wt,
+                &["update-index", "--add", "--cacheinfo", info],
+                &self.env(),
+            )?;
+        }
+        Ok(paths.into_iter().map(String::from).collect())
+    }
+
+    /// Replace the index contents with `tree` (drops unmerged entries).
+    fn reset_to(&self, wt: &Path, tree: &str) -> Result<(), String> {
+        upstream::git_with_env(wt, &["read-tree", tree], &self.env()).map(|_| ())
     }
 
     /// Write the index as a tree object; returns its id.
@@ -1031,6 +1190,103 @@ mod tests {
             content2.contains("patched"),
             "patch content lost: {content2:?}"
         );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    fn lines(prefix: &str) -> String {
+        (1..=10).map(|i| format!("{prefix}{i}\n")).collect()
+    }
+
+    #[test]
+    fn check_candidate_reports_clean_three_way_and_conflict() {
+        let root = scratch("candidate");
+        let origin = root.join("origin");
+        std::fs::create_dir_all(&origin).unwrap();
+        git(&origin, &["init"]);
+        std::fs::write(origin.join("a.txt"), lines("a")).unwrap();
+        std::fs::write(origin.join("b.txt"), "b\n").unwrap();
+        std::fs::write(origin.join("c.txt"), "c\n").unwrap();
+        git(&origin, &["add", "."]);
+        git(&origin, &["commit", "-m", "base"]);
+        git(&origin, &["tag", "FIXTURE_1"]);
+        let base = git(&origin, &["rev-parse", "HEAD"]);
+
+        // Series authored on base. 0001/0004 stack on c.txt (cumulative),
+        // 0002 edits a5, 0003 edits b's only line.
+        let series = root.join("patches/browser/cand");
+        std::fs::create_dir_all(&series).unwrap();
+        let capture = |name: &str, edits: &[(&str, &str)]| {
+            for (file, content) in edits {
+                std::fs::write(origin.join(file), content).unwrap();
+            }
+            let diff = git(&origin, &["diff"]);
+            std::fs::write(series.join(name), format!("{diff}\n")).unwrap();
+            git(&origin, &["add", "."]);
+        };
+        capture("0001-c.patch", &[("c.txt", "c\none\n")]);
+        let a5 = lines("a").replace("a5\n", "A5\n");
+        capture("0002-a.patch", &[("a.txt", &a5)]);
+        // 0003 conflicts in b.txt; its c.txt hunk merges cleanly, and 0004
+        // only applies on top of it (no cascade from the b.txt conflict).
+        capture(
+            "0003-bc.patch",
+            &[("b.txt", "ours\n"), ("c.txt", "c\none\nthree\n")],
+        );
+        capture("0004-c.patch", &[("c.txt", "c\none\nthree\nfour\n")]);
+        git(&origin, &["reset", "--hard", "-q", &base]);
+
+        // Candidate upstream: a2 is context for 0002 (exact apply fails, a
+        // 3-way merge succeeds); b's only line changed under 0003.
+        std::fs::write(origin.join("a.txt"), lines("a").replace("a2\n", "X2\n")).unwrap();
+        std::fs::write(origin.join("b.txt"), "theirs\n").unwrap();
+        git(&origin, &["commit", "-am", "candidate"]);
+        git(&origin, &["tag", "FIXTURE_2"]);
+        let next = git(&origin, &["rev-parse", "HEAD"]);
+
+        let lock = lock_for(origin.to_str().unwrap(), &base);
+        crate::upstream::bootstrap(&root, &lock).expect("bootstrap");
+        let repo = root.join(upstream::CHECKOUT_RELATIVE);
+        git(
+            &repo,
+            &["fetch", "-q", "--no-tags", "origin", "tag", "FIXTURE_2"],
+        );
+        write_manifest(&root, &base, "  - id: cand\n    series: browser/cand\n");
+        let mut candidate = lock.clone();
+        candidate.upstream.revision.git = next.clone();
+
+        let report = check_candidate(&root, &lock, &candidate).expect("check runs");
+        let results: Vec<_> = report.files.iter().map(|f| f.result).collect();
+        assert_eq!(
+            results,
+            [
+                Applicability::Clean,
+                Applicability::ThreeWay,
+                Applicability::Conflict,
+                Applicability::Clean,
+            ],
+            "got: {report:?}"
+        );
+        assert_eq!(report.files[2].conflicts, ["b.txt"]);
+        assert_eq!(
+            (report.clean, report.three_way, report.conflicts),
+            (2, 1, 1)
+        );
+        assert_eq!(report.candidate_sha, next);
+
+        // Read-only: the managed checkout is still the clean locked baseline.
+        assert_eq!(git(&repo, &["rev-parse", "HEAD"]), base);
+        assert_eq!(git(&repo, &["status", "--porcelain"]), "");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn check_candidate_requires_fetched_candidate() {
+        let (root, lock, sha) = baseline("candidate-missing");
+        write_manifest(&root, &sha, " []\n");
+        let mut candidate = lock.clone();
+        candidate.upstream.revision.git = "1".repeat(40);
+        let err = check_candidate(&root, &lock, &candidate).expect_err("missing object");
+        assert!(err.contains("upstream update --to"), "got: {err}");
         std::fs::remove_dir_all(&root).ok();
     }
 }

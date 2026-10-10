@@ -16,9 +16,11 @@
 
 ac_add_options --enable-project=browser
 
-# Keep build output inside the generated worktree, away from Aequera source.
-# Separate from the artifact objdir so both builds can coexist.
-mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-aequera
+# Build output lives outside the generated worktree (obj/<worktree>/compiled
+# at the repo root, gitignored): recreating the worktree on a new Firefox
+# base keeps the objdir. Separate from the artifact objdir so both builds
+# can coexist.
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/../../obj/$(basename "$topsrcdir")/compiled
 
 # Host-platform tuning (parallelism, toolchain notes).
 # Override the default -j with AEQUERA_MAKE_FLAGS="-j<N>" in the build
