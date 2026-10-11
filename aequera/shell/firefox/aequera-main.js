@@ -14,6 +14,8 @@ for (const name of [
   "rail/aequera-rail.js",
   "rail/aequera-tabs.js",
   "workspaces/aequera-workspaces.js",
+  "command/command-model.js",
+  "command/aequera-command.js",
   "bookmarks/aequera-bookmarks.js",
   "layout/aequera-layout.js",
   "narrow/aequera-narrow.js",

@@ -1,5 +1,9 @@
 # shell-chrome — first-party wireup v0 + unified palette (no Firefox patch)
 
+The browser's command surface is now shell-native: Aequera rows in the
+address bar (`aequera/shell/README.md`, "Command surface"). This extension
+stays the proof that the same model works through WebExtension APIs alone.
+
 Proves the prototype tab/workspace/command model against **real Firefox tabs**
 through stable WebExtensions APIs only. Firefox source is untouched by this
 extension: it needs no `patches/browser` hook of its own (see

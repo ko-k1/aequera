@@ -19,6 +19,7 @@ pref-gated browser patches. No telemetry, no network.
 | `aequera-frame.js` | `AequeraFrame`: publishes motion tokens from prefs, owns the page's top inset |
 | `rail/` | The tab rail |
 | `workspaces/` | Workspaces + dock |
+| `command/` | Command surface: Aequera rows in the address bar |
 | `bookmarks/` | Bookmarks drawer |
 | `moz.build`, `jar.mn` | Build registration -> `chrome://browser/content/aequera/` |
 
@@ -185,6 +186,44 @@ behave natively; customize mode turns it off.
 
 Tests: `tests/browser/browser_aequera_bookmarks_drawer.js`.
 
+## Command surface (`command/`)
+
+The address bar is the command surface, as in the prototype: one input for
+URL/search, tabs, workspaces, history, bookmarks, closed tabs, and commands.
+Firefox's urlbar already covers URL/search, open tabs (in every workspace:
+picking a hidden tab switches to its workspace), history, and bookmarks.
+Aequera adds the rest as one urlbar provider, registered through Firefox's
+public `ProvidersManager` API (no Firefox patch):
+
+- other workspaces of this window ("Switch to workspace");
+- this window's recently closed tabs ("Reopen closed tab", with the
+  workspace they were closed from; restored with history via SessionStore);
+- commands: New tab, New workspace, Restore closed tab (from 3 typed
+  characters, so a short URL prefix does not push history aside).
+
+Rows sit right after the first (heuristic) row, at most 3 per query, so
+Firefox's own results keep the rest of the list. Enter still runs the
+heuristic row (Firefox behavior); arrow keys or Tab reach the Aequera rows.
+An empty input adds nothing: the zero-prefix list (top sites) is Firefox's.
+Matching follows Firefox's tab-group rule: one character matches the start of
+a word, longer input matches when every word occurs.
+
+| File | Role |
+|---|---|
+| `command-model.js` | Pure model: matching, section order, cap. Classic script + CommonJS; node tests: `node --test aequera/shell/firefox/command/command-model.test.mjs` |
+| `aequera-command.js` | Window side: gathers this window's workspaces and closed tabs, runs picked actions |
+| `aequera-urlbar.sys.mjs` | The provider: a thin bridge that asks the querying window (`controller.browserWindow`) for rows and hands picks back to it. One per process (module singleton) |
+
+The provider module is the one ES module in the shell. Modules are kept in
+the startup cache (above), so keep it a bridge and put behavior in the window
+scripts, which always load fresh. Rows carry plain strings under
+`payload.aequera`: the view reserves fields such as `payload.action`, and the
+payload crosses the urlbar actor boundary. Strings are English literals, like
+the workspace dock. Cost per keystroke: median 0.23 ms, p95 0.41 ms with 25
+closed tabs (budget: 16 ms, `docs/engineering/PERFORMANCE.md`).
+
+Tests: `tests/browser/browser_aequera_command.js`.
+
 ## Robustness
 
 `tests/browser/browser_aequera_chrome_rebuild.js`: vertical tabs off/on,
@@ -194,7 +233,9 @@ address bar, tabs, dock, and drawer must be sane.
 
 ## Next
 
-- Unified palette UI, pinned pills.
+- Pinned pills (prototype: drag a tab onto the top bar to pin it).
+- Command surface: `Ctrl+K` focus (Firefox uses it for web search; reclaiming
+  it is a separate decision), zero-prefix Aequera rows, localized strings.
 - Workspaces: rename/delete/reorder, move tab to workspace, dot/row morph
   animation, keyboard switching, localized strings (English literals now).
 - Rail: position end (right side), resizable expanded width.
