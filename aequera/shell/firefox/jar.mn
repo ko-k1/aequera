@@ -20,3 +20,7 @@ browser.jar:
     content/browser/aequera/bookmarks/aequera-bookmarks.css    (bookmarks/aequera-bookmarks.css)
     content/browser/aequera/layout/aequera-layout.js           (layout/aequera-layout.js)
     content/browser/aequera/narrow/aequera-narrow.js           (narrow/aequera-narrow.js)
+    content/browser/aequera/newtab/aequera-newtab.html         (newtab/aequera-newtab.html)
+    content/browser/aequera/newtab/aequera-newtab.css          (newtab/aequera-newtab.css)
+    content/browser/aequera/newtab/aequera-newtab.js           (newtab/aequera-newtab.js)
+    content/browser/aequera/privatebrowsing/aequera-private.css (privatebrowsing/aequera-private.css)

@@ -50,6 +50,15 @@ patches:
   # risk are in each patch header. No behavior change beyond the names.
   - id: linux-desktop
     series: toolkit/linux-desktop
+  # Aequera new tab page at about:newtab / about:home (pref-gated boolean,
+  # fixed packaged page; absent in Firefox). Keeps preloading and the
+  # shortcuts backend. Rationale and risk are in the patch header.
+  - id: newtab
+    series: browser/newtab
+  # Aequera styling for about:privatebrowsing (one stylesheet link; the
+  # page, its strings, and behavior stay Firefox's).
+  - id: privatebrowsing
+    series: browser/privatebrowsing
 
 overlays:
   # Stage 1 shell: frame-model stylesheet, launcher-width glue, default

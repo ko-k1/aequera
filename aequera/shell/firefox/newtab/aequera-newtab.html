@@ -1,0 +1,47 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this file,
+   - You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!-- Aequera new tab page, served at about:newtab and about:home when
+     aequera.newtab.enabled is on (patches/browser/newtab). Shortcuts only:
+     the address bar is focused and is the search. Nothing is fetched from
+     the network (img-src has no http). -->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; object-src 'none'; script-src chrome:; style-src chrome:; img-src chrome: data:"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-l10n-id="newtab-page-title"></title>
+    <link rel="icon" type="image/png" href="chrome://branding/content/icon32.png" />
+    <link rel="localization" href="branding/brand.ftl" />
+    <link rel="localization" href="browser/newtab/newtab.ftl" />
+    <link rel="stylesheet" href="chrome://browser/content/aequera/newtab/aequera-newtab.css" />
+    <script src="chrome://browser/content/contentTheme.js"></script>
+    <script defer src="chrome://browser/content/aequera/newtab/aequera-newtab.js"></script>
+  </head>
+  <body>
+    <main>
+      <!-- The branding's mark and wordmark, named by Firefox's own string
+           (the brand's full name). -->
+      <div class="brand" role="img" data-l10n-id="newtab-logo-and-wordmark">
+        <span class="brand-mark"></span>
+        <span class="brand-wordmark"></span>
+      </div>
+      <h1 class="visually-hidden" id="shortcuts-heading" data-l10n-id="newtab-section-header-topsites"></h1>
+      <ul id="shortcuts" aria-labelledby="shortcuts-heading"></ul>
+      <!-- English literal, like the rest of the Aequera shell: Firefox has
+           no string for an empty shortcut grid. -->
+      <p id="shortcuts-empty" hidden>Sites you visit often will appear here.</p>
+    </main>
+    <div id="shortcut-menu" role="menu" popover>
+      <button type="button" role="menuitem" data-action="pin" data-l10n-id="newtab-menu-pin"></button>
+      <button type="button" role="menuitem" data-action="unpin" data-l10n-id="newtab-menu-unpin"></button>
+      <button type="button" role="menuitem" data-action="dismiss" data-l10n-id="newtab-menu-dismiss"></button>
+    </div>
+  </body>
+</html>

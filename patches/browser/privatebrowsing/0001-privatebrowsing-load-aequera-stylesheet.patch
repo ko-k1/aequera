@@ -1,0 +1,40 @@
+Subject: [PATCH] privatebrowsing: load the Aequera private page stylesheet
+
+Why Firefox source must change:
+  about:privatebrowsing is a fixed Firefox page (mapped in C++ by
+  AboutRedirector) that names its stylesheets in its own markup; no pref,
+  policy, or theme can add one. Aequera keeps the page, its localized
+  strings, and its behavior, and only restyles it to match the Aequera new
+  tab page.
+
+What it changes (one stylesheet link, last in <head>):
+  chrome://browser/content/aequera/privatebrowsing/aequera-private.css
+  (overlay "shell-chrome"). The page's CSP already allows chrome: styles.
+  Every rule sits inside @media -moz-pref("aequera.privatebrowsing.enabled")
+  (the query Firefox's own stylesheet uses for Nova); the pref is absent
+  in Firefox, so the page is unchanged there.
+
+Depends on: overlay "shell-chrome" (the stylesheet itself).
+Validation: aequera/shell/firefox/tests/browser/browser_aequera_private.js
+  (private and normal windows: artwork, search box, and promos hidden,
+  Aequera icon tile shown, Firefox's text intact; pref off restores
+  Firefox's design); Firefox's about:privatebrowsing tests with the pref off.
+Upstream risk: low for the patch (one line in <head>); the stylesheet
+  targets Firefox's class names, which the test covers.
+
+diff --git a/browser/components/privatebrowsing/content/aboutPrivateBrowsing.html b/browser/components/privatebrowsing/content/aboutPrivateBrowsing.html
+index 40498fc..127d28d 100644
+--- a/browser/components/privatebrowsing/content/aboutPrivateBrowsing.html
++++ b/browser/components/privatebrowsing/content/aboutPrivateBrowsing.html
+@@ -24,6 +24,11 @@
+       href="chrome://browser/skin/privatebrowsing/aboutPrivateBrowsing.css"
+       media="all"
+     />
++    <link
++      rel="stylesheet"
++      href="chrome://browser/content/aequera/privatebrowsing/aequera-private.css"
++      media="all"
++    />
+     <link rel="localization" href="branding/brand.ftl" />
+     <link rel="localization" href="toolkit/branding/brandings.ftl" />
+     <link rel="localization" href="toolkit/global/mozPromo.ftl" />

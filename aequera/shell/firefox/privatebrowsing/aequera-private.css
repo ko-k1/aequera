@@ -1,0 +1,143 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Aequera private browsing page: Firefox's about:privatebrowsing (its
+ * markup, localized strings, and behavior) in the new tab page's design.
+ * Loaded last by patches/browser/privatebrowsing, so rules here win at
+ * equal specificity. Both Firefox layouts (Nova and legacy) resolve to the
+ * same calm column: private icon, heading, explanation, one link.
+ *
+ * Left out: the Firefox artwork and wordmark, the in-page search box (the
+ * address bar is the search, as on the new tab page), the search-engine
+ * banner, and product promos (also off by pref, aequera-prefs.js). */
+
+/* Off (aequera.privatebrowsing.enabled = false) leaves Firefox's page as is,
+ * the same media query Firefox's own stylesheet uses for its Nova layout. */
+/* stylelint-disable-next-line media-query-no-invalid */
+@media -moz-pref("aequera.privatebrowsing.enabled") {
+  :root {
+    --ae-text: light-dark(#15141a, #fbfbfe);
+    --ae-text-dim: color-mix(in srgb, var(--ae-text) 72%, transparent);
+    --ae-surface: color-mix(in srgb, var(--ae-text) 7%, transparent);
+    /* The one private cue: a violet accent on the icon and link, on a canvas
+     * tinted just enough to tell a private window apart at a glance. */
+    --ae-private: light-dark(#6e3fd1, #b59cff);
+  }
+
+  .wordmark,
+  .search-inner-wrapper,
+  #search-banner,
+  .promo,
+  .nova-promo-wrapper,
+  html.private body::before {
+    display: none !important;
+  }
+
+  @media not (prefers-contrast) {
+    html.private {
+      color-scheme: light dark;
+      --background-color-canvas: light-dark(#f4f2f8, #1c1a23);
+      background: var(--background-color-canvas);
+      color: var(--ae-text);
+      --link-color: var(--ae-private);
+      --link-color-hover: var(--ae-private);
+      --link-color-active: var(--ae-private);
+    }
+  }
+
+  html.private body,
+  html.private body.showBanner {
+    justify-content: flex-start;
+    align-items: center;
+    min-height: 100vh;
+    box-sizing: border-box;
+    margin: 0;
+    /* The same upper-third placement as the new tab page. */
+    padding: max(24px, 16vh) 16px 32px;
+  }
+
+  html.private .container {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    width: auto;
+    max-width: 32em;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  html.private .logo-and-wordmark {
+    margin: 0 0 16px;
+  }
+
+  /* The new tab page's 56px tile, holding the browser's own private icon. */
+  html.private .logo {
+    width: 56px;
+    height: 56px;
+    margin: 0;
+    border-radius: 14px;
+    background: var(--ae-surface) url("chrome://browser/skin/privateBrowsing.svg") center / 28px no-repeat;
+    -moz-context-properties: fill;
+    fill: var(--ae-private);
+  }
+
+  html.private :is(.nova-tagline, #info-title) {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: inherit;
+    text-align: center;
+  }
+
+  html.private .nova-subheader {
+    max-width: none;
+    margin: 0 0 16px;
+    font-size: 14px;
+    color: var(--ae-text-dim);
+    text-align: center;
+  }
+
+  html.private .info-border {
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    box-shadow: none;
+  }
+
+  html.private .info {
+    padding: 0;
+    border: none;
+    background: none;
+    box-shadow: none;
+    color: var(--ae-text-dim);
+    font-size: 13px;
+    text-align: center;
+  }
+
+  html.private #info-body {
+    margin: 0;
+  }
+
+  html.private #private-browsing-myths:link {
+    display: inline-block;
+    margin-block-start: 8px;
+    color: var(--link-color);
+  }
+
+  html.private #private-browsing-myths:focus-visible {
+    outline: 2px solid var(--ae-private);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  @media (forced-colors: active) {
+    html.private .logo {
+      border: 1px solid CanvasText;
+      fill: CanvasText;
+    }
+  }
+}

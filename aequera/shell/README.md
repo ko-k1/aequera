@@ -12,7 +12,7 @@ pref-gated browser patches. No telemetry, no network.
 
 | File | Role |
 |---|---|
-| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, window fullscreen keeps chrome up, frame material (Mica on Windows, opaque toolbar fallback elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`) |
+| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (Mica on Windows, opaque toolbar fallback elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`) |
 | `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome |
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
@@ -20,6 +20,8 @@ pref-gated browser patches. No telemetry, no network.
 | `rail/` | The tab rail |
 | `workspaces/` | Workspaces + dock |
 | `command/` | Command surface: Aequera rows in the address bar |
+| `newtab/` | New tab page (about:newtab, about:home): shortcuts grid |
+| `privatebrowsing/` | about:privatebrowsing in the new tab page design (stylesheet) |
 | `bookmarks/` | Bookmarks drawer |
 | `moz.build`, `jar.mn` | Build registration -> `chrome://browser/content/aequera/` |
 
@@ -235,6 +237,111 @@ closed tabs (budget: 16 ms, `docs/engineering/PERFORMANCE.md`).
 
 Tests: `tests/browser/browser_aequera_command.js`.
 
+## New tab page (`newtab/`)
+
+`about:newtab` and `about:home` show a small Aequera page: the Aequera
+mark and wordmark over your shortcuts (Firefox's top sites: pinned and
+most-visited) as one grid, the two centered as one block a little above the
+middle of the page, nothing else. The address bar is focused and is the search, so there is
+no second search box and no search-engine tiles. No stories, weather,
+sponsored tiles, or wallpapers; nothing is fetched from the network (the
+page's CSP allows images from `chrome:` and `data:` only).
+
+`patches/browser/newtab` (one pref-gated line in `AboutNewTabRedirector`)
+serves the page when `aequera.newtab.enabled` is on. The address stays
+`about:newtab`, so Firefox keeps preloading it, focuses the address bar, and
+runs it in the privileged about process. The pref is a boolean, never a URL:
+the page holds the about:newtab message port, so it must be this packaged
+file. Off restores Firefox's page.
+
+Data and changes go through the port Firefox's own page uses
+(`ActivityStream:MainToContent` / `ContentToMain`): the page asks for the
+state, reads only `TopSites.rows` and the two prefs that size it
+(`topSitesRows`, `feeds.topsites`), and sends `TOP_SITES_PIN`,
+`TOP_SITES_UNPIN`, `BLOCK_URL`. Pin, unpin, and dismiss therefore use
+Firefox's storage and stay in sync with its settings. Links are plain
+anchors: middle-click, the context menu, and drag work natively.
+
+- Brand: `chrome://branding/content/about-logo.svg` (48px) and
+  `firefox-wordmark.svg` (104x32, `fill` follows the text color), so a
+  rebrand changes them too; one image named by Firefox's
+  `newtab-logo-and-wordmark` string. The wordmark SVG stretches its text to a
+  fixed width (`textLength`), so the row stays centered whatever the system
+  font. Fixed boxes: nothing shifts while they decode.
+- Tiles: 56px icon (the site's large icon on its brand color, else its
+  favicon, else its first letter), label below; up to 8 per row, rows from
+  Firefox's `topSitesRows`. Pinned tiles show a pin beside the icon.
+- Options (⋯) per tile: Pin/Unpin and Dismiss. Shown on hover or keyboard
+  focus (always, at a touch size, on touch screens); a popover menu with
+  arrow keys, Home/End, Escape, and focus back on the button.
+- Theme: follows the browser theme's new tab colors (`contentTheme.js`),
+  else Firefox's light/dark in-content canvas; forced colors supported.
+  Geometry from `aequera/design/tokens.toml` (rad 9, gap 6, fs 14).
+- Motion: none on load; hover feedback 120ms, off under reduced motion.
+- Strings: Firefox's own `newtab.ftl` ("New Tab", "Top Sites", Pin, Unpin,
+  Dismiss, the options label), so the page is localized already. The one
+  exception is the empty state ("Sites you visit often will appear here."),
+  an English literal: Firefox has no string for it.
+- Data: the page renders from the full state or from any full shortcut list
+  (`TOP_SITES_UPDATED`), so it never depends on one reply alone.
+
+Defaults that go with it (`aequera-prefs.js`): search-engine shortcut tiles,
+stories, and weather off (their feeds would otherwise keep fetching for a
+page that does not show them), and the about:home startup cache off (it holds
+a render of Firefox's page).
+
+Startup dependency: the new tab backend starts from BrowserGlue's
+first-window step, which reads `app.update.checkInstallTime.days` whenever
+the old-build update check is on. The Aequera branding prefs turn that check
+off and define the day count (`aequera/design/branding/pref`); without them
+first-window startup throws and every about:newtab and about:home load hangs
+on an empty document. Test profiles turn the check off themselves, so only a
+real launch shows this; the new tab test pins the shipped defaults.
+
+Checking a real launch with Marionette: set `remote.prefs.recommended` to
+false in the profile. The remote agent's recommended prefs include
+`activity-stream.testing.shouldInitializeFeeds = false`, which leaves the
+backend without the feed that answers a page's state request.
+
+Measured against Firefox's page on the same build (headless, Linux,
+8 pinned shortcuts, medians; the pref switches the page):
+
+| | Firefox page | Aequera page |
+|---|---:|---:|
+| Script and style loaded | ~1.8 MB JS + 0.7 MB CSS | 22 KB (incl. Firefox's 6 KB theme script) |
+| Cold load: DOMContentLoaded | 68 ms | 14 ms |
+| Cold load: shortcuts on screen | 101 ms | 30 ms |
+| Preloaded: open to shortcuts on screen | 23.2 ms | 19.1 ms |
+| Memory per page (window objects) | 7.4 MiB | 1.0 MiB |
+| Privileged about process, 5 pages | 133.5 MiB | 35.7 MiB |
+
+Tests: `tests/browser/browser_aequera_newtab.js` (served at both addresses,
+preloaded with the address bar focused, shortcuts, empty state,
+pin/unpin/dismiss by keyboard, Escape, pref off, startup prefs). The
+upstream gate runs Firefox's about:home cache tests with the pref off.
+
+## Private browsing page (`privatebrowsing/`)
+
+about:privatebrowsing stays Firefox's page (its markup, localized strings,
+and behavior); `patches/browser/privatebrowsing` adds one stylesheet that
+gives it the new tab page's design: the private icon in the same 56px tile,
+Firefox's heading and explanation in one centered column, and its "who can
+see my activity" link. Left out: the Firefox artwork and wordmark, the
+in-page search box (the address bar is the search), the search-engine
+banner, and product promos. The canvas is tinted violet just enough to tell
+a private window apart at a glance; light and dark follow the system, forced
+colors are supported.
+
+Every rule is inside `@media -moz-pref("aequera.privatebrowsing.enabled")`
+(the query Firefox's own stylesheet uses for its Nova layout), so turning
+the pref off restores Firefox's design. Mozilla's product promos (VPN,
+Relay, pin to taskbar) are advertising (`docs/RESTRICTIONS.md`) and are off
+by pref, here and on the other pages that show them.
+
+Tests: `tests/browser/browser_aequera_private.js`. The upstream gate runs
+Firefox's about:privatebrowsing tests with the pref off and Firefox's promo
+defaults.
+
 ## Robustness
 
 `tests/browser/browser_aequera_chrome_rebuild.js`: vertical tabs off/on,
@@ -250,4 +357,6 @@ address bar, tabs, dock, and drawer must be sane.
 - Workspaces: rename/delete/reorder, move tab to workspace, dot/row morph
   animation, keyboard switching, localized strings (English literals now).
 - Rail: position end (right side), resizable expanded width.
+- New tab: add/edit a shortcut and drag to reorder (Firefox's page has both;
+  the Aequera page has pin, unpin, and dismiss).
 - Full branding build (own exe name/icon): see `patches/build/branding`.

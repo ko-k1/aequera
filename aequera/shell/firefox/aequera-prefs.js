@@ -46,6 +46,29 @@ pref("aequera.rail.expandOnAddressFocus", true);
 pref("browser.toolbars.bookmarks.visibility", "always");
 pref("aequera.bookmarks.hoverPeek", true);
 
+// New tab page (newtab/, patches/browser/newtab): about:newtab and about:home
+// serve the Aequera page, shortcuts only, still preloaded. Off restores
+// Firefox's page. The address bar is the search, so the shortcut grid has no
+// search-engine tiles. Stories and weather are not on the Aequera page; off
+// here so their feeds do not fetch in the background for nothing (both stay
+// a user choice in Firefox's new tab settings). The about:home startup
+// cache holds a render of Firefox's page, so it is off too.
+pref("aequera.newtab.enabled", true);
+pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", false);
+pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
+pref("browser.newtabpage.activity-stream.showWeather", false);
+pref("browser.startup.homepage.abouthome_cache.enabled", false);
+
+// Private browsing page (privatebrowsing/, patches/browser/privatebrowsing):
+// Firefox's page in the new tab page's design. Its product promos (Mozilla
+// VPN, Relay, pin to taskbar) are advertising (docs/RESTRICTIONS.md): off,
+// here and on the other pages that show them. Off restores Firefox's design
+// (the stylesheet is inside @media -moz-pref of this pref).
+pref("aequera.privatebrowsing.enabled", true);
+pref("browser.vpn_promo.enabled", false);
+pref("browser.promo.relay.enabled", false);
+pref("browser.promo.pin.enabled", false);
+
 // Window fullscreen (F11, View > Full Screen) keeps the top bar and the tab
 // rail on screen instead of sliding them away (Firefox's default on macOS).
 // Page-requested (DOM) fullscreen, e.g. video, still hides all chrome. The

@@ -6,9 +6,9 @@
 # (run from worktree/firefox; the script path is relative to the checkout root)
 #
 # aequera:  Aequera-owned tests (browser/aequera/tests), Aequera defaults.
-# upstream: Firefox's own sidebar, tab, and bookmarks-toolbar tests with
-#           Firefox's defaults restored, to prove the patches change nothing
-#           by default.
+# upstream: Firefox's own sidebar, tab, bookmarks-toolbar, about:home cache,
+#           and private browsing page tests with Firefox's defaults
+#           restored, to prove the patches change nothing by default.
 set -u
 # Step parsing: explicit suite or all; leading flags mean "all + flags".
 # Unknown positional steps fail closed (never zero-suite green).
@@ -53,6 +53,8 @@ esac
 SIDEBAR_TESTS=browser/components/sidebar/tests/browser
 TAB_TESTS=browser/components/tabbrowser/test/browser/tabs
 PLACES_TESTS=browser/components/places/tests/browser
+HOMECACHE_TESTS=browser/components/newtab/test/browser/abouthomecache
+PRIVATE_TESTS=browser/components/privatebrowsing/test/browser
 status=0
 
 # Artifact builds do not refresh the test index on their own; new or moved
@@ -92,5 +94,27 @@ if [ "$step" = upstream ] || [ "$step" = all ]; then
     "$PLACES_TESTS/browser_bookmarks_toolbar_context_menu_view_options.js" \
     "$PLACES_TESTS/browser_click_bookmarks_on_toolbar.js" \
     "$PLACES_TESTS/browser_toolbar_overflow.js" || status=1
+  # New tab: patches/browser/newtab changes the page about:newtab and
+  # about:home resolve to and the about:home startup cache lookup; with
+  # aequera.newtab.enabled off both must behave exactly as in Firefox.
+  ./mach mochitest --headless "${extra[@]}" "${FIREFOX_DEFAULTS[@]}" \
+    --setpref aequera.newtab.enabled=false \
+    "$HOMECACHE_TESTS/browser_basic_endtoend.js" \
+    "$HOMECACHE_TESTS/browser_no_cache.js" \
+    "$HOMECACHE_TESTS/browser_overwrite_cache.js" \
+    "$HOMECACHE_TESTS/browser_same_consumer.js" || status=1
+  # Private browsing page: patches/browser/privatebrowsing adds a stylesheet
+  # gated by aequera.privatebrowsing.enabled; off (with Firefox's promo
+  # defaults) the page must behave exactly as in Firefox. The pin promo test
+  # is skipped on Firefox's own Linux CI and is left out here too.
+  ./mach mochitest --headless "${extra[@]}" "${FIREFOX_DEFAULTS[@]}" \
+    --setpref aequera.privatebrowsing.enabled=false \
+    --setpref browser.vpn_promo.enabled=true \
+    --setpref browser.promo.relay.enabled=true \
+    --setpref browser.promo.pin.enabled=true \
+    "$PRIVATE_TESTS/browser_privatebrowsing_about.js" \
+    "$PRIVATE_TESTS/browser_privatebrowsing_about_search_banner.js" \
+    "$PRIVATE_TESTS/browser_privatebrowsing_about_default_promo.js" \
+    "$PRIVATE_TESTS/browser_privatebrowsing_about_nova_promo.js" || status=1
 fi
 exit $status

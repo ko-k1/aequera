@@ -24,3 +24,7 @@ prefs = [
 ["browser_aequera_command.js"]
 
 ["browser_aequera_fullscreen.js"]
+
+["browser_aequera_newtab.js"]
+
+["browser_aequera_private.js"]

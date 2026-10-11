@@ -1,0 +1,283 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Aequera new tab page. Geometry from aequera/design/tokens.toml (rad 9,
+ * gap 6, fs 14); colors follow the browser theme through contentTheme.js
+ * (--newtab-*), falling back to Firefox's in-content light/dark canvas. No
+ * entry motion: the page is shown as soon as it is painted. */
+
+:root {
+  color-scheme: light dark;
+  --ae-bg: var(--newtab-background-color, light-dark(#f9f9fb, #1c1b22));
+  --ae-text: var(--newtab-text-primary-color, light-dark(#15141a, #fbfbfe));
+  --ae-text-dim: color-mix(in srgb, var(--ae-text) 72%, transparent);
+  --ae-surface: color-mix(in srgb, var(--ae-text) 7%, transparent);
+  --ae-hover: color-mix(in srgb, var(--ae-text) 9%, transparent);
+  --ae-active: color-mix(in srgb, var(--ae-text) 14%, transparent);
+  --ae-menu-bg: light-dark(#ffffff, #2b2a33);
+  --ae-border: color-mix(in srgb, var(--ae-text) 16%, transparent);
+  --ae-focus: light-dark(#0061e0, #00ddff);
+  --ae-rad: 9px;
+  --ae-gap: 6px;
+  --ae-icon: 56px;
+  --ae-tile: 88px;
+  --ae-feedback: 120ms;
+}
+
+/* A theme that sets a dark new tab background without a matching scheme. */
+:root[lwt-newtab-brighttext] {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: var(--ae-bg);
+  color: var(--ae-text);
+  font: message-box;
+  font-size: 14px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+main {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  /* Brand and grid as one block at the optical center, a little above the
+   * true one (the larger bottom padding). With many rows the block grows
+   * past the viewport and the page scrolls from the top. */
+  padding: 32px 16px max(48px, 12vh);
+}
+
+/* Mark and wordmark from the branding (chrome://branding), so a rebrand
+ * changes them here too. Fixed boxes: nothing shifts when they decode. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-block-end: 40px;
+}
+
+.brand-mark {
+  width: 48px;
+  height: 48px;
+  background: url("chrome://branding/content/about-logo.svg") center / contain no-repeat;
+}
+
+/* The wordmark SVG is 310x96, its text stretched to that width whatever the
+ * system font, so the row stays centered. */
+.brand-wordmark {
+  width: 104px;
+  height: 32px;
+  background: url("chrome://branding/content/firefox-wordmark.svg") center / contain no-repeat;
+  -moz-context-properties: fill;
+  fill: var(--ae-text);
+}
+
+#shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 12px;
+  /* At most 8 per row, Firefox's own row length. */
+  max-width: calc(8 * var(--ae-tile) + 7 * 12px);
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+#shortcuts-empty {
+  margin: 0;
+  color: var(--ae-text-dim);
+  text-align: center;
+}
+
+.tile {
+  position: relative;
+  width: var(--ae-tile);
+}
+
+.tile-link {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ae-gap);
+  padding: 8px 4px;
+  border-radius: var(--ae-rad);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color var(--ae-feedback) ease-out;
+}
+
+.tile-link:hover {
+  background-color: var(--ae-hover);
+}
+
+.tile-link:hover:active {
+  background-color: var(--ae-active);
+}
+
+:is(.tile-link, .tile-options, #shortcut-menu > button):focus-visible {
+  outline: 2px solid var(--ae-focus);
+  outline-offset: 2px;
+}
+
+.tile-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--ae-icon);
+  height: var(--ae-icon);
+  border-radius: 14px;
+  background-color: var(--ae-surface);
+  overflow: hidden;
+}
+
+/* A site's own large icon fills the tile on its brand color. */
+.tile-icon.rich > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tile-icon.favicon > img {
+  width: 28px;
+  height: 28px;
+}
+
+.tile-letter {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ae-text-dim);
+  text-transform: uppercase;
+}
+
+.tile-label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pinned state, in the tile margin beside the icon, never over it. */
+.tile-pin {
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline-start: 4px;
+  width: 12px;
+  height: 12px;
+  background: url("chrome://browser/skin/pin-12.svg") center / 12px no-repeat;
+  -moz-context-properties: fill;
+  fill: var(--ae-text-dim);
+}
+
+/* Options: shown on hover or keyboard focus, always on touch screens; never
+ * the only way to reach the shortcut itself. */
+.tile-options {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--ae-rad);
+  background: url("chrome://global/skin/icons/more.svg") center / 16px no-repeat;
+  -moz-context-properties: fill;
+  fill: currentColor;
+  color: inherit;
+  opacity: 0;
+  transition: opacity var(--ae-feedback) ease-out;
+}
+
+.tile:hover > .tile-options,
+.tile:focus-within > .tile-options,
+.tile-options[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.tile-options:hover {
+  background-color: var(--ae-hover);
+}
+
+/* Touch screens have no hover: the button stays, at a touch size. */
+@media (hover: none) and (pointer: coarse) {
+  .tile-options {
+    width: 36px;
+    height: 36px;
+    opacity: 1;
+  }
+}
+
+#shortcut-menu {
+  position: fixed;
+  inset: auto;
+  min-width: 140px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+  background-color: var(--ae-menu-bg);
+  color: var(--ae-text);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.16);
+}
+
+#shortcut-menu > button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+#shortcut-menu > button:is(:hover, :focus-visible) {
+  background-color: var(--ae-hover);
+}
+
+#shortcut-menu > button[hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile-link,
+  .tile-options {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .tile-icon,
+  #shortcut-menu {
+    border: 1px solid CanvasText;
+  }
+  .tile-pin,
+  .tile-options,
+  .brand-wordmark {
+    fill: CanvasText;
+  }
+}

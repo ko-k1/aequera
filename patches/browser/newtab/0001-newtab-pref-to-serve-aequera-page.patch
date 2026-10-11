@@ -1,0 +1,88 @@
+Subject: [PATCH] newtab: pref to serve the Aequera new tab page at about:newtab
+
+Why Firefox source must change:
+  about:newtab and about:home are resolved by AboutNewTabRedirector to the
+  built-in page; no pref or policy can point them at another page while
+  keeping them about:newtab. Overriding AboutNewTab.newTabURL (the
+  extension route) turns off new tab preloading and disconnects the page
+  from the shortcuts backend, so new tabs would open visibly slower.
+
+What it changes:
+  - New pref aequera.newtab.enabled (boolean). When true, defaultURL is
+    chrome://browser/content/aequera/newtab/aequera-newtab.html, a fixed,
+    packaged page (overlay "shell-chrome"); never a configurable URL, since
+    the page runs in the privileged about process with the about:newtab
+    port. Absent (false) in Firefox: behavior unchanged.
+  - While it is on, about:home skips the startup cache, which holds a
+    render of the built-in page.
+  The URL stays about:newtab, so preloading, address bar focus, the
+  shortcuts backend (pin, unpin, dismiss), and the privileged about
+  process sandbox all work as before.
+
+Depends on: overlay "shell-chrome" (the page itself).
+Validation: aequera/shell/firefox/tests/browser/browser_aequera_newtab.js
+  (page served at about:newtab and about:home, preloaded, shortcuts render,
+  pin/unpin/dismiss round-trip, no built-in bundle loaded); the built-in
+  page with the pref off.
+Upstream risk: low to medium. Conflicts if defaultURL or the about:home
+  cache lookup are restructured; the page depends on the ActivityStream
+  message names and the TopSites state shape, which the tests cover.
+
+diff --git a/browser/components/newtab/AboutNewTabRedirector.sys.mjs b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
+index 33ebe51..7b77be7 100644
+--- a/browser/components/newtab/AboutNewTabRedirector.sys.mjs
++++ b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
+@@ -61,6 +61,13 @@ const PREF_NEWTAB_SELF_LOADING =
+   "browser.newtabpage.activity-stream.selfLoading.enabled";
+ const PREF_NEWTAB_REMOTE_RENDERER_ENABLED =
+   "browser.newtabpage.activity-stream.remote-renderer.enabled";
++// When true, about:newtab and about:home serve the Aequera new tab page
++// instead of the built-in one. Absent (false) in Firefox: behavior unchanged.
++// A boolean, never a URL: the page loads in the privileged about process
++// with the about:newtab port, so it must stay this fixed, packaged page.
++const PREF_AEQUERA_NEWTAB = "aequera.newtab.enabled";
++const AEQUERA_NEWTAB_URL =
++  "chrome://browser/content/aequera/newtab/aequera-newtab.html";
+ /**
+  * The AboutHomeStartupCacheChild is responsible for connecting the
+  * AboutNewTabRedirectorChild with a cached document and script for about:home
+@@ -416,6 +423,13 @@ class BaseAboutNewTabRedirector {
+       PREF_NEWTAB_REMOTE_RENDERER_ENABLED,
+       false
+     );
++
++    XPCOMUtils.defineLazyPreferenceGetter(
++      this,
++      "aequeraNewTabEnabled",
++      PREF_AEQUERA_NEWTAB,
++      false
++    );
+   }
+ 
+   /**
+@@ -425,6 +439,10 @@ class BaseAboutNewTabRedirector {
+    * the newtab page has no effect on the result of this function.
+    */
+   get defaultURL() {
++    if (this.aequeraNewTabEnabled) {
++      return AEQUERA_NEWTAB_URL;
++    }
++
+     if (this.remoteRendererEnabled) {
+       return "resource://newtab/data/content/remote-renderer-host.html";
+     }
+@@ -596,10 +614,10 @@ export class AboutNewTabRedirectorChild extends BaseAboutNewTabRedirector {
+     let pageURI;
+ 
+     if (uri.spec.startsWith("about:home")) {
+-      let cacheChannel = AboutHomeStartupCacheChild.maybeGetCachedPageChannel(
+-        uri,
+-        loadInfo
+-      );
++      // The startup cache holds a render of the built-in page.
++      let cacheChannel =
++        !this.aequeraNewTabEnabled &&
++        AboutHomeStartupCacheChild.maybeGetCachedPageChannel(uri, loadInfo);
+       if (cacheChannel) {
+         return cacheChannel;
+       }
