@@ -1,0 +1,41 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* The address bar popup: this site's switch and this page's counts. */
+
+main {
+  display: grid;
+  gap: calc(var(--ae-gap) * 2);
+  width: 260px;
+  padding: 14px;
+}
+
+header p {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.counts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ae-gap);
+  margin: 0;
+}
+
+.counts div {
+  padding: 8px 10px;
+  border-radius: var(--ae-rad);
+  background: var(--ae-surface);
+}
+
+.counts dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+#note {
+  margin: 0;
+}

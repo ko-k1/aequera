@@ -6,9 +6,12 @@
 // Ad Veil (docs/design/ADS.md): the built-in add-on is installed, holds
 // only its declared permissions, blocks a request EasyList matches, hides an
 // element a generic EasyList rule matches, and aequera.adveil.enabled turns
-// both off and on.
+// both off and on. Slice 2: the vault records hidden ads and blocked
+// requests (never from private windows), and the address bar popup turns Ad
+// Veil off and on for a site.
 
 const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+const { AppUiTestDelegate } = ChromeUtils.importESModule("resource://testing-common/AppUiTestDelegate.sys.mjs");
 
 const ID = "adveil@aequera";
 const PREF = "aequera.adveil.enabled";
@@ -65,6 +68,119 @@ async function loadFixture({ hidden }) {
   );
 }
 
+// Runs `task` and fails if Ad Veil opened any network channel meanwhile
+// (every channel is checked for the add-on's principal).
+async function withoutOwnRequests(task) {
+  const own = [];
+  let seen = 0;
+  const observe = subject => {
+    const { loadInfo, URI } = subject.QueryInterface(Ci.nsIChannel);
+    seen++;
+    const principals = [loadInfo.loadingPrincipal, loadInfo.triggeringPrincipal];
+    if (principals.some(p => p?.addonId == ID)) {
+      own.push(URI.spec);
+    }
+  };
+  Services.obs.addObserver(observe, "http-on-opening-request");
+  try {
+    await task();
+  } finally {
+    Services.obs.removeObserver(observe, "http-on-opening-request");
+  }
+  Assert.greater(seen, 0, "the observer saw the fixture's requests");
+  Assert.deepEqual(own, [], "Ad Veil made no network request of its own");
+}
+
+// The address bar button and its popup (makeWidgetId("adveil@aequera")).
+const BUTTON = "pageAction-urlbar-adveil_aequera";
+const PANEL = "adveil_aequera-panel";
+
+function buttonTitle(win = window) {
+  const button = win.document.getElementById(BUTTON);
+  return button?.getAttribute("tooltiptext") || button?.getAttribute("aria-label") || "";
+}
+
+async function openFixture(win = window) {
+  const tab = await BrowserTestUtils.openNewForegroundTab(win.gBrowser, PAGE);
+  await waitForHidden(tab.linkedBrowser);
+  return tab;
+}
+
+function waitForHidden(browser) {
+  return SpecialPowers.spawn(browser, [], () =>
+    ContentTaskUtils.waitForCondition(
+      () => content.getComputedStyle(content.document.getElementById("banner")).display == "none",
+      "banner hidden"
+    )
+  );
+}
+
+function fixtureState(browser) {
+  return SpecialPowers.spawn(browser, [], () => ({
+    adLoaded: !!content.wrappedJSObject.adLoaded,
+    banner: content.getComputedStyle(content.document.getElementById("banner")).display,
+  }));
+}
+
+// Opens the popup for the selected tab and runs `task` in it (a content
+// task: it gets the popup's document as `content`).
+async function inPopup(win, task, args = []) {
+  await AppUiTestDelegate.clickPageAction(win, ID);
+  let panel;
+  await TestUtils.waitForCondition(() => {
+    panel = win.document.getElementById(PANEL);
+    return panel?.state == "open" && panel.querySelector("browser")?.currentURI?.spec.endsWith("pages/popup.html");
+  }, "popup open");
+  const browser = panel.querySelector("browser");
+  await SpecialPowers.spawn(browser, [], () =>
+    ContentTaskUtils.waitForCondition(() => content.document.getElementById("site")?.textContent, "popup rendered")
+  );
+  try {
+    return await SpecialPowers.spawn(browser, args, task);
+  } finally {
+    const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
+    panel.hidePopup();
+    await hidden;
+  }
+}
+
+// The vault page, as rendered.
+async function readVault(tab) {
+  await BrowserTestUtils.reloadTab(tab);
+  return SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
+    const doc = content.document;
+    await ContentTaskUtils.waitForCondition(() => doc.body.dataset.ready, "vault rendered");
+    return {
+      blocked: Number(doc.getElementById("blocked-total").textContent.replace(/\D/g, "")),
+      hosts: [...doc.querySelectorAll("#hosts li span:first-child")].map(s => s.textContent),
+      ads: [...doc.querySelectorAll(".ad")].map(card => ({
+        link: card.querySelector(".link")?.href || null,
+        site: card.querySelector(".where").textContent,
+        text: card.querySelector(".text").textContent,
+        creative: card.dataset.creative,
+      })),
+      keep: doc.getElementById("keep").checked,
+    };
+  });
+}
+
+async function openVault() {
+  const url = WebExtensionPolicy.getByID(ID).getURL("pages/vault.html");
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
+  return tab;
+}
+
+async function clearVault(tab) {
+  await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
+    const doc = content.document;
+    await ContentTaskUtils.waitForCondition(() => doc.body.dataset.ready, "vault rendered");
+    delete doc.body.dataset.ready;
+    doc.getElementById("clear").click();
+    doc.getElementById("clear").click();
+    await ContentTaskUtils.waitForCondition(() => doc.body.dataset.ready, "vault cleared");
+  });
+}
+
 add_task(async function test_installed_as_builtin() {
   const addon = await AddonManager.getAddonByID(ID);
   ok(addon, "Ad Veil is installed");
@@ -117,28 +233,103 @@ add_task(async function test_pref_turns_it_off_and_on() {
   ok(off.adLoaded, "off: nothing is blocked");
   isnot(off.banner, "none", "off: nothing is hidden");
 
-  // Startup (engine load, list compile) must not touch the network: every
-  // channel opened until blocking works again is checked for the add-on.
-  const own = [];
-  let seen = 0;
-  const observe = subject => {
-    const { loadInfo, URI } = subject.QueryInterface(Ci.nsIChannel);
-    seen++;
-    const principals = [loadInfo.loadingPrincipal, loadInfo.triggeringPrincipal];
-    if (principals.some(p => p?.addonId == ID)) {
-      own.push(URI.spec);
-    }
-  };
-  Services.obs.addObserver(observe, "http-on-opening-request");
-  try {
+  // Startup (engine load, list compile) must not touch the network.
+  await withoutOwnRequests(async () => {
     Services.prefs.setBoolPref(PREF, true);
     await waitForActive(true);
     const on = await loadFixture({ hidden: true });
     ok(!on.adLoaded, "on again: blocking is back");
     is(on.banner, "none", "on again: hiding is back");
-  } finally {
-    Services.obs.removeObserver(observe, "http-on-opening-request");
-  }
-  Assert.greater(seen, 0, "the observer saw the fixture's requests");
-  Assert.deepEqual(own, [], "Ad Veil made no network request of its own");
+  });
+});
+
+add_task(async function test_vault_records_hidden_ads_and_blocked_requests() {
+  await waitForActive(true);
+  const vault = await openVault();
+  await clearVault(vault);
+  const empty = await readVault(vault);
+  is(empty.ads.length, 0, "cleared: no ads");
+  is(empty.blocked, 0, "cleared: nothing blocked");
+  ok(empty.keep, "the vault is kept by default");
+
+  const page = await openFixture();
+  await TestUtils.waitForCondition(() => /1 hidden/.test(buttonTitle()), "the hidden ad is counted");
+  let state;
+  await TestUtils.waitForCondition(async () => {
+    state = await readVault(vault);
+    return state.ads.length > 0;
+  }, "the hidden ad reaches the vault");
+  Assert.deepEqual(
+    state.ads.map(({ link, site, text, creative }) => ({ link, site, text, creative })),
+    [
+      {
+        link: "https://example.org/landing?campaign=veil",
+        site: "example.com",
+        text: "Veil test ad",
+        creative: "https://example.com/browser/browser/aequera/tests/browser/adveil_ad.svg",
+      },
+    ],
+    "the ad's link, site, text, and image"
+  );
+  Assert.greaterOrEqual(state.blocked, 1, "the blocked request is counted");
+  ok(state.hosts.includes("example.com"), "by blocked host");
+
+  // Using the page and reading the vault again stays local (images are off).
+  await withoutOwnRequests(async () => {
+    await BrowserTestUtils.reloadTab(page);
+    await waitForHidden(page.linkedBrowser);
+    await readVault(vault);
+  });
+  BrowserTestUtils.removeTab(page);
+  await clearVault(vault);
+  BrowserTestUtils.removeTab(vault);
+});
+
+add_task(async function test_private_windows_are_not_recorded() {
+  await waitForActive(true);
+  const vault = await openVault();
+  await clearVault(vault);
+
+  const win = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const page = await openFixture(win);
+  const blocked = await fixtureState(page.linkedBrowser);
+  ok(!blocked.adLoaded, "private windows are protected too");
+  // Counted means the background has handled the content script's report.
+  await TestUtils.waitForCondition(() => /1 hidden/.test(buttonTitle(win)), "the hidden ad is counted");
+  await BrowserTestUtils.closeWindow(win);
+
+  const state = await readVault(vault);
+  is(state.ads.length, 0, "no ad from a private window");
+  is(state.blocked, 0, "no blocked request from a private window");
+  BrowserTestUtils.removeTab(vault);
+});
+
+add_task(async function test_popup_turns_a_site_off_and_on() {
+  await waitForActive(true);
+  const tab = await openFixture();
+  const counts = await inPopup(window, () => ({
+    site: content.document.getElementById("site").textContent,
+    on: content.document.getElementById("site-on").checked,
+    blocked: Number(content.document.getElementById("blocked").textContent),
+  }));
+  Assert.deepEqual({ site: counts.site, on: counts.on }, { site: "example.com", on: true }, "the popup names this site, on");
+  Assert.greaterOrEqual(counts.blocked, 1, "and counts this page's blocked requests");
+
+  // Off: the page reloads with nothing blocked or hidden.
+  let reloaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  await inPopup(window, () => content.document.getElementById("site-on").click());
+  await reloaded;
+  await TestUtils.waitForCondition(() => /off for example\.com/.test(buttonTitle()), "the button shows off");
+  const off = await fixtureState(tab.linkedBrowser);
+  ok(off.adLoaded, "off for this site: nothing is blocked");
+  isnot(off.banner, "none", "off for this site: nothing is hidden");
+
+  // On again.
+  reloaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  await inPopup(window, () => content.document.getElementById("site-on").click());
+  await reloaded;
+  await waitForHidden(tab.linkedBrowser);
+  const on = await fixtureState(tab.linkedBrowser);
+  ok(!on.adLoaded, "on again: blocking is back");
+  BrowserTestUtils.removeTab(tab);
 });

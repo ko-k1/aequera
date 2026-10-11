@@ -1,12 +1,24 @@
 # Ad Veil built-in add-on -> resource://builtin-addons/adveil/
 # (gen_built_in_addons.py lists every builtin-addons/*/manifest.json).
+# model.test.mjs is a node:test file, not part of the add-on.
 
 browser.jar:
-    builtin-addons/adveil/manifest.json        (manifest.json)
-    builtin-addons/adveil/background.js        (background.js)
-    builtin-addons/adveil/content.js           (content.js)
-    builtin-addons/adveil/engine.js            (engine.js)
-    builtin-addons/adveil/engine.wasm          (engine.wasm)
+    builtin-addons/adveil/manifest.json         (manifest.json)
+    builtin-addons/adveil/model.js              (model.js)
+    builtin-addons/adveil/engine.js             (engine.js)
+    builtin-addons/adveil/vault.js              (vault.js)
+    builtin-addons/adveil/background.js         (background.js)
+    builtin-addons/adveil/content.js            (content.js)
+    builtin-addons/adveil/engine.wasm           (engine.wasm)
+    builtin-addons/adveil/icons/veil.svg        (icons/veil.svg)
+    builtin-addons/adveil/icons/veil-off.svg    (icons/veil-off.svg)
+    builtin-addons/adveil/pages/ui.css          (pages/ui.css)
+    builtin-addons/adveil/pages/popup.html      (pages/popup.html)
+    builtin-addons/adveil/pages/popup.css       (pages/popup.css)
+    builtin-addons/adveil/pages/popup.js        (pages/popup.js)
+    builtin-addons/adveil/pages/vault.html      (pages/vault.html)
+    builtin-addons/adveil/pages/vault.css       (pages/vault.css)
+    builtin-addons/adveil/pages/vault.js        (pages/vault.js)
     builtin-addons/adveil/lists/easylist.txt    (lists/easylist.txt)
     builtin-addons/adveil/lists/easyprivacy.txt (lists/easyprivacy.txt)
-    builtin-addons/adveil/lists/README.md      (lists/README.md)
+    builtin-addons/adveil/lists/README.md       (lists/README.md)

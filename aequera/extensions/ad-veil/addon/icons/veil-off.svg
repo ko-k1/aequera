@@ -1,0 +1,10 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Ad Veil off for this site: the shield outline, struck through, dimmed. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="context-fill" fill-opacity="context-fill-opacity">
+  <g opacity=".55">
+    <path d="M8 1 14 3.2v4.4c0 3.4-2.4 6.2-6 7.4-3.6-1.2-6-4-6-7.4V3.2L8 1zm0 1.6L3.5 4.2v3.4c0 2.6 1.8 4.8 4.5 5.8 2.7-1 4.5-3.2 4.5-5.8V4.2L8 2.6z"/>
+  </g>
+  <rect x="7.25" y="-1" width="1.5" height="18" rx=".75" transform="rotate(45 8 8)"/>
+</svg>

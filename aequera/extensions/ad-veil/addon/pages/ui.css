@@ -1,0 +1,146 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Ad Veil's pages (popup, vault). Geometry from aequera/design/tokens.toml
+ * (rad 9, gap 6, ctl 30, fs 14, tl 12); colors are the light/dark canvas
+ * the new tab page uses. Feedback is immediate; the one transition (the
+ * switch) is off under reduced motion. */
+
+:root {
+  color-scheme: light dark;
+  --ae-bg: light-dark(#f9f9fb, #1c1b22);
+  --ae-text: light-dark(#15141a, #fbfbfe);
+  --ae-text-dim: color-mix(in srgb, var(--ae-text) 68%, transparent);
+  --ae-surface: color-mix(in srgb, var(--ae-text) 6%, transparent);
+  --ae-hover: color-mix(in srgb, var(--ae-text) 10%, transparent);
+  --ae-active: color-mix(in srgb, var(--ae-text) 15%, transparent);
+  --ae-border: color-mix(in srgb, var(--ae-text) 16%, transparent);
+  --ae-accent: light-dark(#0061e0, #00ddff);
+  --ae-on-accent: light-dark(#ffffff, #15141a);
+  --ae-danger: light-dark(#c50042, #ff848b);
+  --ae-focus: var(--ae-accent);
+  --ae-rad: 9px;
+  --ae-gap: 6px;
+  --ae-ctl: 30px;
+  --ae-fs: 14px;
+  --ae-tl: 12px;
+  --ae-feedback: 120ms;
+}
+
+body {
+  margin: 0;
+  background: var(--ae-bg);
+  color: var(--ae-text);
+  font: var(--ae-fs) / 1.4 system-ui, sans-serif;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 16px;
+}
+
+h2 {
+  font-size: var(--ae-fs);
+}
+
+.dim {
+  color: var(--ae-text-dim);
+}
+
+.small {
+  font-size: var(--ae-tl);
+}
+
+button {
+  min-height: var(--ae-ctl);
+  padding: 0 12px;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+  background: var(--ae-surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--ae-hover);
+}
+
+button:active {
+  background: var(--ae-active);
+}
+
+button.primary {
+  border-color: transparent;
+  background: var(--ae-accent);
+  color: var(--ae-on-accent);
+}
+
+button.danger {
+  color: var(--ae-danger);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ae-focus);
+  outline-offset: 2px;
+}
+
+/* A labeled row with a switch at its end. */
+.switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--ae-gap) * 2);
+  min-height: var(--ae-ctl);
+  cursor: pointer;
+}
+
+.switch input {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border-radius: 10px;
+  background: var(--ae-active);
+  cursor: pointer;
+}
+
+.switch input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ae-text);
+  transition: translate var(--ae-feedback) ease-out;
+}
+
+.switch input:checked {
+  background: var(--ae-accent);
+}
+
+.switch input:checked::after {
+  translate: 14px 0;
+  background: var(--ae-on-accent);
+}
+
+.switch input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch input::after {
+    transition: none;
+  }
+}

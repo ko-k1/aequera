@@ -1,0 +1,161 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* The vault page. */
+
+main {
+  display: grid;
+  gap: 28px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+p {
+  margin: 0;
+}
+
+h3 {
+  margin: 0 0 var(--ae-gap);
+  font-weight: 500;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.top p {
+  max-width: 60ch;
+  margin-top: 4px;
+}
+
+.keep {
+  padding: 0 12px;
+  border-radius: var(--ae-rad);
+  background: var(--ae-surface);
+}
+
+.summary {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--ae-rad);
+  background: var(--ae-surface);
+}
+
+.total span:first-child {
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tops {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.top-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.top-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.top-list li span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ae-gap);
+}
+
+#images[aria-pressed="true"] {
+  background: var(--ae-active);
+}
+
+#images-note,
+#empty {
+  margin-bottom: 12px;
+}
+
+.ads {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ad {
+  display: grid;
+  align-content: start;
+  gap: var(--ae-gap);
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+}
+
+.creative {
+  overflow: hidden;
+  border-radius: calc(var(--ae-rad) - 3px);
+  background: var(--ae-surface);
+}
+
+.creative img {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+}
+
+.text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+}
+
+.text:empty {
+  display: none;
+}
+
+.meta,
+.link {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link {
+  color: var(--ae-accent);
+}

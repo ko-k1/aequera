@@ -1,12 +1,16 @@
 {
   "manifest_version": 2,
   "name": "Ad Veil",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Aequera's ad and tracker handling: blocks requests the filter lists match and hides ads that reach the page. Local only.",
   "browser_specific_settings": {
     "gecko": {
       "id": "adveil@aequera"
     }
+  },
+  "icons": {
+    "16": "icons/veil.svg",
+    "32": "icons/veil.svg"
   },
   "permissions": [
     "<all_urls>",
@@ -18,8 +22,16 @@
     "webRequestBlocking"
   ],
   "background": {
-    "scripts": ["engine.js", "background.js"],
+    "scripts": ["model.js", "engine.js", "vault.js", "background.js"],
     "persistent": true
+  },
+  "page_action": {
+    "default_icon": "icons/veil.svg",
+    "default_title": "Ad Veil",
+    "default_popup": "pages/popup.html",
+    "show_matches": ["http://*/*", "https://*/*"],
+    "pinned": true,
+    "browser_style": false
   },
   "content_scripts": [
     {

@@ -393,9 +393,14 @@ control: `adveil/aequera-adveil.js` keeps the add-on's enabled state equal
 to the pref, as Firefox does for its own pref-driven system add-ons.
 Matching runs in the extension process; nothing here touches the network.
 
+Its address bar button (a page action) shows this page's counts and opens
+a popup with an "On for this site" switch and the vault (what was blocked
+and hidden, kept locally for 90 days; never from private windows).
+
 Tests: `tests/browser/browser_aequera_adveil.js` (built-in install, least
-privilege, blocking and hiding on a fixture, the pref off and on, no request
-of its own). The upstream gate runs Firefox's tests with the pref off.
+privilege, blocking and hiding on a fixture, the pref off and on, the vault,
+private windows unrecorded, the popup's site switch, no request of its own).
+The upstream gate runs Firefox's tests with the pref off.
 
 ## Robustness
 

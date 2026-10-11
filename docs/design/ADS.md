@@ -1,7 +1,8 @@
 # Ad Veil
 
-Status: proposed (ADR 0003). Slice 1 (block and hide) is implemented
-(`aequera/extensions/ad-veil`); the rest is design.
+Status: proposed (ADR 0003). Slices 1 (block and hide) and 2 (vault,
+per-site switch) are implemented (`aequera/extensions/ad-veil`); veil mode
+and slices 3–5 are design.
 
 Ad Veil is how Aequera handles ads: block what the filter lists match at the
 network layer, hide what still reaches the page, keep a local vault of it,
@@ -124,13 +125,50 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   `opacity: 0 !important; pointer-events: none !important`, which keeps the
   element's box so size-based bait checks pass.
 
+### Address bar button and popup (slice 2)
+
+- A page action (`pageAction-urlbar-adveil_aequera`) on http(s) pages: its
+  tooltip carries this page's counts ("Ad Veil: 12 blocked, 3 hidden on this
+  page"), its icon (theme colored, `context-fill`) shows when Ad Veil is off
+  for the site. Page actions have no badge, so the count is in the tooltip
+  and the popup.
+- The popup (`pages/popup.html`): the site, an "On for this site" switch,
+  this page's Blocked and Hidden counts, and "Open vault". Switching reloads
+  the page, since blocking and hiding apply from a page's start.
+- A site turned off covers its subdomains (`example.com` covers
+  `news.example.com`); the site is the host without a leading `www.`. Off
+  means no blocking, no hiding, no recording, and the content script stops.
+
 ### Vault (slice 2)
 
-- IndexedDB in the add-on only, capped (proposed 5,000 entries or 90 days),
-  never synced or uploaded; export and clear are explicit.
-- Private windows are never recorded.
+- IndexedDB in the add-on only (`vault.js`; the background page is its only
+  writer), never synced or uploaded; export (JSON) and a two-step clear are
+  explicit. A database that cannot be opened is recreated empty.
+- Hidden ads: one entry each (time, site, page, link, creative URL, up to
+  200 characters of text), deduplicated per page, newest 5,000 kept.
+  Content scripts find them by querying the applied selectors when the page
+  is idle; what they send is validated (http(s) URLs only, bounded sizes).
+- Blocked requests: per day, site, and blocked host, a count (a page can
+  block dozens; single entries would drown the ads). Summed in memory,
+  written every 5 seconds.
+- Everything older than 90 days is dropped (hourly prune).
+- Private windows are never recorded; their counts exist only in the popup.
 - Creative URLs are stored, not images; the vault shows images only on
-  "Show images" (a request to the ad server, credentials omitted).
+  "Show images": a request to the ad server without cookies or a referrer,
+  shown only if the response is an image. Ad Veil never blocks its own
+  pages' requests.
+- The page (`pages/vault.html`): last 7 days blocked, most blocked hosts and
+  the sites they were on, the hidden ads as cards (text, site, time, link),
+  and the "Keep a vault" switch.
+- Known gap: Firefox's "Clear history" does not clear the vault (an add-on
+  learns of it only with the `history` permission); the vault's own Clear
+  and its 90-day limit do.
+
+### Veil mode (slice 2b, not built)
+
+Per-site "let ads load, hide them" needs the network rules split by list
+(EasyList's visual-ad rules allowed, the rest still blocked) and the veil
+hiding style; it follows once the per-site store above has proven out.
 
 ### Visit (slice 4)
 
@@ -154,16 +192,28 @@ A browser test fails on any request from the add-on outside this table.
 
 ## Configuration
 
+One pref, the global switch, applied by Aequera chrome code:
+
 | Pref | Type | Default |
 |---|---|---|
 | `aequera.adveil.enabled` | bool | `true` |
-| `aequera.adveil.vault.enabled` | bool | `true` (slice 2) |
-| `aequera.adveil.visit.enabled` | bool | `true` after first-run confirm (slice 4) |
-| `aequera.adveil.lists.autoUpdate` | bool | `true` (slice 3) |
 
-Per-site off and veil are stored in the add-on. A compiled engine or list
-update that fails to load falls back to the shipped snapshots
-(`AGENTS.md`: configuration failures recover to a known-good state).
+Everything else is Ad Veil's own setting, kept in the add-on's
+`storage.local` (an add-on cannot read prefs) and changed in its pages:
+
+| Setting | Type | Default | Where |
+|---|---|---|---|
+| `offSites` | list of sites | `[]` | popup switch |
+| `vault` | bool | `true` | vault page, "Keep a vault" |
+| visit, list updates | | slices 3–4 | first run, panel |
+
+Settings are validated on every load (`model.js`, `settingsFrom`): unknown
+or malformed values fall back to the defaults. Sites turned off from a
+private window are kept in memory only, so a private visit never reaches the
+profile; turning a site back on there may clear a normal-window choice. A
+compiled engine or list update that fails to load falls back to the shipped
+snapshots (`AGENTS.md`: configuration failures recover to a known-good
+state).
 
 ## Performance budget
 
@@ -189,7 +239,8 @@ whether ETP's `ads-track-digest256` blocked a request before Ad Veil saw it.
 | Slice | Delivers | Acceptance |
 |---|---|---|
 | 1 Block + hide | engine crate + wasm, list snapshots, built-in add-on, webRequest blocking, cosmetic hiding, `aequera.adveil.enabled` | engine tests; fixture page: ad request blocked and ad element hidden, pref off restores both; manifest permission test; real launch installs the add-on; SpiderMonkey per-request numbers recorded |
-| 2 Vault + controls | vault store and page, address bar count, per-site off and veil | entries recorded and capped; private windows unrecorded; per-site changes apply live |
+| 2 Vault + controls | vault store and page, address bar button and popup, per-site off | done: vault records the fixture's ad (link, site, text, image) and blocked host; private windows record nothing (mutation-checked); popup switch turns blocking and hiding off and on for the site; no request of the add-on's own with the vault open |
+| 2b Veil mode | per-site veil (network rules split by list, veil style) | a walled site reads in veil mode; the rest stays blocked |
 | 3 Updates | automatic list updates with fallback | update shows in the panel; a corrupt download keeps the previous set |
 | 4 First run + Visit | first-run screen, visit queue | every visit logged; limits enforced; private windows never visit |
 | 5 Tune | corpus run, ETP ads-list decision | numbers recorded here |

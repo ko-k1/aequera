@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ad Veil</title>
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="popup.css">
+<script src="popup.js" defer></script>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Ad Veil</h1>
+    <p id="site" class="dim small"></p>
+  </header>
+  <label class="switch">
+    <span id="switch-label">On for this site</span>
+    <input type="checkbox" role="switch" id="site-on" disabled>
+  </label>
+  <dl class="counts" aria-live="polite">
+    <div><dt class="dim small">Blocked</dt><dd id="blocked">0</dd></div>
+    <div><dt class="dim small">Hidden</dt><dd id="hidden">0</dd></div>
+  </dl>
+  <p id="note" class="dim small" hidden></p>
+  <button id="vault" type="button">Open vault</button>
+</main>
+</body>
+</html>
