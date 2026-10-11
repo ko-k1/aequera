@@ -99,7 +99,6 @@ var VeilPage = (() => {
     plural,
     element,
     thumb,
-    imageUrl,
     dropImages,
     number: n => numbers.format(n),
     date: t => dates.format(t),

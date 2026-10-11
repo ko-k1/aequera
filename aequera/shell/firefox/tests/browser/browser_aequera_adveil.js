@@ -189,7 +189,7 @@ async function readVault(tab) {
     const ads = [];
     for (const tile of doc.querySelectorAll(".ad-tile")) {
       tile.querySelector(".ad-open").click();
-      await ContentTaskUtils.waitForCondition(() => $("inspector").open, "inspector open");
+      await ContentTaskUtils.waitForCondition(() => !$("inspector").hidden, "inspector open");
       ads.push({
         link: $("ins-target").querySelector("a")?.href || null,
         site: $("ins-page").querySelector(".site").textContent,
@@ -442,24 +442,50 @@ add_task(async function test_vault_groups_filters_and_removes_ads() {
   await SpecialPowers.spawn(vault.linkedBrowser, [], async () => {
     const doc = content.document;
     const $ = id => doc.getElementById(id);
-    // A day before today, without ads: the wall empties.
+    const tiles = () => doc.querySelectorAll(".ad-tile").length;
+    // A day before today, without ads: the canvas empties.
     const from = $("range-from");
     from.value = from.min;
     $("range-to").value = from.min;
     $("range-to").dispatchEvent(new content.Event("change"));
     from.dispatchEvent(new content.Event("change"));
-    is(doc.querySelectorAll(".ad-tile").length, 0, "a day without ads shows none");
+    await ContentTaskUtils.waitForCondition(() => tiles() == 0, "a day without ads shows none");
     ok(!$("vault-none").hidden, "and says so");
     ok(doc.querySelector("#timeline g.out"), "the timeline marks the days left out");
     $("range-all").click();
-    is(doc.querySelectorAll(".ad-tile").length, 1, "all days show the ad again");
+    await ContentTaskUtils.waitForCondition(() => tiles() == 1, "all days show the ad again");
 
     // Kind filter: the fixture's ad has an image.
     $("vault-kind").value = "text";
     $("vault-kind").dispatchEvent(new content.Event("change"));
-    is(doc.querySelectorAll(".ad-tile").length, 0, "no text ad");
+    await ContentTaskUtils.waitForCondition(() => tiles() == 0, "no text ad");
     $("vault-kind").value = "";
     $("vault-kind").dispatchEvent(new content.Event("change"));
+    await ContentTaskUtils.waitForCondition(() => tiles() == 1, "every kind again");
+
+    // The canvas: the wheel zooms around the pointer.
+    const stage = $("stage");
+    const world = $("world");
+    const ratio = () => parseInt($("zoom-ratio").textContent, 10);
+    const before = ratio();
+    const box = stage.getBoundingClientRect();
+    stage.dispatchEvent(
+      new content.WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -200, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 })
+    );
+    Assert.greater(ratio(), before, `the wheel zooms in (${before}% to ${ratio()}%)`);
+    const zoomed = world.style.transform;
+
+    // A click goes to the ad: the others dim, the panel shows it beside the
+    // canvas; Escape returns the view.
+    doc.querySelector(".ad-open").click();
+    ok(stage.classList.contains("inspecting"), "the canvas dims the other ads");
+    ok(doc.querySelector(".ad-tile").classList.contains("inspected"), "and marks this one");
+    ok(!$("inspector").hidden, "the details panel is open");
+    isnot(world.style.transform, zoomed, "the view goes to the ad");
+    doc.dispatchEvent(new content.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    ok($("inspector").hidden, "Escape closes it");
+    ok(!stage.classList.contains("inspecting"), "and the others are shown again");
+    is(world.style.transform, zoomed, "the view is back where it was");
 
     // The inspector's next step shows the earlier time.
     doc.querySelector(".ad-open").click();
@@ -469,9 +495,9 @@ add_task(async function test_vault_groups_filters_and_removes_ads() {
 
     // Remove: two clicks.
     $("ins-remove").click();
-    ok($("inspector").open, "the first click only asks");
+    ok(!$("inspector").hidden, "the first click only asks");
     $("ins-remove").click();
-    await ContentTaskUtils.waitForCondition(() => !$("inspector").open && !doc.querySelector(".ad-tile"), "the ad is removed");
+    await ContentTaskUtils.waitForCondition(() => $("inspector").hidden && !doc.querySelector(".ad-tile"), "the ad is removed");
   });
   state = await readVault(vault);
   is(state.ads.length, 0, "removed from the vault");

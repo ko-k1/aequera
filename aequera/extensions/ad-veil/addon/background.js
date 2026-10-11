@@ -47,28 +47,33 @@ let adHostSet = new Set();
 
 // Saved ad images (settings.saveImages): one fetch per image URL when its
 // ad is recorded, only for images the page had already loaded, without
-// cookies or a referrer, kept as a thumbnail in the vault. Requests from
-// the background have no tab, so Ad Veil's own blocking skips them, and
+// cookies or a referrer, kept in the vault at up to the size the vault's
+// canvas shows ads (AdNauseam's 800 px), with the image's own size. Requests
+// from the background have no tab, so Ad Veil's own blocking skips them, and
 // tracking protection lets an add-on with host access load them.
-const THUMB_SIZE = 320;
+const SAVED_IMAGE_SIZE = 800;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
-const MAX_RAW_THUMB_BYTES = 200 * 1024;
+const MAX_RAW_IMAGE_BYTES = 300 * 1024;
 const IMAGE_FETCHES = 2;
 const imageQueue = [];
 const imagesWanted = new Set();
 let imageFetches = 0;
 
-async function thumbnail(blob) {
+// { blob, width, height }: the image at most SAVED_IMAGE_SIZE on its long
+// side (WebP), and its own size; null when it cannot be kept.
+async function savedImage(blob) {
   try {
     const bitmap = await createImageBitmap(blob);
-    const scale = Math.min(1, THUMB_SIZE / Math.max(bitmap.width, bitmap.height));
-    const canvas = new OffscreenCanvas(Math.max(1, Math.round(bitmap.width * scale)), Math.max(1, Math.round(bitmap.height * scale)));
+    const { width, height } = bitmap;
+    const scale = Math.min(1, SAVED_IMAGE_SIZE / Math.max(width, height));
+    const canvas = new OffscreenCanvas(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)));
     canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close();
-    return await canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
+    return { blob: await canvas.convertToBlob({ type: "image/webp", quality: 0.85 }), width, height };
   } catch {
-    // Not decodable here (an SVG, say): kept as is when small.
-    return blob.size <= MAX_RAW_THUMB_BYTES ? blob : null;
+    // Not decodable here (an SVG, say): kept as is when small; the page
+    // learns its size when it shows it.
+    return blob.size <= MAX_RAW_IMAGE_BYTES ? { blob, width: 0, height: 0 } : null;
   }
 }
 
@@ -81,9 +86,9 @@ async function saveImage(url) {
   if (!response.ok || !blob.type.startsWith("image/") || blob.size > MAX_IMAGE_BYTES) {
     return;
   }
-  const thumb = await thumbnail(blob);
-  if (thumb) {
-    await VeilVault.saveImage(url, thumb);
+  const saved = await savedImage(blob);
+  if (saved) {
+    await VeilVault.saveImage(url, saved);
   }
 }
 

@@ -33,7 +33,7 @@ Design, decisions, and measurements: `docs/design/ADS.md` and
 | `addon/vault.js` | The vault store (IndexedDB): hidden ads, daily blocked totals, saved ad images, prune, export, clear |
 | `addon/engine.js` | `engine.wasm` wrapper |
 | `addon/content.js` | Reports class and id names for generic rules; finds and describes hidden ads (inside ad frames too) for the popup and vault |
-| `addon/pages/` | `popup.html` (toolbar button), `dashboard.html` (vault, blocking, sites, settings), shared `common.js` and `ui.css` |
+| `addon/pages/` | `popup.html` (toolbar button), `dashboard.html` (vault, blocking, sites, settings), the vault's canvas `canvas.js`, shared `common.js` and `ui.css` |
 | `addon/icons/` | Theme-colored button icons (on, off for this site) |
 | `addon/lists/` | Filter list snapshots, versions, license |
 
@@ -129,22 +129,35 @@ Display (toolbar badge, popup, dashboard) and the ad view:
 
 AdNauseam-style vault (`docs/design/ADS.md`, Vault):
 
-- The vault is the dashboard's first tab: ads found, different ads,
-  advertisers, and sites; the same ad found again shown once with a count;
-  a packed, zoomable wall (text ads as text boxes); a timeline of ads per
-  day whose dragged days (or date fields) filter the wall; search, site,
-  and kind filters; statistics (top advertisers, ad networks, sites); an
-  inspector stepping through each time an ad was found, which can remove it.
-- `model.test.mjs`: 17 tests, adding destinations, grouping, filtering, the
-  timeline's days, and the vault's numbers.
-- `browser_aequera_adveil.js`: every vault check reads ads through the
-  inspector; a new task finds the fixture ad twice (one ad, count 2,
-  "1 / 2", stepping to "2 / 2", the page it was found on, the saved image
-  at full size, the timeline's count), filters it out by day and kind, and
-  removes it (two clicks).
-- Real launch, seeded with 81 sightings of 28 ads (light and dark, 1366 px
-  and 420 px): a drag across the timeline picked Oct 3 – Oct 8 and the wall
-  showed those days' 19 ads.
+- The vault is the dashboard's first tab, a canvas as AdNauseam's: ads at
+  their own size packed around the middle (`VeilModel.packAds`), the same
+  ad found again shown once with a count, text ads as text boxes; drag to
+  pan, wheel to zoom around the pointer, Fit, keys; a click goes to the ad,
+  dims the others, and docks the inspector beside it (each time it was
+  found, removal); Escape returns the view. Over the canvas: ads found,
+  different ads, advertisers, sites; search, site, and kind filters;
+  statistics (top advertisers, ad networks, sites); a timeline of ads per
+  day whose dragged days (or date fields) filter the canvas.
+- Saved images are kept at up to 800 px with their own size (were 320 px
+  thumbnails), so the canvas shows ads at their size.
+- `model.test.mjs`: 19 tests, adding destinations, grouping, filtering, the
+  timeline's days, the vault's numbers, ad sizes, and packing (400 ads: no
+  overlaps, in bounds, balanced, 64% dense, about 16 ms in bun).
+- `browser_aequera_adveil.js` 92 checks: every vault check reads ads
+  through the inspector; a new task finds the fixture ad twice (one ad,
+  count 2, "1 / 2", stepping to "2 / 2", the page it was found on, the
+  saved image at full size, the timeline's count), filters it out by day
+  and kind, zooms the canvas with the wheel, opens the ad (others dimmed,
+  view moved) and closes it with Escape (view restored), and removes it.
+- Real launch with real input (WebDriver actions), seeded with 81 sightings
+  of 28 ads, light and dark: fit 38%; the wheel zoomed to 60% around the
+  pointer; a drag panned the canvas by exactly the drag; a click went to
+  the ad at 184% with the others dimmed; Escape restored the earlier view
+  exactly; a drag across the timeline picked Oct 3 – Oct 8 and the canvas
+  showed those days' 19 ads. It found two bugs the tests did not: the new
+  script missing from `jar.mn`, and the timeline's drag also panning the
+  canvas (the redrawn chart detached the event's target, so the canvas did
+  not see the press was the timeline's; fixed by checking the event path).
 
 ## Known gaps (later slices)
 

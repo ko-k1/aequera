@@ -23,6 +23,7 @@ browser.jar:
     builtin-addons/adveil/pages/dashboard.html  (pages/dashboard.html)
     builtin-addons/adveil/pages/dashboard.css   (pages/dashboard.css)
     builtin-addons/adveil/pages/dashboard.js    (pages/dashboard.js)
+    builtin-addons/adveil/pages/canvas.js       (pages/canvas.js)
     builtin-addons/adveil/lists/easylist.txt    (lists/easylist.txt)
     builtin-addons/adveil/lists/easyprivacy.txt (lists/easyprivacy.txt)
     builtin-addons/adveil/lists/README.md       (lists/README.md)

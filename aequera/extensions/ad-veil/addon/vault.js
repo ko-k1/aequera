@@ -94,9 +94,11 @@ var VeilVault = (() => {
     return (await request(tx.objectStore("images").count(creative))) > 0;
   }
 
-  function saveImage(creative, blob) {
+  // `width` and `height`: the image's own size (0 when unknown; entries from
+  // before they were kept have none).
+  function saveImage(creative, { blob, width = 0, height = 0 }) {
     return transaction(["images"], "readwrite", ({ images }) => {
-      images.put({ creative, blob, time: Date.now() });
+      images.put({ creative, blob, width, height, time: Date.now() });
     });
   }
 
@@ -225,15 +227,18 @@ var VeilVault = (() => {
   }
 
   // The vault view: every ad entry (at most VeilModel.MAX_ADS) and the saved
-  // image of each creative that has one ([creative, Blob] pairs; pages make
-  // the URLs, so viewing makes no request).
+  // image of each creative that has one ([creative, { blob, width, height }]
+  // pairs; pages make the URLs, so viewing makes no request).
   async function everything() {
     const tx = (await db()).transaction(["ads", "images"], "readonly");
     const [ads, images] = await Promise.all([
       collect(tx.objectStore("ads"), null, "next", Infinity),
       collect(tx.objectStore("images"), null, "next", Infinity),
     ]);
-    return { ads, images: images.map(entry => [entry.creative, entry.blob]) };
+    return {
+      ads,
+      images: images.map(entry => [entry.creative, { blob: entry.blob, width: entry.width || 0, height: entry.height || 0 }]),
+    };
   }
 
   // Removes ad entries by id (one ad and every sighting of it, from the

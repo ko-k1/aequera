@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* The dashboard: overview, vault, sites, settings. */
+/* The dashboard: vault, blocking, sites, settings. */
 
 .shell {
   max-width: 1040px;
@@ -194,10 +194,40 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 
-/* Vault: AdNauseam's layout, in Aequera's tokens. The wall takes the
-   window's width. */
+/* Vault: AdNauseam's stage, in Aequera's tokens. The vault tab fills the
+   window under the header; the stage is the canvas, its controls float
+   over it. */
+body[data-tab="vault"] {
+  overflow: hidden;
+}
+
 body[data-tab="vault"] .shell {
-  max-width: 1440px;
+  display: flex;
+  flex-direction: column;
+  max-width: none;
+  height: 100vh;
+  padding: 12px 16px 16px;
+  box-sizing: border-box;
+}
+
+body[data-tab="vault"] .top {
+  margin-bottom: 12px;
+}
+
+body[data-tab="vault"] main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.vault {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.vault[hidden] {
+  display: none;
 }
 
 .bar {
@@ -208,7 +238,7 @@ body[data-tab="vault"] .shell {
 }
 
 .bar input[type="search"] {
-  flex: 1 1 220px;
+  flex: 1 1 200px;
 }
 
 input[type="date"] {
@@ -222,13 +252,283 @@ input[type="date"] {
   font: inherit;
 }
 
-.range .hint {
-  margin-inline-start: auto;
-}
-
 button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* The stage: a grid that moves and scales with the view (canvas.js). Clip,
+   not hidden: focus must not scroll it. */
+.stage {
+  --ae-stage: light-dark(#e8e8ed, #0b0a0f);
+  --ae-stage-grid: light-dark(rgb(21 20 26 / 0.07), rgb(251 251 254 / 0.06));
+  --ae-overlay: light-dark(rgb(249 249 251 / 0.92), rgb(28 27 34 / 0.92));
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: clip;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+  background-color: var(--ae-stage);
+  background-image:
+    linear-gradient(var(--ae-stage-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ae-stage-grid) 1px, transparent 1px);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.stage:focus-visible {
+  outline-offset: -2px;
+}
+
+.stage.panning {
+  cursor: grabbing;
+}
+
+.world {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  transform-origin: 0 0;
+}
+
+.stage.easing .world {
+  transition: transform 260ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* An ad, at its own size in world px. */
+.ad-tile {
+  position: absolute;
+}
+
+.ad-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 2px;
+  background: var(--ae-bg);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  cursor: inherit;
+  text-align: start;
+}
+
+.ad-open:hover {
+  background: var(--ae-bg);
+  outline: 2px solid var(--ae-accent);
+  outline-offset: 2px;
+}
+
+.ad-open img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  -webkit-user-drag: none;
+}
+
+.stage .ad-tile {
+  transition: opacity 200ms;
+}
+
+.stage.inspecting .ad-tile:not(.inspected) {
+  opacity: 0.18;
+}
+
+.ad-tile.inspected .ad-open {
+  outline: 3px solid var(--ae-accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage .ad-tile {
+    transition: none;
+  }
+}
+
+/* No image saved: the advertiser on an ad-sized box. */
+.ad-placeholder {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 4px;
+  height: 100%;
+  background: var(--ae-surface);
+  color: var(--ae-text-dim);
+}
+
+.ad-placeholder .initial {
+  font-size: 48px;
+  font-weight: 600;
+}
+
+/* How many times this ad was found: on the ad's corner, ringed in the stage
+   color so it reads over any image. */
+.count-badge {
+  position: absolute;
+  inset-block-start: -9px;
+  inset-inline-end: -9px;
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  box-shadow: 0 0 0 2px var(--ae-stage);
+  background: var(--ae-accent);
+  color: var(--ae-on-accent);
+  font-size: var(--ae-tl);
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* A text ad: its words and where it leads, as a search ad shows them. */
+.text-ad {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  color: var(--ae-text);
+}
+
+.text-ad-words {
+  overflow-wrap: anywhere;
+}
+
+.text-ad-cite {
+  overflow: hidden;
+  color: var(--ae-accent);
+  font-size: var(--ae-tl);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Overlays: the stage's controls, panels, and notices. */
+.overlay {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+  background: var(--ae-overlay);
+  backdrop-filter: blur(8px);
+  cursor: auto;
+  user-select: text;
+}
+
+.overlay-top {
+  inset: 10px 10px auto;
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.vault-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: var(--ae-tl);
+  font-variant-numeric: tabular-nums;
+}
+
+.vault-stats strong {
+  font-size: 16px;
+}
+
+.zoom {
+  inset-block-start: calc(10px + var(--top-height, 88px) + 8px);
+  inset-inline-start: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+}
+
+.zoom output {
+  min-width: 5ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom #zoom-fit {
+  min-height: 26px;
+  padding: 0 8px;
+  border-color: transparent;
+}
+
+.stats-panel {
+  inset-block-start: calc(10px + var(--top-height, 88px) + 8px);
+  inset-inline-end: 10px;
+  display: grid;
+  gap: 6px;
+  width: min(320px, calc(100% - 20px));
+  /* Above the timeline (about 180 px with its margins). */
+  max-height: calc(100% - var(--top-height, 88px) - 220px);
+  overflow: auto;
+  padding: 12px;
+}
+
+.stats-panel h3 {
+  margin-top: 6px;
+}
+
+.stats-panel[hidden] {
+  display: none;
+}
+
+.notice {
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  display: grid;
+  gap: 8px;
+  max-width: min(440px, calc(100% - 40px));
+  padding: 0;
+  border: 0;
+  background: none;
+  backdrop-filter: none;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.notice p:not([hidden]) {
+  padding: 12px 16px;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+  background: var(--ae-overlay);
+  pointer-events: auto;
+}
+
+.timeline {
+  inset: auto 10px 10px;
+  display: grid;
+  gap: 4px;
+  padding: 8px 12px;
+}
+
+.timeline .table-view {
+  position: relative;
+}
+
+.timeline .table-view table {
+  position: absolute;
+  inset-block-end: calc(100% + 8px);
+  inset-inline-start: 0;
+  width: 260px;
+  max-height: 320px;
+  overflow: auto;
+  display: block;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+  background: var(--ae-bg);
+}
+
+.range .hint {
+  margin-inline-start: auto;
 }
 
 /* The timeline: drag across it to pick days; days outside are faded. */
@@ -242,178 +542,27 @@ button:disabled {
   fill: var(--ae-chart-track);
 }
 
-.zoom {
+/* The inspector: docked at the stage's end while the canvas shows the ad. */
+.details {
+  inset-block: calc(10px + var(--top-height, 88px) + 8px) 10px;
+  inset-inline-end: 10px;
+  z-index: 2;
   display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 2px;
-  border-radius: var(--ae-rad);
-  background: var(--ae-surface);
-}
-
-.zoom output {
-  min-width: 4ch;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-/* The wall: columns of --ad-width; each ad spans as many 2px rows as it is
-   tall (dashboard.js), so images of any shape pack without gaps. */
-.wall {
-  --ad-width: 176px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--ad-width), 100%), 1fr));
-  grid-auto-rows: 2px;
-  column-gap: 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ad-tile {
-  align-self: start;
-  min-width: 0;
-}
-
-.ad-tile-inner {
-  position: relative;
-  display: grid;
-  gap: 4px;
-}
-
-.ad-open {
-  position: relative;
-  display: block;
-  width: 100%;
-  min-height: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--ae-border);
-  border-radius: var(--ae-rad);
-  background: var(--ae-surface);
-  text-align: start;
-}
-
-.ad-open:hover {
-  border-color: var(--ae-accent);
-  background: var(--ae-surface);
-}
-
-.ad-open .ad-thumb {
-  border-radius: 0;
-  background: transparent;
-}
-
-.ad-open .ad-thumb img {
-  display: block;
-  height: auto;
-}
-
-/* No image saved: the advertiser's initial on a 16:9 placeholder. */
-.ad-open .ad-thumb:not([data-has-image]) {
-  aspect-ratio: 16 / 9;
-  font-size: 28px;
-}
-
-/* How many times this ad was found: on the ad's corner, ringed in the page
-   surface so it reads over any image. */
-.count-badge {
-  position: absolute;
-  inset-block-start: -7px;
-  inset-inline-end: -7px;
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: 10px;
-  box-shadow: 0 0 0 2px var(--ae-bg);
-  pointer-events: none;
-  line-height: 20px;
-  background: var(--ae-accent);
-  color: var(--ae-on-accent);
-  font-size: var(--ae-tl);
-  font-weight: 600;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-/* A text ad: its words and where it leads, as a search ad shows them. */
-.text-ad {
-  display: grid;
-  gap: 6px;
-  padding: 10px 12px;
-}
-
-.text-ad-words {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 6;
-  overflow-wrap: anywhere;
-}
-
-.text-ad-cite {
-  overflow: hidden;
-  color: var(--ae-accent);
-  font-size: var(--ae-tl);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.caption {
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Small sizes are a collage: names are in the inspector and the label. */
-.wall[data-compact="true"] .caption {
-  display: none;
-}
-
-.wall[data-compact="true"] .text-ad-words {
-  -webkit-line-clamp: 3;
-}
-
-.wall-more {
-  height: 1px;
-}
-
-.statistics summary {
-  cursor: pointer;
-}
-
-.statistics summary h2 {
-  display: inline;
-}
-
-.statistics .pair {
-  margin-top: 12px;
-}
-
-.statistics h3 {
-  margin-bottom: 6px;
-}
-
-/* The inspector. */
-#inspector {
-  width: min(880px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
-  padding: 0;
-  border: 1px solid var(--ae-border);
-  border-radius: var(--ae-rad);
+  flex-direction: column;
+  width: min(380px, calc(100% - 20px));
   background: var(--ae-bg);
-  color: var(--ae-text);
+  backdrop-filter: none;
 }
 
-#inspector::backdrop {
-  background: rgb(0 0 0 / 0.55);
+.details[hidden] {
+  display: none;
 }
 
 .ins-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px 10px 16px;
+  padding: 8px 8px 8px 14px;
   border-bottom: 1px solid var(--ae-border);
 }
 
@@ -439,54 +588,50 @@ button:disabled {
 
 .ins-body {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr);
-  gap: 16px;
-  padding: 16px;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
 }
 
 .ins-media {
   display: grid;
   place-items: center;
-  min-height: 160px;
+  min-height: 120px;
+  padding: 8px;
   border-radius: calc(var(--ae-rad) - 3px);
-  background: var(--ae-surface);
+  background: var(--ae-stage, var(--ae-surface));
 }
 
 .ins-media img {
   display: block;
   max-width: 100%;
-  max-height: 60vh;
+  max-height: 320px;
 }
 
 .ins-media .text-ad.large {
   font-size: 16px;
 }
 
-.ins-info {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  min-width: 0;
-}
-
 .ins-text {
   overflow-wrap: anywhere;
 }
 
-.ins-info dl {
+.ins-body dl {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 6px 12px;
   margin: 0;
 }
 
-.ins-info dt {
+.ins-body dt {
   color: var(--ae-text-dim);
   font-size: var(--ae-tl);
   line-height: 20px;
 }
 
-.ins-info dd {
+.ins-body dd {
   display: grid;
   margin: 0;
   min-width: 0;
@@ -494,12 +639,13 @@ button:disabled {
 }
 
 @media (max-width: 640px) {
-  .ins-body {
-    grid-template-columns: 1fr;
-  }
-
   .range .hint {
     display: none;
+  }
+
+  .details {
+    inset-block-start: auto;
+    max-height: 60%;
   }
 }
 

@@ -268,6 +268,57 @@ test("adsPerDay: every day from the first sighting, at least two weeks, at most 
   assert.equal(model.adsPerDay(old, day(5)).length, RETENTION_DAYS);
 });
 
+test("adSize: own size, at most 800 wide, short side at least 24, null when unknown", () => {
+  const { adSize } = model;
+  assert.deepEqual(adSize(300, 250), { width: 300, height: 250 });
+  assert.deepEqual(adSize(1600, 400), { width: 800, height: 200 });
+  assert.deepEqual(adSize(320, 10), { width: 768, height: 24 });
+  assert.equal(adSize(0, 250), null);
+  assert.equal(adSize(undefined, undefined), null);
+});
+
+test("packAds: around the middle, never overlapping, within its bounds", () => {
+  const SIZES = [
+    [300, 250],
+    [728, 90],
+    [160, 600],
+    [320, 50],
+    [300, 600],
+    [970, 250],
+    [250, 250],
+    [180, 120],
+  ];
+  const sizes = Array.from({ length: 400 }, (_, i) => ({ width: SIZES[i % 8][0], height: SIZES[i % 8][1] }));
+  const gap = 12;
+  const started = performance.now();
+  const { positions, bounds } = model.packAds(sizes, { gap });
+  const took = performance.now() - started;
+  assert.equal(positions.length, 400);
+  // The first is centered on the origin.
+  assert.ok(Math.abs(positions[0].x + 150) <= 16, `first x ${positions[0].x}`);
+  assert.equal(positions[0].y, 0);
+  const boxes = positions.map(({ x, y }, i) => ({ x, y, w: sizes[i].width, h: sizes[i].height }));
+  for (let i = 0; i < boxes.length; i++) {
+    const a = boxes[i];
+    assert.ok(a.x >= bounds.left && a.y >= bounds.top && a.x + a.w <= bounds.right && a.y + a.h <= bounds.bottom, `${i} in bounds`);
+    for (let j = i + 1; j < boxes.length; j++) {
+      const b = boxes[j];
+      const apart = a.x + a.w + gap <= b.x + 0.001 || b.x + b.w + gap <= a.x + 0.001 || a.y + a.h + gap <= b.y || b.y + b.h + gap <= a.y;
+      assert.ok(apart, `${i} and ${j} overlap`);
+    }
+  }
+  // A collage around the middle: about as much above as below, wider than tall.
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  assert.ok(Math.abs(bounds.top + bounds.bottom) < height * 0.2, `balanced: ${bounds.top} ${bounds.bottom}`);
+  assert.ok(width > height, `wider than tall: ${width}×${height}`);
+  // Dense: the ads cover most of the collage's area.
+  const area = sizes.reduce((n, s) => n + s.width * s.height, 0);
+  assert.ok(area / (width * height) > 0.5, `density ${(area / (width * height)).toFixed(2)}`);
+  console.log(`packAds: 400 ads in ${took.toFixed(1)} ms, ${Math.round(width)}×${Math.round(height)}, density ${(area / (width * height)).toFixed(2)}`);
+  assert.deepEqual(model.packAds([]), { positions: [], bounds: { left: 0, top: 0, right: 0, bottom: 0 } });
+});
+
 test("vaultStats counts sightings, ads, advertisers, sites, and their tops", () => {
   const stats = model.vaultStats(model.groupAds(vaultAds));
   assert.equal(stats.found, 5);

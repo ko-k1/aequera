@@ -341,6 +341,99 @@ var VeilModel = (() => {
     };
   }
 
+  // The size an ad is shown at on the vault's canvas: its own size, at most
+  // MAX_AD_WIDTH wide (AdNauseam's limit), and no smaller than MIN_AD_SIDE
+  // on its short side. Null when its size is unknown.
+  const MAX_AD_WIDTH = 800;
+  const MIN_AD_SIDE = 24;
+  function adSize(width, height) {
+    if (!(width > 0 && height > 0)) {
+      return null;
+    }
+    const scale = Math.max(Math.min(1, MAX_AD_WIDTH / width), MIN_AD_SIDE / Math.min(width, height));
+    return { width: Math.round(width * scale), height: Math.round(height * scale) };
+  }
+
+  // Packs ads ({ width, height }, in order) around the origin, as
+  // AdNauseam's vault does: each goes where its middle is closest to the
+  // origin (horizontal distance counting less, so the collage is wider than
+  // tall), on top of or under what is already placed, never overlapping and
+  // `gap` apart. Columns of PACK_UNIT px track the lowest and highest edge
+  // placed in them. Returns each ad's top-left corner and the bounds.
+  const PACK_UNIT = 16;
+  const PACK_COLUMNS = 1024;
+  const PACK_WIDE = 0.6;
+
+  // The largest of each `span` consecutive values of `values` starting at
+  // `from`, `from + 1`, … up to `last` (sliding window, linear time).
+  function windowMax(values, span, from, last, out) {
+    const queue = new Int32Array(last + span - from + 1);
+    let head = 0;
+    let tail = 0;
+    for (let k = from; k < last + span; k++) {
+      while (tail > head && values[queue[tail - 1]] <= values[k]) {
+        tail--;
+      }
+      queue[tail++] = k;
+      const start = k - span + 1;
+      if (start >= from) {
+        if (queue[head] < start) {
+          head++;
+        }
+        out[start] = values[queue[head]];
+      }
+    }
+  }
+
+  function packAds(sizes, { gap = 12 } = {}) {
+    const mid = PACK_COLUMNS / 2;
+    // Per column: the bottom edge below the origin, the top edge above it
+    // (as a distance up), each with the gap after it.
+    const below = new Float64Array(PACK_COLUMNS);
+    const above = new Float64Array(PACK_COLUMNS).fill(gap);
+    const downs = new Float64Array(PACK_COLUMNS);
+    const ups = new Float64Array(PACK_COLUMNS);
+    // Columns used so far: nothing beyond them is closer to the middle than
+    // the first free columns next to them.
+    let used = [mid, mid];
+    const positions = [];
+    const bounds = { left: 0, top: 0, right: 0, bottom: 0 };
+    for (const { width, height } of sizes) {
+      const span = Math.min(Math.max(Math.ceil((width + gap) / PACK_UNIT), 1), PACK_COLUMNS);
+      const from = Math.max(0, Math.min(used[0] - span, mid - Math.ceil(span / 2)));
+      const last = Math.min(PACK_COLUMNS - span, Math.max(used[1], mid - Math.floor(span / 2)));
+      windowMax(below, span, from, last, downs);
+      windowMax(above, span, from, last, ups);
+      let best = null;
+      for (let c = from; c <= last; c++) {
+        const down = downs[c];
+        const up = ups[c];
+        const dx = (c + span / 2 - mid) * PACK_UNIT * PACK_WIDE;
+        const downCost = Math.hypot(dx, down + height / 2);
+        const upCost = Math.hypot(dx, up + height / 2);
+        const cost = Math.min(downCost, upCost);
+        if (!best || cost < best.cost) {
+          best = downCost <= upCost ? { cost, c, y: down, under: true } : { cost, c, y: -(up + height), under: false };
+        }
+      }
+      for (let k = best.c; k < best.c + span; k++) {
+        if (best.under) {
+          below[k] = best.y + height + gap;
+        } else {
+          above[k] = -best.y + gap;
+        }
+      }
+      used = [Math.min(used[0], best.c), Math.max(used[1], best.c + span)];
+      const x = (best.c - mid) * PACK_UNIT + (span * PACK_UNIT - width) / 2;
+      positions.push({ x, y: best.y });
+      bounds.left = Math.min(bounds.left, x);
+      bounds.right = Math.max(bounds.right, x + width);
+      bounds.top = Math.min(bounds.top, best.y);
+      bounds.bottom = Math.max(bounds.bottom, best.y + height);
+    }
+    return { positions, bounds };
+  }
+
   // All-time counts (normal windows only), whatever was stored: counts are
   // whole non-negative numbers, `since` a past time (else `now`).
   function totalsFrom(stored, now) {
@@ -410,6 +503,8 @@ var VeilModel = (() => {
     filterGroups,
     adsPerDay,
     vaultStats,
+    adSize,
+    packAds,
     totalsFrom,
     badgeText,
     listInfo,

@@ -7,27 +7,30 @@
 // The dashboard (vault, blocking, sites, settings). The background owns the
 // vault and settings; this renders them and sends the user's changes.
 //
-// The vault follows AdNauseam's: the ads found, the same ad seen again shown
-// once with a count, on a wall that zooms; a timeline of ads found per day
-// whose days filter the wall; and an inspector for each ad and every time it
-// was found.
+// The vault follows AdNauseam's: every ad found, the same ad seen again
+// shown once with a count, packed at its own size on a canvas that pans and
+// zooms (canvas.js); a timeline of ads found per day whose days filter the
+// canvas; and, on a click, the canvas goes to the ad, dims the others, and
+// shows the ad and every time it was found beside it.
 
 (() => {
-  const { send, element, plural, number, date, time, thumb, imageUrl, dropImages, adLink, hostOf } = VeilPage;
-  const { groupAds, filterGroups, adsPerDay, vaultStats } = VeilModel;
+  const { send, element, plural, number, date, time, adLink, hostOf } = VeilPage;
+  const { groupAds, filterGroups, adsPerDay, vaultStats, adSize, packAds } = VeilModel;
   const TABS = ["vault", "blocking", "sites", "settings"];
   // Links from before the vault was the first tab.
   const TAB_ALIASES = { overview: "blocking" };
   const CONFIRM_MS = 4000;
-  // Ad widths on the wall (px); the ratio shown is against the default.
-  const ZOOM = [96, 128, 176, 240, 320, 440];
-  const ZOOM_DEFAULT = 2;
-  const ZOOM_KEY = "adveil.vault.zoom";
-  // Ads added to the wall at a time, more as it scrolls into view.
-  const WALL_PAGE = 120;
-  // The wall's row unit (px): each ad spans as many rows as it is tall.
-  const WALL_ROW = 2;
-  const WALL_GAP = 12;
+  // The newest ads the canvas shows at once (AdNauseam shows 300); the
+  // timeline reaches the others.
+  const MAX_SHOWN = 400;
+  // An image ad without a saved image: a box of the most common ad size.
+  const PLACEHOLDER = { width: 300, height: 250 };
+  // Text ads are as wide as their words need, within these (px).
+  const TEXT_WIDTH = [180, 360];
+  const GAP = 12;
+  // Going to an ad: at most this zoom, with this much room around it (px).
+  const FOCUS_ZOOM = 2;
+  const FOCUS_ROOM = 32;
   const $ = id => document.getElementById(id);
   const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
   const shortDay = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
@@ -38,10 +41,32 @@
   let groups = [];
   let images = new Map();
   let series = [];
-  // The wall's filter and what it shows.
+  // The canvas's filter, the groups it shows, and where each one is.
   const filter = { from: null, to: null };
   let shown = [];
-  let rendered = 0;
+  let rects = [];
+  let needsFit = true;
+  // Text ads are measured on the canvas: built while the vault is hidden,
+  // it is built again when shown.
+  let needsLayout = false;
+  // Object URLs of the saved images the canvas shows, by creative. Each
+  // build makes its own and revokes the previous build's once it replaces it.
+  let urls = new Map();
+
+  function urlIn(map, creative, blob) {
+    if (!map.has(creative)) {
+      map.set(creative, URL.createObjectURL(blob));
+    }
+    return map.get(creative);
+  }
+
+  function revoke(map) {
+    for (const url of map.values()) {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  window.addEventListener("unload", () => revoke(urls));
 
   // Tabs: the hash names the panel, arrow keys move between tabs.
   function showTab(name, focus = false) {
@@ -61,9 +86,13 @@
     if (location.hash != `#${current}`) {
       history.replaceState(null, "", `#${current}`);
     }
-    // Charts are drawn at their container's width, which a hidden panel does
-    // not have.
+    // Charts and the canvas are sized by their container, which a hidden
+    // panel does not have.
     drawCharts();
+    if (current == "vault" && needsLayout) {
+      renderCanvas();
+    }
+    fitIfNeeded();
   }
 
   document.querySelector(".tabs").addEventListener("click", event => {
@@ -122,28 +151,28 @@
     return new Date(y, m - 1, d);
   }
 
-  const CHART_HEIGHT = 180;
   const CHART_TOP = 22;
   const CHART_BOTTOM = 24;
   // The narrowest room a day label needs (px).
   const LABEL_ROOM = 52;
 
-  // `options`: label(entry) for the tooltip, dayLabel(entry) for the axis,
-  // focusable (each bar a tab stop, for short series), selected(i) to mark
-  // bars outside a selection.
+  // `options`: height (px), label(entry) for the tooltip, dayLabel(entry)
+  // for the axis, focusable (each bar a tab stop, for short series),
+  // selected(i) to mark bars outside a selection.
   function drawBars(box, tip, data, options) {
     const width = box.clientWidth;
     if (!width) {
       return null;
     }
-    const plot = CHART_HEIGHT - CHART_TOP - CHART_BOTTOM;
+    const height = options.height;
+    const plot = height - CHART_TOP - CHART_BOTTOM;
     const slot = width / data.length;
     const barWidth = Math.max(Math.min(24, slot * 0.7, slot - 2), 1);
     const peak = Math.max(...data.map(entry => entry.count), 1);
     const peakIndex = data.findIndex(entry => entry.count == peak);
     // Every n-th day labeled, so labels never touch.
     const every = Math.ceil(LABEL_ROOM / slot);
-    const chart = svg("svg", { viewBox: `0 0 ${width} ${CHART_HEIGHT}` });
+    const chart = svg("svg", { viewBox: `0 0 ${width} ${height}`, style: `height: ${height}px` });
     const baseline = CHART_TOP + plot;
     chart.append(svg("line", { class: "baseline", x1: 0, x2: width, y1: baseline + 0.5, y2: baseline + 0.5 }));
     data.forEach((entry, i) => {
@@ -170,7 +199,7 @@
         );
       }
       if ((data.length - 1 - i) % every == 0) {
-        const day = svg("text", { class: "day", x: center, y: CHART_HEIGHT - 6 });
+        const day = svg("text", { class: "day", x: center, y: height - 6 });
         day.textContent = options.dayLabel(entry);
         group.append(day);
       }
@@ -203,6 +232,7 @@
     }
     if (!$("blocking").hidden) {
       drawBars($("chart"), $("chart-tip"), summary.vault.series, {
+        height: 180,
         focusable: true,
         label: entry => `${fullDay.format(dayDate(entry.day))}: ${plural(entry.count, "request blocked", "requests blocked")}`,
         dayLabel: entry => weekday.format(dayDate(entry.day)),
@@ -230,14 +260,14 @@
     renderRows($("top-sites"), $("top-sites-empty"), vault.sites);
   }
 
-  // Vault: header numbers and statistics, over every ad kept.
+  // Vault: numbers and statistics, over every ad kept.
   function renderVaultStats() {
     const stats = vaultStats(groups);
     $("v-found").textContent = number(stats.found);
     $("v-unique").textContent = number(stats.unique);
     $("v-advertisers").textContent = number(stats.advertisers);
     $("v-sites").textContent = number(stats.sites);
-    $("v-since").textContent = stats.since ? `Found since ${date(stats.since)}.` : "";
+    $("v-since").textContent = stats.since ? `since ${date(stats.since)}` : "";
     renderRows($("top-advertisers"), null, stats.top.advertisers);
     renderRows($("top-networks"), null, stats.top.networks);
     renderRows($("top-found"), null, stats.top.sites);
@@ -245,6 +275,12 @@
       ? `${plural(stats.kinds.image, "image ad", "image ads")}, ${plural(stats.kinds.text, "text ad", "text ads")} found.`
       : "";
   }
+
+  $("stats-toggle").addEventListener("click", () => {
+    const open = $("stats-panel").hidden;
+    $("stats-panel").hidden = !open;
+    $("stats-toggle").setAttribute("aria-expanded", open);
+  });
 
   // The timeline: ads found per day, the days in the filter marked. Dragging
   // across it picks days; the date fields do the same from the keyboard.
@@ -256,6 +292,7 @@
   function drawTimeline() {
     const ranged = filter.from || filter.to;
     const drawn = drawBars($("timeline"), $("timeline-tip"), series, {
+      height: 96,
       label: entry => `${fullDay.format(dayDate(entry.day))}: ${plural(entry.count, "ad found", "ads found")}`,
       dayLabel: entry => shortDay.format(dayDate(entry.day)),
       selected: ranged ? i => inRange(series[i].day) : null,
@@ -292,7 +329,7 @@
   function setRange(from, to) {
     [filter.from, filter.to] = from && to && from > to ? [to, from] : [from || null, to || null];
     renderTimeline();
-    renderWall();
+    return renderCanvas();
   }
 
   // Drag (or click) across the timeline: the days under the pointer.
@@ -338,79 +375,82 @@
   $("range-to").addEventListener("change", event => setRange(filter.from, event.target.value));
   $("range-all").addEventListener("click", () => setRange(null, null));
 
-  // The wall: each ad once, newest first, its count when found more than
-  // once. Ads span grid rows by height, so images of any shape pack.
-  let zoom = ZOOM_DEFAULT;
-  try {
-    // Nothing saved is null, not 0 (the smallest size).
-    const saved = Number(localStorage.getItem(ZOOM_KEY) ?? ZOOM_DEFAULT);
-    if (Number.isInteger(saved) && saved >= 0 && saved < ZOOM.length) {
-      zoom = saved;
-    }
-  } catch {
-    // No storage (private browsing, blocked): the default size.
-  }
-
-  function applyZoom() {
-    const wall = $("wall");
-    wall.style.setProperty("--ad-width", `${ZOOM[zoom]}px`);
-    wall.dataset.compact = ZOOM[zoom] < ZOOM[ZOOM_DEFAULT];
-    $("zoom-ratio").textContent = `${Math.round((ZOOM[zoom] / ZOOM[ZOOM_DEFAULT]) * 100)}%`;
-    $("zoom-out").disabled = zoom == 0;
-    $("zoom-in").disabled = zoom == ZOOM.length - 1;
-    try {
-      localStorage.setItem(ZOOM_KEY, zoom);
-    } catch {
-      // As above.
-    }
-  }
-
-  function setZoom(step) {
-    const next = Math.min(Math.max(zoom + step, 0), ZOOM.length - 1);
-    if (next != zoom) {
-      zoom = next;
-      applyZoom();
-    }
-  }
-
-  $("zoom-out").addEventListener("click", () => setZoom(-1));
-  $("zoom-in").addEventListener("click", () => setZoom(1));
-  // Ctrl+wheel over the wall zooms it, not the page.
-  $("wall").addEventListener(
-    "wheel",
-    event => {
-      if (event.ctrlKey && event.deltaY) {
-        event.preventDefault();
-        setZoom(event.deltaY < 0 ? 1 : -1);
-      }
+  // The canvas.
+  const canvas = VeilCanvas.create($("stage"), $("world"), {
+    onZoom: zoom => {
+      $("zoom-ratio").textContent = `${Math.round(zoom * 100)}%`;
+      $("zoom-out").disabled = zoom <= VeilCanvas.MIN_ZOOM + 1e-6;
+      $("zoom-in").disabled = zoom >= VeilCanvas.MAX_ZOOM - 1e-6;
     },
-    { passive: false }
-  );
-
-  const fits = new ResizeObserver(entries => {
-    for (const { target } of entries) {
-      const height = target.firstElementChild.getBoundingClientRect().height;
-      target.style.gridRowEnd = `span ${Math.ceil((height + WALL_GAP) / WALL_ROW)}`;
-    }
+    onBackground: () => closeInspector(),
   });
+
+  // Panels under the top bar start below it, whatever it wraps to.
+  new ResizeObserver(([entry]) => {
+    $("stage").style.setProperty("--top-height", `${Math.ceil(entry.target.offsetHeight)}px`);
+  }).observe(document.querySelector(".overlay-top"));
+
+  // The stage's room not under its overlays (px on each side).
+  function inset() {
+    const stage = $("stage").getBoundingClientRect();
+    const top = document.querySelector(".overlay-top").getBoundingClientRect().bottom - stage.top + 16;
+    const bottom = stage.bottom - document.querySelector(".overlay.timeline").getBoundingClientRect().top + 16;
+    const right = $("inspector").hidden ? 24 : stage.right - $("inspector").getBoundingClientRect().left + 16;
+    return { top, bottom, right, left: 24 };
+  }
+
+  function fitIfNeeded() {
+    if (needsFit && !$("vault").hidden && $("stage").clientWidth) {
+      needsFit = false;
+      canvas.fit(inset(), false);
+    }
+  }
+
+  $("zoom-out").addEventListener("click", () => canvas.zoomBy(1 / 1.25));
+  $("zoom-in").addEventListener("click", () => canvas.zoomBy(1.25));
+  $("zoom-fit").addEventListener("click", () => canvas.fit(inset()));
 
   function advertiserOf(group) {
     return hostOf(group.destination || "") || hostOf(group.creative || "") || "";
   }
 
-  function adTile(group, index) {
+  // One ad on the canvas, and its size there once known. `buildUrls`: the
+  // build's object URLs.
+  function adTile(buildUrls, group, index) {
     const count = group.sightings.length;
     const advertiser = advertiserOf(group);
-    const sites = new Set(group.sightings.map(s => s.site).filter(Boolean));
-    const media =
-      group.kind == "text"
-        ? element(
-            "span",
-            { class: "text-ad" },
-            element("span", { class: "text-ad-words", text: group.text || "Text ad" }),
-            advertiser ? element("span", { class: "text-ad-cite", text: advertiser }) : null
-          )
-        : thumb({ creative: group.creative, link: group.destination, thumb: images.get(group.creative) || null });
+    const saved = group.creative ? images.get(group.creative) : null;
+    let media;
+    let size;
+    if (group.kind == "text") {
+      const width = Math.min(Math.max(160 + group.text.length * 1.5, TEXT_WIDTH[0]), TEXT_WIDTH[1]);
+      media = element(
+        "span",
+        { class: "text-ad", style: `width: ${Math.round(width)}px` },
+        element("span", { class: "text-ad-words", text: group.text || "Text ad" }),
+        advertiser ? element("span", { class: "text-ad-cite", text: advertiser }) : null
+      );
+      // Measured once on the canvas.
+      size = Promise.resolve(null);
+    } else if (saved) {
+      const img = element("img", { src: urlIn(buildUrls, group.creative, saved.blob), alt: "", draggable: false, decoding: "async" });
+      media = img;
+      const known = adSize(saved.width, saved.height);
+      size = known
+        ? Promise.resolve(known)
+        : img.decode().then(
+            () => adSize(img.naturalWidth, img.naturalHeight) || PLACEHOLDER,
+            () => PLACEHOLDER
+          );
+    } else {
+      media = element(
+        "span",
+        { class: "ad-placeholder" },
+        element("span", { class: "initial", text: (advertiser[0] || "?").toUpperCase() }),
+        element("span", { class: "small", text: advertiser || "No image saved" })
+      );
+      size = Promise.resolve(PLACEHOLDER);
+    }
     const label = [
       group.kind == "text" ? `Text ad: ${group.text || "no words"}` : `Image ad${group.text ? `: ${group.text}` : ""}`,
       advertiser && `from ${advertiser}`,
@@ -418,66 +458,73 @@
     ]
       .filter(Boolean)
       .join(", ");
-    return element(
-      "li",
-      { class: "ad-tile", "data-kind": group.kind, "data-creative": group.creative || "" },
-      element(
-        "div",
-        { class: "ad-tile-inner" },
-        element(
-          "button",
-          { type: "button", class: "ad-open", "aria-haspopup": "dialog", "aria-label": label, "data-index": index },
-          media
-        ),
-        // On the corner, outside the ad, so it never covers its words.
-        count > 1 ? element("span", { class: "count-badge", "aria-hidden": "true", text: number(count) }) : null,
-        element(
-          "p",
-          { class: "caption small" },
-          element("span", { class: "caption-advertiser", text: advertiser || "Unknown advertiser" }),
-          element("span", { class: "dim", text: [...sites][0] ? ` · ${[...sites][0]}${sites.size > 1 ? ` +${sites.size - 1}` : ""}` : "" })
-        )
-      )
+    const node = element(
+      "div",
+      { class: "ad-tile", "data-kind": group.kind, "data-creative": group.creative || "", "data-index": index },
+      element("button", { type: "button", class: "ad-open", "aria-label": label, "aria-controls": "inspector", "data-index": index }, media),
+      count > 1 ? element("span", { class: "count-badge", "aria-hidden": "true", text: number(count) }) : null
     );
+    return { node, size };
   }
 
-  function appendWall() {
-    const next = shown.slice(rendered, rendered + WALL_PAGE);
-    const tiles = next.map((group, i) => adTile(group, rendered + i));
-    $("wall").append(...tiles);
-    for (const tile of tiles) {
-      fits.observe(tile);
-    }
-    rendered += next.length;
-    $("wall-more").hidden = rendered >= shown.length;
-  }
-
-  const more = new IntersectionObserver(entries => {
-    if (entries.some(entry => entry.isIntersecting) && rendered < shown.length) {
-      appendWall();
-    }
-  });
-  more.observe($("wall-more"));
-
-  function renderWall() {
-    dropImages();
-    fits.disconnect();
-    shown = filterGroups(groups, {
+  // Builds the canvas for the filter: the newest MAX_SHOWN matching ads,
+  // packed by their sizes, fitted to the stage. A newer build supersedes an
+  // older one still waiting for image sizes.
+  let build = 0;
+  async function renderCanvas() {
+    const token = ++build;
+    closeInspector(false);
+    const matched = filterGroups(groups, {
       from: filter.from,
       to: filter.to,
       site: $("vault-site").value || null,
       kind: $("vault-kind").value || null,
       query: $("vault-search").value,
     });
-    rendered = 0;
-    $("wall").replaceChildren();
-    appendWall();
-    const found = shown.reduce((n, group) => n + group.sightings.length, 0);
+    const next = matched.slice(0, MAX_SHOWN);
+    const buildUrls = new Map();
+    const tiles = next.map((group, i) => adTile(buildUrls, group, i));
+    const sizes = await Promise.all(tiles.map(tile => tile.size));
+    if (token != build) {
+      revoke(buildUrls);
+      return;
+    }
+    // The previous build's images go with its elements.
+    $("world").replaceChildren();
+    revoke(urls);
+    urls = buildUrls;
+    shown = next;
+    needsLayout = $("vault").hidden;
+    const world = $("world");
+    world.append(...tiles.map(tile => tile.node));
+    // Text ads: as tall as their words, measured at their width.
+    tiles.forEach((tile, i) => {
+      if (!sizes[i]) {
+        sizes[i] = { width: tile.node.offsetWidth, height: tile.node.offsetHeight };
+      }
+    });
+    const { positions, bounds } = packAds(sizes, { gap: GAP });
+    rects = positions.map(({ x, y }, i) => ({ left: x, top: y, right: x + sizes[i].width, bottom: y + sizes[i].height }));
+    tiles.forEach(({ node }, i) => {
+      Object.assign(node.style, {
+        left: `${positions[i].x}px`,
+        top: `${positions[i].y}px`,
+        width: `${sizes[i].width}px`,
+        height: `${sizes[i].height}px`,
+      });
+    });
+    canvas.setBounds(bounds);
+    needsFit = true;
+    fitIfNeeded();
+
+    const found = matched.reduce((n, group) => n + group.sightings.length, 0);
     const all = groups.reduce((n, group) => n + group.sightings.length, 0);
     $("vault-count").textContent =
-      found == all ? plural(shown.length, "ad", "ads") : `${plural(shown.length, "ad", "ads")} · ${number(found)} of ${number(all)} found`;
+      found == all ? plural(matched.length, "ad", "ads") : `${plural(matched.length, "ad", "ads")} · ${number(found)} of ${number(all)} found`;
     $("vault-empty").hidden = groups.length > 0;
-    $("vault-none").hidden = !groups.length || shown.length > 0;
+    $("vault-none").hidden = !groups.length || matched.length > 0;
+    $("vault-capped").hidden = matched.length <= MAX_SHOWN;
+    $("vault-capped").textContent = `Showing the newest ${number(MAX_SHOWN)} of ${number(matched.length)} ads. Pick days on the timeline to see older ones.`;
   }
 
   function renderSiteFilter() {
@@ -488,9 +535,10 @@
     select.value = sites.includes(current) ? current : "";
   }
 
-  $("vault-search").addEventListener("input", renderWall);
-  $("vault-site").addEventListener("change", renderWall);
-  $("vault-kind").addEventListener("change", renderWall);
+  // Typing supersedes the build before it (renderCanvas's token).
+  $("vault-search").addEventListener("input", renderCanvas);
+  $("vault-site").addEventListener("change", renderCanvas);
+  $("vault-kind").addEventListener("change", renderCanvas);
   $("vault-reset").addEventListener("click", () => {
     $("vault-search").value = "";
     $("vault-site").value = "";
@@ -498,23 +546,64 @@
     setRange(null, null);
   });
 
-  $("wall").addEventListener("click", event => {
+  $("world").addEventListener("click", event => {
     const index = event.target.closest(".ad-open")?.dataset.index;
     if (index != null) {
-      inspect(shown[Number(index)]);
+      inspect(Number(index));
     }
   });
 
-  // The inspector: one ad, one time it was found at a time (newest first).
-  const inspector = { group: null, index: 0 };
+  // Tabbing to an ad brings it into view.
+  $("world").addEventListener("focusin", event => {
+    const index = event.target.closest(".ad-tile")?.dataset.index;
+    if (index != null && rects[index]) {
+      canvas.reveal(rects[index], inset());
+    }
+  });
 
-  function inspect(group) {
-    inspector.group = group;
+  // The inspector: the canvas goes to the ad and dims the others; beside it,
+  // the ad and each time it was found (newest first). Closing it returns the
+  // view to where it was.
+  const inspector = { group: null, tile: -1, index: 0, view: null };
+
+  function inspect(tile) {
+    if (!inspector.group) {
+      inspector.view = canvas.snapshot();
+    }
+    for (const node of $("world").querySelectorAll(".inspected")) {
+      node.classList.remove("inspected");
+    }
+    inspector.group = shown[tile];
+    inspector.tile = tile;
     inspector.index = 0;
+    $("world").querySelector(`.ad-tile[data-index="${tile}"]`).classList.add("inspected");
+    $("stage").classList.add("inspecting");
     resetRemove();
+    $("inspector").hidden = false;
     renderInspector();
-    if (!$("inspector").open) {
-      $("inspector").showModal();
+    const rect = rects[tile];
+    canvas.show(
+      { left: rect.left - FOCUS_ROOM, top: rect.top - FOCUS_ROOM, right: rect.right + FOCUS_ROOM, bottom: rect.bottom + FOCUS_ROOM },
+      inset(),
+      FOCUS_ZOOM
+    );
+  }
+
+  function closeInspector(restore = true) {
+    if (!inspector.group) {
+      return;
+    }
+    const tile = inspector.tile;
+    inspector.group = null;
+    inspector.tile = -1;
+    $("inspector").hidden = true;
+    $("stage").classList.remove("inspecting");
+    for (const node of $("world").querySelectorAll(".inspected")) {
+      node.classList.remove("inspected");
+    }
+    if (restore) {
+      canvas.restore(inspector.view);
+      $("world").querySelector(`.ad-tile[data-index="${tile}"] .ad-open`)?.focus({ preventScroll: true });
     }
   }
 
@@ -522,7 +611,7 @@
     const { group, index } = inspector;
     const sighting = group.sightings[index];
     const count = group.sightings.length;
-    const blob = images.get(group.creative);
+    const saved = group.creative ? images.get(group.creative) : null;
     $("ins-title").textContent = group.kind == "text" ? "Text ad" : "Image ad";
     $("ins-media").replaceChildren(
       group.kind == "text"
@@ -532,14 +621,15 @@
             element("span", { class: "text-ad-words", text: group.text || "Text ad" }),
             element("span", { class: "text-ad-cite", text: advertiserOf(group) })
           )
-        : blob
-          ? element("img", { src: imageUrl(blob), alt: group.text || `Ad from ${advertiserOf(group) || "an unknown advertiser"}` })
+        : saved
+          ? element("img", { src: urlIn(urls, group.creative, saved.blob), alt: group.text || `Ad from ${advertiserOf(group) || "an unknown advertiser"}` })
           : element("p", { class: "empty small", text: "No image saved for this ad." })
     );
     $("ins-text").textContent = group.kind == "text" ? "" : group.text;
     $("ins-text").hidden = !$("ins-text").textContent;
     $("ins-target").replaceChildren(group.destination ? adLink(group.destination) : element("span", { class: "dim", text: "Unknown" }));
     $("ins-network").textContent = (group.creative && hostOf(group.creative)) || "Unknown";
+    $("ins-size").textContent = group.kind == "text" ? "Text" : saved?.width ? `${saved.width} × ${saved.height}` : "Unknown";
     $("ins-page").replaceChildren(
       element("span", { class: "site", text: sighting.site || "Unknown site" }),
       sighting.page
@@ -573,7 +663,7 @@
 
   $("ins-prev").addEventListener("click", () => step(-1));
   $("ins-next").addEventListener("click", () => step(1));
-  $("ins-close").addEventListener("click", () => $("inspector").close());
+  $("ins-close").addEventListener("click", () => closeInspector());
   $("inspector").addEventListener("keydown", event => {
     const by = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
     if (by && !event.target.closest("input, select")) {
@@ -581,14 +671,10 @@
       step(by);
     }
   });
-  // A click on the backdrop (outside the dialog's box) closes it.
-  $("inspector").addEventListener("click", event => {
-    if (event.target == $("inspector")) {
-      const box = $("inspector").getBoundingClientRect();
-      const inside = event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
-      if (!inside) {
-        $("inspector").close();
-      }
+  document.addEventListener("keydown", event => {
+    if (event.key == "Escape" && inspector.group) {
+      event.preventDefault();
+      closeInspector();
     }
   });
 
@@ -610,7 +696,7 @@
     // The whole ad, not only the times the filter shows.
     const whole = groups.find(group => group.key == inspector.group.key) || inspector.group;
     await send({ type: "vault:remove", ids: whole.sightings.map(s => s.id), creative: whole.creative });
-    $("inspector").close();
+    closeInspector(false);
     await loadVault();
   });
 
@@ -714,7 +800,7 @@
     renderVaultStats();
     renderSiteFilter();
     renderTimeline();
-    renderWall();
+    await renderCanvas();
   }
 
   async function load() {
@@ -734,7 +820,6 @@
     resizeTimer = setTimeout(drawCharts, 100);
   });
 
-  applyZoom();
   showTab(location.hash.slice(1));
   load();
 })();

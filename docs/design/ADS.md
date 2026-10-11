@@ -178,9 +178,10 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
 - Saved images ("Save ad images", on by default): when an ad is recorded and
   the page had loaded its image (an image still loading is waited for), the
   background fetches that image once, without cookies or a referrer, and
-  keeps a thumbnail (at most 320 px, WebP; an image it cannot decode is
-  kept as is if small) keyed by its URL, at most 2,000, dropped with the
-  ads. The popup and vault show the saved thumbnail and make no request
+  keeps a copy (at most 800 px on its long side, WebP, with the image's own
+  size; an image it cannot decode is kept as is if small) keyed by its URL,
+  at most 2,000, dropped with the ads. The popup and vault show the saved
+  copy and make no request
   themselves. Never in private windows; nothing is fetched with the
   setting off. The fetch has no tab, so Ad Veil's blocking skips it, and
   tracking protection lets an add-on with host access load it
@@ -197,18 +198,26 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   - the same ad found again is one ad with a count (an image ad by its
     image URL; a text ad by its words and the site it leads to;
     `VeilModel.groupAds`);
-  - a wall that packs ads of any shape (CSS grid rows by height), newest
-    first, at six sizes (zoom buttons, Ctrl+wheel; the size is remembered
-    in `localStorage`, a per-viewer convenience); text ads as text boxes;
-    added 120 at a time as it scrolls;
-  - a timeline of ads found per day (from the first ad, 14 to 90 days):
-    dragging across it, or the From/To date fields, filters the wall to
-    those days, and the days left out are faded; tooltip and table view;
+  - a canvas (`pages/canvas.js`, AdNauseam's stage): ads at their own size
+    (at most 800 px wide), packed around the middle, each where its middle
+    is closest to it, never overlapping (`VeilModel.packAds`); text ads as
+    text boxes; the newest 400 matching ads at once (AdNauseam shows 300).
+    Drag to pan, the wheel zooms around the pointer (5–400%), zoom buttons
+    and Fit; keys pan (arrows), zoom (+, -), and fit (0); Tab moves between
+    ads and brings each into view. The view is one CSS transform on the
+    canvas (compositor work); fit and going to an ad ease unless reduced
+    motion is asked for, and any input supersedes the easing;
+  - a click on an ad goes to it (zoom up to 200%), dims the others, and
+    docks the inspector beside it: the image, words, where it leads, the ad
+    network, its size, the page it was found on and when, and each time it
+    was found ("2 / 5", arrows and arrow keys); Escape, the close button,
+    or a click on the canvas returns the view to where it was. Removing it
+    from the vault (two clicks) drops every sighting and its saved image;
+  - a timeline of ads found per day (from the first ad, 14 to 90 days),
+    over the canvas: dragging across it, or the From/To date fields,
+    filters the canvas to those days, and the days left out are faded;
+    tooltip and table view;
   - search, site, and kind (image, text) filters;
-  - an inspector (a modal dialog): the image at full size, words, where it
-    leads, the ad network, the page it was found on and when, and each
-    time it was found ("2 / 5", arrows and arrow keys); removing it from
-    the vault (two clicks) drops every sighting and its saved image.
   - No click count or cost estimate (AdNauseam's) until Visit exists.
 - Known gap: Firefox's "Clear history" does not clear the vault (an add-on
   learns of it only with the `history` permission); the vault's own Clear
