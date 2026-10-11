@@ -100,6 +100,11 @@ function buttonTitle(win = window) {
   return button?.getAttribute("tooltiptext") || button?.getAttribute("aria-label") || "";
 }
 
+// The button's icon: Firefox applies it as custom properties in its style.
+function buttonIcon(win = window) {
+  return win.document.getElementById(BUTTON)?.getAttribute("style") || "";
+}
+
 async function openFixture(win = window) {
   const tab = await BrowserTestUtils.openNewForegroundTab(win.gBrowser, PAGE);
   await waitForHidden(tab.linkedBrowser);
@@ -212,8 +217,27 @@ add_task(async function test_least_privilege() {
     ["<all_urls>"],
     "host access: all sites, nothing else"
   );
-  const manifest = policy.extension.manifest;
-  ok(!manifest.experiment_apis, "no experiment APIs");
+  // One privileged API, parent-only: veil mode's classifier listener.
+  const experiments = policy.extension.manifest.experiment_apis;
+  Assert.deepEqual(Object.keys(experiments), ["aequeraVeil"], "one experiment API");
+  const veil = experiments.aequeraVeil;
+  Assert.deepEqual(
+    {
+      schema: veil.schema,
+      child: veil.child ?? null,
+      scopes: veil.parent.scopes,
+      script: veil.parent.script,
+      paths: veil.parent.paths,
+    },
+    {
+      schema: "experiments/veil.json",
+      child: null,
+      scopes: ["addon_parent"],
+      script: "experiments/veil.js",
+      paths: [["aequeraVeil"]],
+    },
+    "aequeraVeil: parent process only, its own namespace"
+  );
   ok(!policy.permissions.includes("mozillaAddons"), "no mozillaAddons");
 });
 
@@ -304,32 +328,123 @@ add_task(async function test_private_windows_are_not_recorded() {
   BrowserTestUtils.removeTab(vault);
 });
 
+// Picks a mode in the popup; resolves once the page has reloaded with it.
+async function pickMode(tab, mode) {
+  const reloaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  await inPopup(window, id => content.document.getElementById(id).click(), [`mode-${mode}`]);
+  await reloaded;
+}
+
 add_task(async function test_popup_turns_a_site_off_and_on() {
   await waitForActive(true);
   const tab = await openFixture();
   const counts = await inPopup(window, () => ({
     site: content.document.getElementById("site").textContent,
-    on: content.document.getElementById("site-on").checked,
+    mode: content.document.querySelector("input[name=mode]:checked").value,
     blocked: Number(content.document.getElementById("blocked").textContent),
   }));
-  Assert.deepEqual({ site: counts.site, on: counts.on }, { site: "example.com", on: true }, "the popup names this site, on");
+  Assert.deepEqual(
+    { site: counts.site, mode: counts.mode },
+    { site: "example.com", mode: "block" },
+    "the popup names this site, blocking"
+  );
   Assert.greaterOrEqual(counts.blocked, 1, "and counts this page's blocked requests");
 
   // Off: the page reloads with nothing blocked or hidden.
-  let reloaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
-  await inPopup(window, () => content.document.getElementById("site-on").click());
-  await reloaded;
+  await pickMode(tab, "off");
   await TestUtils.waitForCondition(() => /off for example\.com/.test(buttonTitle()), "the button shows off");
+  await TestUtils.waitForCondition(() => /icons\/veil-off\.svg/.test(buttonIcon()), "with the off icon");
   const off = await fixtureState(tab.linkedBrowser);
   ok(off.adLoaded, "off for this site: nothing is blocked");
   isnot(off.banner, "none", "off for this site: nothing is hidden");
 
-  // On again.
-  reloaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
-  await inPopup(window, () => content.document.getElementById("site-on").click());
-  await reloaded;
+  // Block again.
+  await pickMode(tab, "block");
   await waitForHidden(tab.linkedBrowser);
   const on = await fixtureState(tab.linkedBrowser);
-  ok(!on.adLoaded, "on again: blocking is back");
+  ok(!on.adLoaded, "block again: blocking is back");
+  await TestUtils.waitForCondition(() => /icons\/veil\.svg/.test(buttonIcon()), "with the block icon");
   BrowserTestUtils.removeTab(tab);
+});
+
+// Veil mode, on a page at example.net with Firefox's test trackers: the
+// tracking-protection test table stands in for its advertising list.
+const VEIL_PAGE = "https://example.net/browser/browser/aequera/tests/browser/adveil_veil.html";
+
+function veilState(browser) {
+  return SpecialPowers.spawn(browser, [], () => {
+    const page = content.wrappedJSObject;
+    const banner = content.document.getElementById("banner");
+    const style = content.getComputedStyle(banner);
+    return {
+      ad: !!page.adLoaded,
+      network: !!page.networkAdLoaded,
+      tracker: !!page.trackerLoaded,
+      social: !!page.socialLoaded,
+      display: style.display,
+      opacity: style.opacity,
+      pointerEvents: style.pointerEvents,
+      height: banner.offsetHeight,
+    };
+  });
+}
+
+// "collapsed" (block mode) or "veiled" (veil mode).
+function waitForBanner(browser, expected) {
+  return SpecialPowers.spawn(browser, [expected], want =>
+    ContentTaskUtils.waitForCondition(() => {
+      const style = content.getComputedStyle(content.document.getElementById("banner"));
+      return want == "collapsed" ? style.display == "none" : style.opacity == "0";
+    }, `banner ${want}`)
+  );
+}
+
+add_task(async function test_veil_mode() {
+  await waitForActive(true);
+  const { UrlClassifierTestUtils } = ChromeUtils.importESModule(
+    "resource://testing-common/UrlClassifierTestUtils.sys.mjs"
+  );
+  const { ContentBlockingAllowList } = ChromeUtils.importESModule(
+    "resource://gre/modules/ContentBlockingAllowList.sys.mjs"
+  );
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["privacy.trackingprotection.enabled", true],
+      ["privacy.trackingprotection.socialtracking.enabled", true],
+      ["aequera.adveil.veil.adTables", "mochitest2-track-simple"],
+    ],
+  });
+  await UrlClassifierTestUtils.addTestTrackers();
+  registerCleanupFunction(() => UrlClassifierTestUtils.cleanupTestTrackers());
+
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, VEIL_PAGE);
+  await waitForBanner(tab.linkedBrowser, "collapsed");
+  const blocked = await veilState(tab.linkedBrowser);
+  Assert.deepEqual(
+    { ad: blocked.ad, network: blocked.network, tracker: blocked.tracker, social: blocked.social, display: blocked.display },
+    { ad: false, network: false, tracker: false, social: false, display: "none" },
+    "block mode: ads, the ad network, and trackers are blocked; the ad element collapses"
+  );
+
+  await pickMode(tab, "veil");
+  await waitForBanner(tab.linkedBrowser, "veiled");
+  const veiled = await veilState(tab.linkedBrowser);
+  ok(veiled.ad, "veil: the ad EasyList matches loads");
+  ok(veiled.network, "veil: the ad network tracking protection blocks loads");
+  ok(!veiled.tracker, "veil: the tracker EasyPrivacy matches stays blocked");
+  ok(!veiled.social, "veil: the social tracker stays blocked");
+  isnot(veiled.display, "none", "veil: the ad element keeps its box");
+  Assert.greater(veiled.height, 0, "laid out, as a bait-element check expects");
+  is(veiled.opacity, "0", "invisible");
+  is(veiled.pointerEvents, "none", "and unclickable");
+  ok(!ContentBlockingAllowList.includes(tab.linkedBrowser), "tracking protection stays on for the site");
+  await TestUtils.waitForCondition(() => /veil mode/.test(buttonTitle()), "the button shows veil mode");
+  await TestUtils.waitForCondition(() => /icons\/veil-veiled\.svg/.test(buttonIcon()), "with the veil icon");
+
+  await pickMode(tab, "block");
+  await waitForBanner(tab.linkedBrowser, "collapsed");
+  const back = await veilState(tab.linkedBrowser);
+  ok(!back.ad && !back.network, "block again: the ad and the ad network are blocked again");
+  BrowserTestUtils.removeTab(tab);
+  await SpecialPowers.popPrefEnv();
 });

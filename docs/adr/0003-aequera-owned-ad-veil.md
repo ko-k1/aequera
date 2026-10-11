@@ -13,7 +13,10 @@ third-party blocker extension (uBlock Origin, AdNauseam).
   the network layer; ads that still reach the page (first-party, inline,
   static) are hidden by cosmetic rules. Per site, the user can switch to
   **veil** mode: AdNauseam's model, where visual ads load and are hidden
-  instead of blocked, for sites that wall ad blockers.
+  instead of blocked, for sites that wall ad blockers. Trackers stay
+  blocked, and Firefox's tracking protection stays on for the site: veil
+  mode lifts only its blocks of ad servers, through one parent-only
+  privileged API (`aequeraVeil`).
 - **Vault and Visit.** What was blocked or hidden is kept in a local vault;
   hidden ads can be *visited* in the background (AdNauseam's simulated
   click). All on by default, shown and changeable at first run.
@@ -61,6 +64,20 @@ Design and measurements: `docs/design/ADS.md`.
   built-in location installs each. The `aequera.adveil.enabled` pref
   enables and disables it with `allowSystemAddons`, as Firefox does for its
   own pref-driven system add-ons (`BrowserGlue`, webcompat reporter).
+- **Veil mode needs one privileged API.** Strict tracking protection blocks
+  every major ad network (Disconnect's Advertising category, Firefox's
+  `ads-track-digest256`; Google's ad hosts are also on its fingerprinting
+  list) in `nsHttpChannel::AsyncOpen`, before `http-on-modify-request`, so
+  before any extension's `onBeforeRequest`. Turning tracking protection off
+  for the site (Firefox's site exception) would also lift its cookie rules
+  (`ContentBlockingAllowList::Check` in `StorageAccess.cpp`). Instead,
+  `aequeraVeil` listens to Firefox's channel classifier service, as
+  Firefox's own webcompat add-on does, and `allow()`s single blocks: on a
+  veiled site, a tracking-protection block from an advertising table or of
+  an EasyList ad host, and a fingerprinting-protection block of an EasyList
+  ad host. An allowed channel is still a tracking channel to Firefox, so its
+  tracker cookie rules keep applying. The API is parent-only, has two
+  functions (ad hosts, site modes), and listens only while a site is veiled.
 
 ## Consequences
 
@@ -69,8 +86,10 @@ Design and measurements: `docs/design/ADS.md`.
 - Ad and tracker blocking from the first run, with Aequera's prefs, design
   system, and recovery rules.
 - Matching cost lands in the extension process, not on the chrome thread.
-- One engine for network and cosmetic rules; the same code compiles the
-  shipped snapshots at start and updated lists later.
+- One engine (both lists) decides every request and every cosmetic rule, so
+  exception rules apply across lists; a second, EasyPrivacy-only instance of
+  the same module tells trackers from ads on veiled sites. The same code
+  compiles the shipped snapshots at start and updated lists later.
 
 ### Costs
 
@@ -81,9 +100,16 @@ Design and measurements: `docs/design/ADS.md`.
   a script rebuilds it and checks the hash.
 - Built-in add-ons are hidden from about:addons and run in the privileged,
   system location: Ad Veil needs its own controls, and a test holds its
-  manifest to least privilege (no `mozillaAddons`, no experiment APIs).
+  manifest to least privilege (no `mozillaAddons`; one experiment API,
+  `aequeraVeil`, parent-only).
+- `aequeraVeil` depends on Firefox's channel classifier service and its
+  feature order (fingerprinting before tracking protection), which upstream
+  can change; the veil-mode browser test exercises it with Firefox's test
+  trackers on every gate run.
 - Blocking makes anti-adblock walls more likely than AdNauseam's model;
-  veil mode per site is the answer, measured on a site corpus.
+  veil mode per site is the answer, measured on a site corpus. A veiled site
+  loads its ads' scripts (cost: bandwidth, CPU, the ad networks seeing the
+  visit), which is why it is the user's per-site choice.
 - Visiting ads uses the user's connection and is treated by ad networks as
   invalid traffic. It is visible (first run, vault log) and can be turned
   off at any time.

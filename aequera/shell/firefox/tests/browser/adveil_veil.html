@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ad Veil veil mode fixture</title>
+<!-- EasyList "/ads.bundle.js$script": an ad (veil mode lets it load). -->
+<script src="ads.bundle.js"></script>
+<!-- EasyPrivacy "/analytics-tracking.js": a tracker (blocked in every mode). -->
+<script src="analytics-tracking.js"></script>
+<!-- Firefox's test tracker for tracking protection: an ad network
+     (aequera.adveil.veil.adTables names its table in the test). -->
+<script src="https://tracking.example.com/browser/browser/aequera/tests/browser/adveil_network_ad.js"></script>
+<!-- Firefox's test social tracker: never lifted. -->
+<script src="https://social-tracking.example.org/browser/browser/aequera/tests/browser/adveil_social.js"></script>
+</head>
+<body>
+<!-- EasyList "##.ad_banner": collapsed in block mode, veiled in veil mode. -->
+<div class="ad_banner" id="banner" style="width: 300px; height: 50px">ad</div>
+<div class="article" id="article">text</div>
+</body>
+</html>

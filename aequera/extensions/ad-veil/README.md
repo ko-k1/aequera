@@ -1,8 +1,8 @@
 # Ad Veil — built-in ad and tracker blocker
 
 Design, decisions, and measurements: `docs/design/ADS.md` and
-`docs/adr/0003-aequera-owned-ad-veil.md`. Slices 1 (block and hide) and 2
-(vault, address bar popup, per-site switch).
+`docs/adr/0003-aequera-owned-ad-veil.md`. Slices 1 (block and hide), 2
+(vault, address bar popup, per-site modes), and 2b (veil mode).
 
 ## Classification (AGENTS.md)
 
@@ -11,9 +11,12 @@ Design, decisions, and measurements: `docs/design/ADS.md` and
 - Kind: **first-party extension + Aequera source + configuration**. No
   Firefox patch: overlay `ad-veil` is built from the shell overlay's
   `moz.build`, and Firefox's own built-in add-on machinery installs it.
-- Public configuration: `aequera.adveil.enabled` (bool, default true). The
-  per-site list and the vault switch are the add-on's own settings
+- Public configuration: `aequera.adveil.enabled` (bool, default true),
+  `aequera.adveil.veil.adTables` (classifier tables veil mode lifts). The
+  per-site modes and the vault switch are the add-on's own settings
   (`storage.local`, validated by `model.js`).
+- Privilege: one experiment API, `aequeraVeil` (`addon/experiments/`),
+  parent process only: veil mode's channel classifier listener (ADR 0003).
 - Dependencies: adblock-rust 0.13.3 (MPL-2.0, pinned exactly), EasyList and
   EasyPrivacy snapshots (data; `addon/lists/README.md`).
 
@@ -24,8 +27,9 @@ Design, decisions, and measurements: `docs/design/ADS.md` and
 | `engine/` | Rust crate: adblock-rust behind a C ABI (`src/abi.rs`), unit tests |
 | `build-engine.sh` | Builds `addon/engine.wasm`; `--check` verifies the committed file |
 | `addon/` | The add-on, overlaid to `worktree/firefox/browser/aequera-adveil` |
-| `addon/background.js` | Compiles the lists, blocking `webRequest`, cosmetic injection, per-tab counts, per-site switch, messages |
-| `addon/model.js` | Pure model: sites, settings validation, vault records (`model.test.mjs`) |
+| `addon/background.js` | Compiles the lists, blocking `webRequest`, cosmetic injection, per-tab counts, per-site modes, messages |
+| `addon/model.js` | Pure model: sites and modes, settings validation, ad hosts, vault records (`model.test.mjs`); also loaded by the parent API |
+| `addon/experiments/` | `aequeraVeil`: lifts tracking protection's ad blocks on veiled sites (parent process) |
 | `addon/vault.js` | The vault store (IndexedDB): hidden ads, daily blocked totals, prune, export, clear |
 | `addon/engine.js` | `engine.wasm` wrapper |
 | `addon/content.js` | Reports class and id names for generic rules; finds hidden ads for the vault |
@@ -84,13 +88,34 @@ Slice 2:
 - Real launch: the address bar button shows "Ad Veil: 1 blocked, 1 hidden on
   this page"; popup and vault render (dark, tokens).
 
+Slice 2b:
+
+- `model.test.mjs`: 9 tests (adds modes, private-window choices, settings
+  from before veil mode, ad host extraction).
+- `browser_aequera_adveil.js`, with Firefox's test trackers on an
+  example.net page: in veil mode the EasyList ad and a tracking-protection
+  blocked ad network load, an EasyPrivacy tracker and a social tracker stay
+  blocked, the ad element keeps its box (invisible, unclickable), tracking
+  protection stays on for the site (no site exception), and Block restores
+  it all; the least-privilege test pins `aequeraVeil` (parent only); the
+  button icon follows the mode. Mutation-checked (without `allow()` the ad
+  network check fails). Full shell gate 1199/0.
+- SpiderMonkey: block mode unchanged (8.7 µs, p99 40 µs); every request on a
+  veiled page 13.7 µs, p99 80 µs; both instances compile in 164 ms.
+- Fixed from slice 2: `pageAction.setTitle` is synchronous in Firefox, and
+  chaining `.catch` on it threw before the icon was set, so the off icon
+  never showed. The tests now check the icon.
+
 ## Known gaps (later slices)
 
 - Startup cost: instantiate + compile (about 270 ms) runs on every start;
   requests wait for it. A cached serialized engine (load 44 ms in the spike)
   and a smaller module are the first candidates.
-- No veil mode (2b), list updates, first-run screen, or Visit yet
-  (`docs/design/ADS.md`, Slices).
+- No list updates, first-run screen, or Visit yet (`docs/design/ADS.md`,
+  Slices). Veil mode's effect on real walled sites is slice 5's
+  measurement.
+- `aequeraVeil` depends on Firefox's channel classifier service and its
+  feature order; the veil-mode test covers it on every gate run.
 - Firefox's "Clear history" does not clear the vault (the vault's Clear and
   its 90-day limit do).
 - Strings are English literals (as the rest of the shell, for now).

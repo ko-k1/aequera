@@ -5,7 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import model from "./model.js";
 
-const { siteOf, hostOf, isSiteOff, settingsFrom, withSite, adFrom, dayOf, cutoff, RETENTION_DAYS } = model;
+const { siteOf, hostOf, covers, siteMode, resolveMode, settingsFrom, withMode, adHostsFrom, adFrom, dayOf, cutoff, RETENTION_DAYS } =
+  model;
 
 test("siteOf names the site without www., http(s) only", () => {
   assert.equal(siteOf("https://www.example.com/a?b"), "example.com");
@@ -17,30 +18,90 @@ test("siteOf names the site without www., http(s) only", () => {
   assert.equal(hostOf("https://www.example.com/"), "www.example.com");
 });
 
-test("a site turned off covers its subdomains, not its parents or lookalikes", () => {
+test("a site in a set covers its subdomains, not its parents or lookalikes", () => {
   const off = new Set(["example.com"]);
-  assert.ok(isSiteOff(off, "example.com"));
-  assert.ok(isSiteOff(off, "news.example.com"));
-  assert.ok(!isSiteOff(off, "badexample.com"));
-  assert.ok(!isSiteOff(new Set(["news.example.com"]), "example.com"));
-  assert.ok(!isSiteOff(off, null));
+  assert.ok(covers(off, "example.com"));
+  assert.ok(covers(off, "news.example.com"));
+  assert.ok(!covers(off, "badexample.com"));
+  assert.ok(!covers(new Set(["news.example.com"]), "example.com"));
+  assert.ok(!covers(off, null));
+});
+
+test("siteMode: block by default, veil where veiled, off wins", () => {
+  const lists = { off: new Set(["off.test"]), veil: new Set(["veil.test", "both.test"]) };
+  assert.equal(siteMode(lists, "news.test"), "block");
+  assert.equal(siteMode(lists, "veil.test"), "veil");
+  assert.equal(siteMode(lists, "a.veil.test"), "veil");
+  assert.equal(siteMode(lists, "off.test"), "off");
+  assert.equal(siteMode({ off: new Set(["both.test"]), veil: lists.veil }, "both.test"), "off");
+  assert.equal(siteMode(lists, null), "block");
+});
+
+test("private-window choices win there, nearest site first, and nowhere else", () => {
+  const state = {
+    off: new Set(),
+    veil: new Set(["example.com"]),
+    privateModes: new Map([
+      ["news.example.com", "block"],
+      ["shop.test", "off"],
+    ]),
+  };
+  assert.equal(resolveMode(state, "example.com", false), "veil");
+  assert.equal(resolveMode(state, "example.com", true), "veil");
+  assert.equal(resolveMode(state, "news.example.com", false), "veil");
+  assert.equal(resolveMode(state, "a.news.example.com", true), "block");
+  assert.equal(resolveMode(state, "shop.test", true), "off");
+  assert.equal(resolveMode(state, "shop.test", false), "block");
+  assert.equal(model.nearest(state.privateModes, null), undefined);
 });
 
 test("settings recover to defaults from anything", () => {
-  assert.deepEqual(settingsFrom(undefined), { offSites: [], vault: true });
-  assert.deepEqual(settingsFrom("garbage"), { offSites: [], vault: true });
-  assert.deepEqual(settingsFrom({ offSites: "x", vault: "yes" }), { offSites: [], vault: true });
+  const defaults = { offSites: [], veilSites: [], vault: true };
+  assert.deepEqual(settingsFrom(undefined), defaults);
+  assert.deepEqual(settingsFrom("garbage"), defaults);
+  assert.deepEqual(settingsFrom({ offSites: "x", veilSites: {}, vault: "yes" }), defaults);
   assert.deepEqual(
-    settingsFrom({ offSites: ["example.com", "example.com", 3, "", "a b", "https://x.com/"], vault: false }),
-    { offSites: ["example.com"], vault: false }
+    settingsFrom({
+      offSites: ["example.com", "example.com", 3, "", "a b", "https://x.com/"],
+      veilSites: ["b.test", "a.test", null],
+      vault: false,
+    }),
+    { offSites: ["example.com"], veilSites: ["a.test", "b.test"], vault: false }
   );
+  // Settings from before veil mode (slice 2) keep their sites.
+  assert.deepEqual(settingsFrom({ offSites: ["example.com"], vault: true }), {
+    offSites: ["example.com"],
+    veilSites: [],
+    vault: true,
+  });
 });
 
-test("withSite turns a site off and on", () => {
-  const off = withSite([], "example.com", false);
-  assert.deepEqual(off, ["example.com"]);
-  assert.deepEqual(withSite(off, "example.com", false), ["example.com"]);
-  assert.deepEqual(withSite(off, "example.com", true), []);
+test("withMode moves a site between block, veil, and off", () => {
+  const none = { offSites: [], veilSites: [] };
+  const veiled = withMode(none, "example.com", "veil");
+  assert.deepEqual(veiled, { offSites: [], veilSites: ["example.com"] });
+  const off = withMode(veiled, "example.com", "off");
+  assert.deepEqual(off, { offSites: ["example.com"], veilSites: [] });
+  assert.deepEqual(withMode(off, "example.com", "block"), none);
+  assert.deepEqual(withMode(none, "example.com", "nonsense"), none);
+});
+
+test("adHostsFrom takes whole-host rules only", () => {
+  const list = [
+    "[Adblock Plus 2.0]",
+    "! comment",
+    "||ads.example^",
+    "||pagead2.googlesyndication.com^",
+    "||track.example^$third-party",
+    "||cdn.example^$script,image",
+    "||news.example^$domain=a.test",
+    "||ads.example/banner^",
+    "@@||ads.example^",
+    "||bad.example^$badfilter",
+    "example.com##.ad",
+    "||*.wild^",
+  ].join("\n");
+  assert.deepEqual(adHostsFrom(list), ["ads.example", "cdn.example", "pagead2.googlesyndication.com", "track.example"]);
 });
 
 test("adFrom keeps only http(s) links and creatives, bounded text", () => {

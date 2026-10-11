@@ -5,26 +5,30 @@
 "use strict";
 
 // The address bar popup. The background owns all state; this shows it for
-// the active tab, refreshes the counts while open, and sends the switch.
+// the active tab, refreshes the counts while open, and sends the mode.
 
 (async () => {
   const REFRESH_MS = 1000;
+  const HELP = {
+    block: "Ads and trackers are blocked.",
+    veil: "For sites that refuse ad blockers: ads load but stay hidden. Trackers stay blocked, and ad servers' tracking cookies stay off.",
+    off: "Nothing is blocked or hidden on this site.",
+  };
   const $ = id => document.getElementById(id);
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   let busy = false;
 
   function render(state) {
     $("site").textContent = state.site || "This page";
-    const toggle = $("site-on");
-    toggle.checked = state.on;
-    toggle.disabled = busy || !state.site || !state.ready;
-    $("switch-label").textContent = state.on ? "On for this site" : "Off for this site";
+    $("modes").disabled = busy || !state.site || !state.ready;
+    $(`mode-${state.mode}`).checked = true;
+    $("mode-help").textContent = HELP[state.mode];
     $("blocked").textContent = state.blocked;
     $("hidden").textContent = state.hidden;
     const note = !state.ready
       ? "Ad Veil could not start. Nothing is blocked."
       : state.incognito
-        ? "Private window: nothing is kept in the vault, and turning this site off lasts until the browser closes."
+        ? "Private window: nothing is kept in the vault, and this choice lasts until the browser closes."
         : "";
     $("note").textContent = note;
     $("note").hidden = !note;
@@ -36,12 +40,12 @@
     }
   }
 
-  $("site-on").addEventListener("change", async event => {
+  $("modes").addEventListener("change", async event => {
     busy = true;
-    event.target.disabled = true;
+    $("modes").disabled = true;
     try {
-      // The page reloads with the new state.
-      render(await browser.runtime.sendMessage({ type: "popup:setSite", tabId: tab.id, on: event.target.checked }));
+      // The page reloads in the new mode.
+      render(await browser.runtime.sendMessage({ type: "popup:setMode", tabId: tab.id, mode: event.target.value }));
     } finally {
       busy = false;
       refresh();

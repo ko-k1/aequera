@@ -159,3 +159,8 @@ pref("widget.windows.mica", true);
 // that reach the page are hidden. Off disables the built-in add-on
 // (adveil/aequera-adveil.js).
 pref("aequera.adveil.enabled", true);
+// Veil mode (per site, from Ad Veil's address bar popup) lets ad requests
+// through tracking protection: those it blocks from these classifier tables
+// (comma separated; Firefox's advertising list), and those of EasyList ad
+// server hosts. Other tracking protection blocks stay.
+pref("aequera.adveil.veil.adTables", "ads-track-digest256");

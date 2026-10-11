@@ -2,18 +2,86 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* The address bar popup: this site's switch and this page's counts. */
+/* The address bar popup: this site's mode and this page's counts. */
 
 main {
   display: grid;
   gap: calc(var(--ae-gap) * 2);
-  width: 260px;
+  width: 280px;
   padding: 14px;
 }
 
 header p {
   margin: 2px 0 0;
   overflow-wrap: anywhere;
+}
+
+.modes {
+  display: grid;
+  gap: var(--ae-gap);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.modes legend {
+  margin-bottom: var(--ae-gap);
+  padding: 0;
+}
+
+/* Three segments, one selected: native radios, so arrow keys move between
+   them and the group is announced as one choice. */
+.segments {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--ae-rad);
+  background: var(--ae-surface);
+}
+
+.segments label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: calc(var(--ae-ctl) - 4px);
+  border-radius: calc(var(--ae-rad) - 2px);
+  cursor: pointer;
+}
+
+.segments input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.segments label:hover {
+  background: var(--ae-hover);
+}
+
+.segments label:has(input:checked) {
+  background: var(--ae-accent);
+  color: var(--ae-on-accent);
+}
+
+.segments label:has(input:focus-visible) {
+  outline: 2px solid var(--ae-focus);
+  outline-offset: 1px;
+}
+
+.modes:disabled .segments {
+  opacity: 0.5;
+}
+
+.modes:disabled label {
+  cursor: default;
+}
+
+#mode-help {
+  margin: 0;
+  min-height: 3lh;
 }
 
 .counts {

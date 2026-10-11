@@ -1,8 +1,8 @@
 # Ad Veil
 
-Status: proposed (ADR 0003). Slices 1 (block and hide) and 2 (vault,
-per-site switch) are implemented (`aequera/extensions/ad-veil`); veil mode
-and slices 3–5 are design.
+Status: proposed (ADR 0003). Slices 1 (block and hide), 2 (vault,
+per-site modes), and 2b (veil mode) are implemented
+(`aequera/extensions/ad-veil`); slices 3–5 are design.
 
 Ad Veil is how Aequera handles ads: block what the filter lists match at the
 network layer, hide what still reaches the page, keep a local vault of it,
@@ -27,7 +27,7 @@ in-player video ad defeat.
 |---|---|---|
 | Block | Cancels requests matched by network rules. | on |
 | Hide | Applies cosmetic rules to what reaches the page. | on |
-| Veil (per site) | Lets visual ad requests through and hides them instead (AdNauseam's model). | off; offered on sites with a wall |
+| Veil (per site) | Lets ad requests through (Ad Veil's and tracking protection's ad blocks) and hides the ads in place (AdNauseam's model); trackers stay blocked. | off; chosen per site in the popup |
 | Vault | Records blocked and hidden ads locally. | on |
 | Visit | Requests hidden ads' target links in the background. | on, shown at first run |
 | List updates | Fetches current EasyList / EasyPrivacy. | on, shown in the panel |
@@ -90,7 +90,8 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
 - Built-in add-ons are hidden, system, privileged, and get private-window
   access. A test holds `manifest.json` to `storage`, `unlimitedStorage`,
   `tabs`, `webNavigation`, `webRequest`, `webRequestBlocking`, and
-  `<all_urls>`. No `mozillaAddons`, no `experiment_apis`.
+  `<all_urls>`. No `mozillaAddons`; one experiment API, `aequeraVeil`,
+  parent process only (Veil mode, below).
 - `aequera.adveil.enabled` (default true) is applied by Aequera chrome code
   with `AddonManager` enable/disable and `allowSystemAddons` (the add-on
   manager refuses to disable a system add-on otherwise), as Firefox does in
@@ -121,23 +122,28 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
 - Every selector is parsed by Gecko as one rule and kept only if it is a
   single style rule whose only declaration is the hiding one, so list data
   cannot add declarations (a `url()` that leaks page state) or rules.
-- `display: none !important` (collapse) by default; veil mode uses
+- `display: none !important` (collapse) in block mode; veil mode uses
   `opacity: 0 !important; pointer-events: none !important`, which keeps the
-  element's box so size-based bait checks pass.
+  element's box so size-based bait checks pass. Each style is validated as
+  its own rule (only its declarations).
 
 ### Address bar button and popup (slice 2)
 
 - A page action (`pageAction-urlbar-adveil_aequera`) on http(s) pages: its
-  tooltip carries this page's counts ("Ad Veil: 12 blocked, 3 hidden on this
-  page"), its icon (theme colored, `context-fill`) shows when Ad Veil is off
-  for the site. Page actions have no badge, so the count is in the tooltip
-  and the popup.
-- The popup (`pages/popup.html`): the site, an "On for this site" switch,
-  this page's Blocked and Hidden counts, and "Open vault". Switching reloads
-  the page, since blocking and hiding apply from a page's start.
-- A site turned off covers its subdomains (`example.com` covers
+  tooltip carries this page's counts and mode ("Ad Veil: 12 blocked, 3
+  hidden on this page", "Ad Veil, veil mode: …", "Ad Veil is off for …"),
+  its icon (theme colored, `context-fill`) the mode: shield with a band
+  (block), a dotted band (veil), struck through (off). Page actions have no
+  badge, so the count is in the tooltip and the popup.
+- The popup (`pages/popup.html`): the site, "On this site: Block · Veil ·
+  Off" (native radios: arrow keys, one announced choice) with a line on
+  what the mode does, this page's Blocked and Hidden counts, and "Open
+  vault". Choosing reloads the page, since blocking and hiding apply from a
+  page's start.
+- A mode set for a site covers its subdomains (`example.com` covers
   `news.example.com`); the site is the host without a leading `www.`. Off
-  means no blocking, no hiding, no recording, and the content script stops.
+  wins over veil. Off means no blocking, no hiding, no recording, and the
+  content script stops.
 
 ### Vault (slice 2)
 
@@ -164,11 +170,44 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   learns of it only with the `history` permission); the vault's own Clear
   and its 90-day limit do.
 
-### Veil mode (slice 2b, not built)
+### Veil mode (slice 2b)
 
-Per-site "let ads load, hide them" needs the network rules split by list
-(EasyList's visual-ad rules allowed, the rest still blocked) and the veil
-hiding style; it follows once the per-site store above has proven out.
+For sites that refuse ad blockers: ads load and are hidden in place,
+trackers stay blocked. Two blockers stand between a page and its ads, and
+veil mode lifts each one only for ads.
+
+- **Ad Veil's own.** One engine holds both lists and decides every request,
+  so an exception rule in either list applies to both. When it blocks on a
+  veiled site, a second instance holding EasyPrivacy alone is asked: a
+  tracker (and any beacon, ping, or CSP report) stays blocked; anything
+  else is an EasyList ad and loads.
+- **Firefox's tracking protection.** Strict blocks every major ad network
+  (Disconnect's Advertising category: `ads-track-digest256`; Google's ad
+  hosts are on the fingerprinting list too), and does it in
+  `nsHttpChannel::AsyncOpen`, before any extension's `onBeforeRequest`.
+  `experiments/veil.js` (the add-on's one privileged API, parent process
+  only) listens to Firefox's channel classifier service while a site is
+  veiled and `allow()`s, on that site only:
+  - a tracking-protection block from an advertising table
+    (`aequera.adveil.veil.adTables`) or of an EasyList ad host;
+  - a fingerprinting-protection block of an EasyList ad host (EasyList's
+    whole-host `||host^` rules: 50,177 hosts, 21 ms to extract).
+  Social, cryptomining, email, and analytics blocks stay. Firefox's site
+  exception (the shield's "off") is not used: it would also lift tracking
+  protection's cookie and storage rules. An allowed channel is still a
+  tracking channel to Firefox, so its tracker cookie rules keep applying;
+  Ad Veil therefore strips no headers itself.
+- Modes resolve the same way on both sides (`model.js`, `resolveMode`,
+  loaded into the parent API).
+- Cost, measured (SpiderMonkey, content process, 30,368 corpus requests):
+  block mode is one check as before (8.7 µs mean, p99 40 µs); on a page
+  where every request is veiled, 13.7 µs mean, p99 80 µs, and 6,921 of
+  13,284 blocked requests stay blocked as trackers. Compiling both
+  instances: 164 ms at start (115 ms with one).
+- Not covered: walls that check something other than ad requests and bait
+  sizes (scriptlet-level defusing is not loaded), and ads served from
+  hosts EasyList does not list whole that Firefox blocks as fingerprinters.
+  Slice 5 measures what remains.
 
 ### Visit (slice 4)
 
@@ -197,23 +236,25 @@ One pref, the global switch, applied by Aequera chrome code:
 | Pref | Type | Default |
 |---|---|---|
 | `aequera.adveil.enabled` | bool | `true` |
+| `aequera.adveil.veil.adTables` | comma-separated classifier tables | `ads-track-digest256` (the tracking-protection tables veil mode lifts) |
 
 Everything else is Ad Veil's own setting, kept in the add-on's
 `storage.local` (an add-on cannot read prefs) and changed in its pages:
 
 | Setting | Type | Default | Where |
 |---|---|---|---|
-| `offSites` | list of sites | `[]` | popup switch |
+| `offSites` | list of sites | `[]` | popup, Off |
+| `veilSites` | list of sites | `[]` | popup, Veil |
 | `vault` | bool | `true` | vault page, "Keep a vault" |
 | visit, list updates | | slices 3–4 | first run, panel |
 
 Settings are validated on every load (`model.js`, `settingsFrom`): unknown
-or malformed values fall back to the defaults. Sites turned off from a
-private window are kept in memory only, so a private visit never reaches the
-profile; turning a site back on there may clear a normal-window choice. A
-compiled engine or list update that fails to load falls back to the shipped
-snapshots (`AGENTS.md`: configuration failures recover to a known-good
-state).
+or malformed values fall back to the defaults, and settings saved before
+veil mode keep their sites. Modes chosen in a private window are kept in
+memory only and win there (nearest site first) until the browser closes,
+so a private visit never reaches the profile. A compiled engine or list
+update that fails to load falls back to the shipped snapshots (`AGENTS.md`:
+configuration failures recover to a known-good state).
 
 ## Performance budget
 
@@ -240,7 +281,7 @@ whether ETP's `ads-track-digest256` blocked a request before Ad Veil saw it.
 |---|---|---|
 | 1 Block + hide | engine crate + wasm, list snapshots, built-in add-on, webRequest blocking, cosmetic hiding, `aequera.adveil.enabled` | engine tests; fixture page: ad request blocked and ad element hidden, pref off restores both; manifest permission test; real launch installs the add-on; SpiderMonkey per-request numbers recorded |
 | 2 Vault + controls | vault store and page, address bar button and popup, per-site off | done: vault records the fixture's ad (link, site, text, image) and blocked host; private windows record nothing (mutation-checked); popup switch turns blocking and hiding off and on for the site; no request of the add-on's own with the vault open |
-| 2b Veil mode | per-site veil (network rules split by list, veil style) | a walled site reads in veil mode; the rest stays blocked |
+| 2b Veil mode | per-site veil: list split, veil style, `aequeraVeil` classifier listener | done: on a veiled page the EasyList ad and an ad network tracking protection blocks load, an EasyPrivacy tracker and a social tracker stay blocked, the ad element keeps its box (invisible, unclickable), tracking protection stays on for the site, and Block restores it all (Firefox's test trackers; mutation-checked: fails without `allow()`) |
 | 3 Updates | automatic list updates with fallback | update shows in the panel; a corrupt download keeps the previous set |
 | 4 First run + Visit | first-run screen, visit queue | every visit logged; limits enforced; private windows never visit |
 | 5 Tune | corpus run, ETP ads-list decision | numbers recorded here |

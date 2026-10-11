@@ -1,0 +1,58 @@
+[
+  {
+    "namespace": "aequeraVeil",
+    "description": "Ad Veil's veil mode (docs/design/ADS.md): on sites the user veiled, let ad requests through Firefox's tracking protection. Parent process only.",
+    "types": [
+      {
+        "id": "SiteMode",
+        "type": "object",
+        "properties": {
+          "site": { "type": "string", "maxLength": 253 },
+          "mode": { "type": "string", "enum": ["block", "veil", "off"] }
+        }
+      }
+    ],
+    "functions": [
+      {
+        "name": "setAdHosts",
+        "type": "function",
+        "async": true,
+        "description": "The ad server hosts (EasyList whole-host rules) whose fingerprinting-protection blocks veil mode lifts.",
+        "parameters": [
+          {
+            "name": "hosts",
+            "type": "array",
+            "items": { "type": "string", "maxLength": 253 },
+            "maxItems": 200000
+          }
+        ]
+      },
+      {
+        "name": "setSiteModes",
+        "type": "function",
+        "async": true,
+        "description": "The sites turned off and veiled (each covers its subdomains), and the choices made in private windows.",
+        "parameters": [
+          {
+            "name": "offSites",
+            "type": "array",
+            "items": { "type": "string", "maxLength": 253 },
+            "maxItems": 10000
+          },
+          {
+            "name": "veilSites",
+            "type": "array",
+            "items": { "type": "string", "maxLength": 253 },
+            "maxItems": 10000
+          },
+          {
+            "name": "privateModes",
+            "type": "array",
+            "items": { "$ref": "SiteMode" },
+            "maxItems": 10000
+          }
+        ]
+      }
+    ]
+  }
+]

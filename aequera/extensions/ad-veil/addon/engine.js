@@ -9,9 +9,15 @@
 // bytes at veil_out().
 
 class VeilEngine {
+  static #module = null;
+
+  // One compiled module; each engine is an instance of it (its own memory,
+  // its own rules).
   static async load() {
-    const response = await fetch(browser.runtime.getURL("engine.wasm"));
-    const { instance } = await WebAssembly.instantiate(await response.arrayBuffer(), {});
+    VeilEngine.#module ||= fetch(browser.runtime.getURL("engine.wasm"))
+      .then(response => response.arrayBuffer())
+      .then(bytes => WebAssembly.compile(bytes));
+    const instance = await WebAssembly.instantiate(await VeilEngine.#module, {});
     return new VeilEngine(instance.exports);
   }
 

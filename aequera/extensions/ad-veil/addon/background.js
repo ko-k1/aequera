@@ -9,10 +9,20 @@
 // hidden with user-origin stylesheets. Matching runs here, in the extension
 // process; the parent only suspends and resumes each channel. What was
 // blocked or hidden goes to the vault (vault.js); the address bar button
-// (popup.html) shows this page's counts and turns Ad Veil off per site.
+// (popup.html) shows this page's counts and sets the site's mode:
+// - block (default): EasyList and EasyPrivacy matches are cancelled, what
+//   reaches the page is hidden (display: none);
+// - veil: for sites that refuse ad blockers. EasyList's ads load (Firefox's
+//   tracking protection lets them through too: experiments/veil.js) and are
+//   hidden in place (their box kept); EasyPrivacy's trackers and EasyList's
+//   beacons and pings stay blocked;
+// - off: nothing is blocked, hidden, or recorded.
 
-const LISTS = ["lists/easylist.txt", "lists/easyprivacy.txt"];
+const LISTS = { ads: "lists/easylist.txt", privacy: "lists/easyprivacy.txt" };
 const OWN = browser.runtime.getURL("");
+
+// Request types veil mode still blocks: they never show an ad.
+const NON_VISUAL = new Set(["beacon", "ping", "csp_report"]);
 
 // Bounds on what a content script may send (it runs in a web content
 // process, so its messages are untrusted input).
@@ -24,18 +34,23 @@ const MAX_HIDDEN_PER_MESSAGE = 10000;
 const PRUNE_MS = 60 * 60 * 1000;
 const ACTION_UPDATE_MS = 250;
 
-let engine = null;
+// { all, privacy }. `all` holds both lists and makes every decision, as one
+// engine must: an exception rule in either list applies to both (uBlock
+// Origin semantics). `privacy` (EasyPrivacy alone) is asked only when `all`
+// blocks on a veiled site: a tracker stays blocked, anything else is an ad.
+let engines = null;
 
 // Settings live in this add-on's storage (an add-on cannot read prefs) and
-// are validated on every load. Sites turned off from a private window are
-// kept only in memory: a private visit never reaches the profile.
+// are validated on every load. Choices made in private windows are kept only
+// in memory (privateModes): a private visit never reaches the profile.
 let settings = VeilModel.settingsFrom(null);
-let offSites = new Set();
-const privateOffSites = new Set();
+const modes = { off: new Set(), veil: new Set(), privateModes: new Map() };
 
 function applySettings(stored) {
   settings = VeilModel.settingsFrom(stored);
-  offSites = new Set(settings.offSites);
+  modes.off = new Set(settings.offSites);
+  modes.veil = new Set(settings.veilSites);
+  pushModes();
 }
 
 async function saveSettings(next) {
@@ -43,12 +58,21 @@ async function saveSettings(next) {
   await browser.storage.local.set({ settings });
 }
 
-function siteOff(site, incognito) {
-  return VeilModel.isSiteOff(offSites, site) || (incognito && VeilModel.isSiteOff(privateOffSites, site));
+function modeOf(site, incognito) {
+  return VeilModel.resolveMode(modes, site, incognito);
+}
+
+// The parent-side half of veil mode (experiments/veil.js) resolves modes the
+// same way.
+function pushModes() {
+  const privateModes = [...modes.privateModes].map(([site, mode]) => ({ site, mode }));
+  browser.aequeraVeil
+    .setSiteModes(settings.offSites, settings.veilSites, privateModes)
+    .catch(error => console.error("Ad Veil: veil mode unavailable", error));
 }
 
 // Requests that arrive before the lists are compiled wait for them, as
-// uBlock Origin does on Firefox, instead of slipping through. If the engine
+// uBlock Origin does on Firefox, instead of slipping through. If the engines
 // cannot load, nothing is blocked: a broken blocker must not break browsing.
 const settingsReady = browser.storage.local
   .get("settings")
@@ -56,15 +80,20 @@ const settingsReady = browser.storage.local
   .catch(error => console.error("Ad Veil: settings unreadable, using defaults", error));
 
 const ready = (async () => {
-  const loaded = await VeilEngine.load();
-  const texts = await Promise.all(
-    LISTS.map(async path => (await fetch(browser.runtime.getURL(path))).text())
-  );
-  if (!loaded.compile(texts.join("\n"))) {
+  const [all, privacy, adsText, privacyText] = await Promise.all([
+    VeilEngine.load(),
+    VeilEngine.load(),
+    fetch(browser.runtime.getURL(LISTS.ads)).then(response => response.text()),
+    fetch(browser.runtime.getURL(LISTS.privacy)).then(response => response.text()),
+  ]);
+  if (!all.compile(`${adsText}\n${privacyText}`) || !privacy.compile(privacyText)) {
     throw new Error("filter lists did not compile");
   }
+  browser.aequeraVeil
+    .setAdHosts(VeilModel.adHostsFrom(adsText))
+    .catch(error => console.error("Ad Veil: veil mode unavailable", error));
   await settingsReady;
-  engine = loaded;
+  engines = { all, privacy };
 })();
 ready.catch(error => console.error("Ad Veil: engine unavailable, nothing is blocked", error));
 
@@ -106,9 +135,11 @@ browser.tabs.onRemoved.addListener(tabId => {
   tabs.delete(tabId);
 });
 
-// The address bar button: its tooltip carries this page's counts, its icon
-// whether Ad Veil is off here. Coalesced, since a page can block dozens of
-// requests in a burst.
+// The address bar button: its tooltip carries this page's counts and mode,
+// its icon the mode. Coalesced, since a page can block dozens of requests in
+// a burst.
+const ICONS = { block: "icons/veil.svg", veil: "icons/veil-veiled.svg", off: "icons/veil-off.svg" };
+
 function scheduleAction(tabId) {
   const state = tabs.get(tabId);
   if (state && !state.timer) {
@@ -126,12 +157,20 @@ function updateAction(tabId) {
   if (!site) {
     return;
   }
-  const off = siteOff(site, state.incognito);
-  const title = off
-    ? `Ad Veil is off for ${site}`
-    : `Ad Veil: ${state.blocked} blocked, ${state.hidden} hidden on this page`;
-  browser.pageAction.setTitle({ tabId, title }).catch(() => {});
-  browser.pageAction.setIcon({ tabId, path: off ? "icons/veil-off.svg" : "icons/veil.svg" }).catch(() => {});
+  const mode = modeOf(site, state.incognito);
+  const counts = `${state.blocked} blocked, ${state.hidden} hidden on this page`;
+  const title = {
+    block: `Ad Veil: ${counts}`,
+    veil: `Ad Veil, veil mode: ${counts}`,
+    off: `Ad Veil is off for ${site}`,
+  }[mode];
+  try {
+    // Synchronous in Firefox (no promise); throws for a closed tab.
+    browser.pageAction.setTitle({ tabId, title });
+  } catch {
+    return;
+  }
+  browser.pageAction.setIcon({ tabId, path: ICONS[mode] }).catch(() => {});
 }
 
 function fromOwnPage(details) {
@@ -152,15 +191,7 @@ function topUrl(details) {
   return tabs.get(details.tabId)?.url || details.documentUrl;
 }
 
-function decide(details) {
-  const site = VeilModel.siteOf(topUrl(details));
-  if (siteOff(site, details.incognito)) {
-    return {};
-  }
-  const source = details.documentUrl || details.originUrl || details.url;
-  if (engine.check(details.url, source, details.type) != 1) {
-    return {};
-  }
+function cancel(details, site) {
   const state = tabs.get(details.tabId);
   if (state) {
     state.blocked++;
@@ -171,6 +202,27 @@ function decide(details) {
     VeilVault.countBlocked(site, host, Date.now());
   }
   return { cancel: true };
+}
+
+function decide(details) {
+  const site = VeilModel.siteOf(topUrl(details));
+  const mode = modeOf(site, details.incognito);
+  if (mode == "off") {
+    return {};
+  }
+  const source = details.documentUrl || details.originUrl || details.url;
+  if (engines.all.check(details.url, source, details.type) != 1) {
+    return {};
+  }
+  if (
+    mode == "veil" &&
+    !NON_VISUAL.has(details.type) &&
+    engines.privacy.check(details.url, source, details.type) != 1
+  ) {
+    // An ad: loads, hidden in place by the cosmetic rules.
+    return {};
+  }
+  return cancel(details, site);
 }
 
 browser.webRequest.onBeforeRequest.addListener(
@@ -188,7 +240,7 @@ browser.webRequest.onBeforeRequest.addListener(
     if (fromOwnPage(details)) {
       return {};
     }
-    if (engine) {
+    if (engines) {
       return decide(details);
     }
     return ready.then(
@@ -200,43 +252,69 @@ browser.webRequest.onBeforeRequest.addListener(
   ["blocking"]
 );
 
+// Cosmetic rules, from both lists.
+function cosmeticFor(url) {
+  const rules = engines.all.cosmetic(url);
+  return {
+    hide: rules?.hide || [],
+    generic(classes, ids) {
+      return rules && !rules.generichide ? engines.all.generic(classes, ids, rules.exceptions) : [];
+    },
+  };
+}
+
+// How a mode hides: block collapses the element; veil keeps its box (so a
+// script measuring a bait element sees it laid out) and makes it invisible
+// and unclickable.
+const STYLES = {
+  block: { display: "none" },
+  veil: { opacity: "0", "pointer-events": "none" },
+};
+
 // Selectors are list data, and lists will be updated over the network
 // (slice 3). Each one becomes a single rule parsed by Gecko and is kept only
-// if it is one style rule whose only declaration is ours: a crafted
+// if it is one style rule whose only declarations are ours: a crafted
 // "selector" cannot add declarations (a url() that leaks page state), extra
-// rules, or nested rules. Results are cached per selector; the normalized
-// selector text is what content scripts query for the vault.
+// rules, or nested rules. Results are cached per selector and style; the
+// normalized selector text is what content scripts query for the vault.
 const sheet = new CSSStyleSheet();
 const ruleCache = new Map();
 
-function hideRule(selector) {
-  let rule = ruleCache.get(selector);
+function hideRule(selector, mode) {
+  const key = `${mode}\n${selector}`;
+  let rule = ruleCache.get(key);
   if (rule !== undefined) {
     return rule;
   }
   rule = null;
+  const style = STYLES[mode];
+  const declarations = Object.entries(style)
+    .map(([property, value]) => `${property}:${value}!important`)
+    .join(";");
   try {
-    sheet.insertRule(`${selector}{display:none!important}`, 0);
+    sheet.insertRule(`${selector}{${declarations}}`, 0);
     const parsed = sheet.cssRules[0];
     sheet.deleteRule(0);
     if (
       parsed instanceof CSSStyleRule &&
       parsed.cssRules.length === 0 &&
-      parsed.style.length === 1 &&
-      parsed.style.getPropertyValue("display") === "none" &&
-      parsed.style.getPropertyPriority("display") === "important"
+      parsed.style.length === Object.keys(style).length &&
+      Object.entries(style).every(
+        ([property, value]) =>
+          parsed.style.getPropertyValue(property) === value && parsed.style.getPropertyPriority(property) === "important"
+      )
     ) {
       rule = { css: parsed.cssText, selector: parsed.selectorText };
     }
   } catch {
     // Not a selector Gecko accepts: skipped.
   }
-  ruleCache.set(selector, rule);
+  ruleCache.set(key, rule);
   return rule;
 }
 
-function validRules(selectors) {
-  return selectors.map(hideRule).filter(Boolean);
+function validRules(selectors, mode) {
+  return selectors.map(selector => hideRule(selector, mode)).filter(Boolean);
 }
 
 async function hide(tabId, frameId, rules) {
@@ -264,12 +342,12 @@ browser.webNavigation.onCommitted.addListener(
       startPage(tabId, url, state.incognito);
       state = tabs.get(tabId);
     }
-    if (!engine || !state || siteOff(VeilModel.siteOf(frameId == 0 ? url : state.url), state.incognito)) {
+    if (!engines || !state) {
       return;
     }
-    const cosmetic = engine.cosmetic(url);
-    if (cosmetic) {
-      hide(tabId, frameId, validRules(cosmetic.hide));
+    const mode = modeOf(VeilModel.siteOf(frameId == 0 ? url : state.url), state.incognito);
+    if (mode != "off") {
+      hide(tabId, frameId, validRules(cosmeticFor(url).hide, mode));
     }
   },
   { url: [{ schemes: ["http", "https"] }] }
@@ -284,13 +362,15 @@ function names(list) {
     .filter(name => typeof name == "string" && name.length && name.length <= MAX_NAME_LENGTH);
 }
 
-// Whether Ad Veil works in the sender's frame, and whether it may record.
+// The sender frame's mode, and whether it may record; null when Ad Veil
+// does nothing there.
 function frameStatus(sender) {
   const tab = sender.tab;
-  if (!engine || !tab || siteOff(VeilModel.siteOf(tab.url), tab.incognito)) {
+  if (!engines || !tab) {
     return null;
   }
-  return { collect: settings.vault && !tab.incognito };
+  const mode = modeOf(VeilModel.siteOf(tab.url), tab.incognito);
+  return mode == "off" ? null : { mode, collect: settings.vault && !tab.incognito };
 }
 
 function contentMessage(message, sender) {
@@ -302,17 +382,16 @@ function contentMessage(message, sender) {
       if (!status) {
         return Promise.resolve({ active: false });
       }
-      const cosmetic = engine.cosmetic(sender.url);
-      const selectors = cosmetic ? validRules(cosmetic.hide).map(rule => rule.selector) : [];
+      const selectors = validRules(cosmeticFor(sender.url).hide, status.mode).map(rule => rule.selector);
       return Promise.resolve({ active: true, collect: status.collect, selectors });
     }
     // Generic rules, for the class and id names content.js saw.
     case "seen": {
-      const cosmetic = status && engine.cosmetic(sender.url);
-      if (!cosmetic || cosmetic.generichide) {
+      if (!status) {
         return Promise.resolve({ selectors: [] });
       }
-      const rules = validRules(engine.generic(names(message.classes), names(message.ids), cosmetic.exceptions));
+      const generic = cosmeticFor(sender.url).generic(names(message.classes), names(message.ids));
+      const rules = validRules(generic, status.mode);
       hide(sender.tab.id, sender.frameId, rules);
       return Promise.resolve({ selectors: rules.map(rule => rule.selector) });
     }
@@ -351,34 +430,29 @@ async function tabSummary(tabId) {
   const state = await tabState(tabId);
   const site = state && VeilModel.siteOf(state.url);
   return {
-    ready: !!engine,
+    ready: !!engines,
     site,
     incognito: !!state?.incognito,
-    on: !!site && !siteOff(site, state.incognito),
+    mode: site ? modeOf(site, state.incognito) : "block",
     blocked: state?.blocked || 0,
     hidden: state?.hidden || 0,
   };
 }
 
-async function setSite(tabId, on) {
+async function setMode(tabId, mode) {
   const state = await tabState(tabId);
   const site = state && VeilModel.siteOf(state.url);
-  if (!site) {
+  if (!site || !VeilModel.MODES.includes(mode)) {
     return tabSummary(tabId);
   }
   if (state.incognito) {
-    if (on) {
-      privateOffSites.delete(site);
-    } else {
-      privateOffSites.add(site);
-    }
+    // Kept for private windows only, until the browser closes.
+    modes.privateModes.set(site, mode);
+    pushModes();
+  } else {
+    await saveSettings({ ...settings, ...VeilModel.withMode(settings, site, mode) });
   }
-  if (!state.incognito || on) {
-    // Turning a site back on from a private window may clear a choice made
-    // in a normal one; it never adds a private site to the profile.
-    await saveSettings({ ...settings, offSites: VeilModel.withSite(settings.offSites, site, on) });
-  }
-  // Hiding and blocking apply from the start of a page: reload it.
+  // Blocking and hiding apply from the start of a page: reload it.
   await browser.tabs.reload(tabId).catch(() => {});
   return tabSummary(tabId);
 }
@@ -388,8 +462,8 @@ function ownMessage(message) {
   switch (message.type) {
     case "popup:state":
       return tabSummary(message.tabId);
-    case "popup:setSite":
-      return setSite(message.tabId, !!message.on);
+    case "popup:setMode":
+      return setMode(message.tabId, message.mode);
     case "vault:summary":
       return VeilVault.summary().then(summary => ({ ...summary, enabled: settings.vault }));
     case "vault:setEnabled":
@@ -410,7 +484,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
     return ownMessage(message);
   }
   // A page restored at startup can ask before the lists are compiled.
-  if (!engine) {
+  if (!engines) {
     return ready.then(
       () => contentMessage(message, sender),
       () => undefined

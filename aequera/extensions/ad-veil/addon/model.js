@@ -17,7 +17,11 @@ var VeilModel = (() => {
   const MAX_TEXT = 200;
   const MAX_SITES = 10000;
 
-  const DEFAULT_SETTINGS = Object.freeze({ offSites: [], vault: true });
+  const DEFAULT_SETTINGS = Object.freeze({ offSites: [], veilSites: [], vault: true });
+
+  // Per site (ADS.md, Model): block (default), veil (ads load and are
+  // hidden, trackers stay blocked), or off.
+  const MODES = Object.freeze(["block", "veil", "off"]);
 
   function parse(url) {
     try {
@@ -42,14 +46,14 @@ var VeilModel = (() => {
     return parse(url)?.hostname || null;
   }
 
-  // A site turned off also covers its subdomains (news.example.com when
-  // example.com is off), as a person expects of "this site".
-  function isSiteOff(offSites, site) {
+  // A site in a set also covers its subdomains (news.example.com when
+  // example.com is in it), as a person expects of "this site".
+  function covers(sites, site) {
     if (!site) {
       return false;
     }
     for (let host = site; ; ) {
-      if (offSites.has(host)) {
+      if (sites.has(host)) {
         return true;
       }
       const dot = host.indexOf(".");
@@ -60,8 +64,51 @@ var VeilModel = (() => {
     }
   }
 
+  // `lists` holds Sets: { off, veil }. Off wins over veil.
+  function siteMode(lists, site) {
+    if (covers(lists.off, site)) {
+      return "off";
+    }
+    return covers(lists.veil, site) ? "veil" : "block";
+  }
+
+  // The value of the nearest entry covering `site` (itself, then each parent
+  // domain), or undefined.
+  function nearest(map, site) {
+    if (!site) {
+      return undefined;
+    }
+    for (let host = site; ; ) {
+      if (map.has(host)) {
+        return map.get(host);
+      }
+      const dot = host.indexOf(".");
+      if (dot < 0) {
+        return undefined;
+      }
+      host = host.slice(dot + 1);
+    }
+  }
+
+  // A page's mode. `state`: { off: Set, veil: Set, privateModes: Map }, the
+  // last being choices made in private windows (memory only), which win
+  // there over the profile's lists.
+  function resolveMode(state, site, incognito) {
+    if (incognito) {
+      const mode = nearest(state.privateModes, site);
+      if (mode) {
+        return mode;
+      }
+    }
+    return siteMode(state, site);
+  }
+
   function isSite(value) {
     return typeof value == "string" && value.length > 0 && value.length <= 253 && siteOf(`https://${value}/`) == value;
+  }
+
+  function sitesFrom(value) {
+    return Array.isArray(value) ? [...new Set(value.filter(isSite))].sort().slice(0, MAX_SITES) : [];
   }
 
   // Stored settings, whatever their state, to valid settings: unknown or
@@ -69,21 +116,38 @@ var VeilModel = (() => {
   // failures recover to a known-good state).
   function settingsFrom(stored) {
     const value = stored && typeof stored == "object" ? stored : {};
-    const offSites = Array.isArray(value.offSites)
-      ? [...new Set(value.offSites.filter(isSite))].slice(0, MAX_SITES)
-      : [...DEFAULT_SETTINGS.offSites];
     const vault = typeof value.vault == "boolean" ? value.vault : DEFAULT_SETTINGS.vault;
-    return { offSites, vault };
+    return { offSites: sitesFrom(value.offSites), veilSites: sitesFrom(value.veilSites), vault };
   }
 
-  function withSite(offSites, site, on) {
-    const next = new Set(offSites);
-    if (on) {
-      next.delete(site);
-    } else {
-      next.add(site);
+  // The site lists with `site` set to `mode` (an exact site; covered
+  // subdomains keep their own entries).
+  function withMode(settings, site, mode) {
+    const off = new Set(settings.offSites);
+    const veil = new Set(settings.veilSites);
+    off.delete(site);
+    veil.delete(site);
+    if (mode == "off") {
+      off.add(site);
+    } else if (mode == "veil") {
+      veil.add(site);
     }
-    return [...next].sort();
+    return { offSites: [...off].sort(), veilSites: [...veil].sort() };
+  }
+
+  // Ad server hosts: EasyList's whole-host rules (`||host^`, any type or
+  // party option, never one limited to some sites). Veil mode lets these
+  // through Firefox's fingerprinting protection, which lists the largest ad
+  // networks too.
+  function adHostsFrom(text) {
+    const hosts = new Set();
+    for (const match of text.matchAll(/^\|\|([a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+)\^(?:\$([^\n]*))?$/gm)) {
+      const options = match[2] || "";
+      if (!/(?:^|,)(?:domain|from|to|denyallow|badfilter)\b/.test(options)) {
+        hosts.add(match[1]);
+      }
+    }
+    return [...hosts].sort();
   }
 
   function cleanUrl(value) {
@@ -123,11 +187,16 @@ var VeilModel = (() => {
     RETENTION_DAYS,
     MAX_ADS,
     DEFAULT_SETTINGS,
+    MODES,
     siteOf,
     hostOf,
-    isSiteOff,
+    covers,
+    siteMode,
+    nearest,
+    resolveMode,
     settingsFrom,
-    withSite,
+    withMode,
+    adHostsFrom,
     adFrom,
     dayOf,
     cutoff,

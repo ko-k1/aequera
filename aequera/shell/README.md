@@ -394,12 +394,15 @@ to the pref, as Firefox does for its own pref-driven system add-ons.
 Matching runs in the extension process; nothing here touches the network.
 
 Its address bar button (a page action) shows this page's counts and opens
-a popup with an "On for this site" switch and the vault (what was blocked
-and hidden, kept locally for 90 days; never from private windows).
+a popup with the site's mode (Block, Veil: ads load hidden for sites that
+refuse ad blockers, trackers stay blocked; Off) and the vault (what was
+blocked and hidden, kept locally for 90 days; never from private windows).
+`aequera.adveil.veil.adTables` names the tracking-protection tables veil
+mode lifts (Firefox's advertising list).
 
 Tests: `tests/browser/browser_aequera_adveil.js` (built-in install, least
 privilege, blocking and hiding on a fixture, the pref off and on, the vault,
-private windows unrecorded, the popup's site switch, no request of its own).
+private windows unrecorded, the popup's site modes, veil mode with Firefox's test trackers, no request of its own).
 The upstream gate runs Firefox's tests with the pref off.
 
 ## Robustness

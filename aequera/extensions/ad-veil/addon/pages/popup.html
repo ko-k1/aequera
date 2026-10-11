@@ -16,10 +16,15 @@
     <h1>Ad Veil</h1>
     <p id="site" class="dim small"></p>
   </header>
-  <label class="switch">
-    <span id="switch-label">On for this site</span>
-    <input type="checkbox" role="switch" id="site-on" disabled>
-  </label>
+  <fieldset class="modes" id="modes" disabled>
+    <legend class="dim small">On this site</legend>
+    <div class="segments">
+      <label><input type="radio" name="mode" value="block" id="mode-block"><span>Block</span></label>
+      <label><input type="radio" name="mode" value="veil" id="mode-veil"><span>Veil</span></label>
+      <label><input type="radio" name="mode" value="off" id="mode-off"><span>Off</span></label>
+    </div>
+    <p id="mode-help" class="dim small"></p>
+  </fieldset>
   <dl class="counts" aria-live="polite">
     <div><dt class="dim small">Blocked</dt><dd id="blocked">0</dd></div>
     <div><dt class="dim small">Hidden</dt><dd id="hidden">0</dd></div>
