@@ -8,7 +8,7 @@
 // vault and settings; this renders them and sends the user's changes.
 
 (() => {
-  const { send, element, plural, number, date, time, hostOf, showImage, dropImages } = VeilPage;
+  const { send, element, plural, number, date, time, thumb, dropImages, adLink } = VeilPage;
   const TABS = ["overview", "vault", "sites", "settings"];
   const CLEAR_CONFIRM_MS = 4000;
   const $ = id => document.getElementById(id);
@@ -170,25 +170,14 @@
 
   // Vault: the newest ads, by day, filtered by text and site.
   function adCard(ad) {
-    const host = hostOf(ad.link || ad.creative);
-    const img = element("img", { alt: "", hidden: true });
-    const thumb = element(
-      "div",
-      { class: "ad-thumb", "aria-hidden": "true" },
-      element("span", { class: "initial", text: (host[0] || "?").toUpperCase() }),
-      img
-    );
-    if (summary.settings.showImages) {
-      showImage(ad.creative, img, thumb);
-    }
     return element(
       "li",
       { class: "ad-card", "data-creative": ad.creative || "" },
-      thumb,
+      thumb(ad, "div"),
       element("p", { class: "text", text: ad.text || "Image ad" }),
       element("p", { class: "meta dim small", text: `${ad.site || ""} · ${time(ad.time)}` }),
       ad.link
-        ? element("a", { class: "link small", href: ad.link, target: "_blank", rel: "noopener noreferrer", text: hostOf(ad.link), title: ad.link })
+        ? adLink(ad.link)
         : null
     );
   }
@@ -224,8 +213,6 @@
     $("vault-count").textContent =
       shown.length == ads.length ? plural(ads.length, "ad", "ads") : `${number(shown.length)} of ${plural(ads.length, "ad", "ads")}`;
     $("vault-empty").hidden = ads.length > 0;
-    $("vault-images").checked = summary.settings.showImages;
-    $("images-note").hidden = !summary.settings.showImages;
   }
 
   function renderSiteFilter() {
@@ -275,7 +262,7 @@
 
   function renderSettings() {
     $("set-vault").checked = summary.settings.vault;
-    $("set-images").checked = summary.settings.showImages;
+    $("set-images").checked = summary.settings.saveImages;
     $("list-rows").replaceChildren(
       ...(summary.lists || []).map(list =>
         element(
@@ -295,8 +282,7 @@
   }
 
   $("set-vault").addEventListener("change", event => setSetting("vault", event.target.checked));
-  $("set-images").addEventListener("change", event => setSetting("showImages", event.target.checked));
-  $("vault-images").addEventListener("change", event => setSetting("showImages", event.target.checked));
+  $("set-images").addEventListener("change", event => setSetting("saveImages", event.target.checked));
   $("vault-search").addEventListener("input", renderVault);
   $("vault-site").addEventListener("change", renderVault);
 

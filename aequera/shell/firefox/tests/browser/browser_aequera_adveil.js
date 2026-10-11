@@ -16,6 +16,10 @@ const { AppUiTestDelegate } = ChromeUtils.importESModule("resource://testing-com
 const ID = "adveil@aequera";
 const PREF = "aequera.adveil.enabled";
 const PAGE = "https://example.com/browser/browser/aequera/tests/browser/adveil_page.html";
+// The fixtures' ad image, and a page whose ad a script draws into an iframe
+// without a src after the slot exists (how real ad slots work).
+const AD_IMAGE = "https://example.com/browser/browser/aequera/tests/browser/adveil_ad.svg";
+const FRAME_PAGE = "https://example.com/browser/browser/aequera/tests/browser/adveil_frame.html";
 
 const ALLOWED_PERMISSIONS = [
   "storage",
@@ -69,15 +73,16 @@ async function loadFixture({ hidden }) {
 }
 
 // Runs `task` and fails if Ad Veil opened any network channel meanwhile
-// (every channel is checked for the add-on's principal).
-async function withoutOwnRequests(task) {
+// (every channel is checked for the add-on's principal), except to the
+// `allowed` URLs (a saved ad image: docs/design/ADS.md, Network).
+async function withoutOwnRequests(task, allowed = []) {
   const own = [];
   let seen = 0;
   const observe = subject => {
     const { loadInfo, URI } = subject.QueryInterface(Ci.nsIChannel);
     seen++;
     const principals = [loadInfo.loadingPrincipal, loadInfo.triggeringPrincipal];
-    if (principals.some(p => p?.addonId == ID)) {
+    if (principals.some(p => p?.addonId == ID) && !allowed.includes(URI.spec)) {
       own.push(URI.spec);
     }
   };
@@ -286,14 +291,15 @@ add_task(async function test_pref_turns_it_off_and_on() {
   ok(off.adLoaded, "off: nothing is blocked");
   isnot(off.banner, "none", "off: nothing is hidden");
 
-  // Startup (engine load, list compile) must not touch the network.
+  // Startup (engine load, list compile) must not touch the network; saving
+  // the fixture ad's image is the one request it may make.
   await withoutOwnRequests(async () => {
     Services.prefs.setBoolPref(PREF, true);
     await waitForActive(true);
     const on = await loadFixture({ hidden: true });
     ok(!on.adLoaded, "on again: blocking is back");
     is(on.banner, "none", "on again: hiding is back");
-  });
+  }, [AD_IMAGE]);
 });
 
 add_task(async function test_vault_records_hidden_ads_and_blocked_requests() {
@@ -327,23 +333,58 @@ add_task(async function test_vault_records_hidden_ads_and_blocked_requests() {
   Assert.greaterOrEqual(state.blocked, 1, "the blocked request is counted");
   ok(state.hosts.includes("example.com"), "by blocked host");
 
-  ok(!state.ads[0].image, "no ad image while Show ad images is off");
+  // Save ad images (on by default): the image the page loaded is saved once
+  // and shown from the vault.
+  await TestUtils.waitForCondition(async () => {
+    state = await readVault(vault);
+    return state.ads[0]?.image?.startsWith("blob:");
+  }, "the saved ad image is shown");
+  ok(true, "the vault shows the ad's saved image");
 
-  // Using the page and reading the vault again stays local (images are off).
+  // Using the page and reading the vault again makes no request: the image
+  // is saved already, and viewing never fetches.
   await withoutOwnRequests(async () => {
     await BrowserTestUtils.reloadTab(page);
     await waitForHidden(page.linkedBrowser);
     await readVault(vault);
   });
 
-  // Show ad images: the creative is fetched by the dashboard, and shown.
+  // Save ad images off: a new ad is recorded without its image, and nothing
+  // is fetched.
   await SpecialPowers.spawn(vault.linkedBrowser, [], () => content.document.getElementById("set-images").click());
+  await clearVault(vault);
+  await withoutOwnRequests(async () => {
+    await BrowserTestUtils.reloadTab(page);
+    await waitForHidden(page.linkedBrowser);
+    await TestUtils.waitForCondition(async () => {
+      state = await readVault(vault);
+      return state.ads.length > 0;
+    }, "the ad is recorded again");
+  });
+  ok(!state.ads[0].image, "without its image");
+  await SpecialPowers.spawn(vault.linkedBrowser, [], () => content.document.getElementById("set-images").click());
+  BrowserTestUtils.removeTab(page);
+  await clearVault(vault);
+  BrowserTestUtils.removeTab(vault);
+});
+
+add_task(async function test_vault_reads_ads_drawn_in_frames() {
+  await waitForActive(true);
+  const vault = await openVault();
+  await clearVault(vault);
+  const page = await BrowserTestUtils.openNewForegroundTab(gBrowser, FRAME_PAGE);
+  let state;
   await TestUtils.waitForCondition(async () => {
     state = await readVault(vault);
-    return state.ads[0]?.image?.startsWith("blob:");
-  }, "the ad image is shown");
-  ok(true, "Show ad images loads the ad's image");
-  await SpecialPowers.spawn(vault.linkedBrowser, [], () => content.document.getElementById("set-images").click());
+    return state.ads.length > 0 && state.ads[0].image;
+  }, "the framed ad reaches the vault, with its image");
+  Assert.deepEqual(
+    state.ads.map(({ link, text, creative }) => ({ link, text, creative })),
+    // The vault links to where the ad leads (the click URL's adurl), so
+    // following it is not an ad click.
+    [{ link: "https://example.net/advertiser?ref=veil", text: "Framed test ad", creative: AD_IMAGE }],
+    "link, words, and image from inside the frame the script drew"
+  );
   BrowserTestUtils.removeTab(page);
   await clearVault(vault);
   BrowserTestUtils.removeTab(vault);
@@ -476,8 +517,11 @@ add_task(async function test_veil_mode() {
   const veiled = await veilState(tab.linkedBrowser);
   ok(veiled.ad, "veil: the ad EasyList matches loads");
   ok(veiled.network, "veil: the ad network tracking protection blocks loads");
-  ok(!veiled.tracker, "veil: the tracker EasyPrivacy matches stays blocked");
-  ok(!veiled.social, "veil: the social tracker stays blocked");
+  // EasyPrivacy lists whole ad networks and bidders, so veil mode lets its
+  // matches through (AdNauseam's model); tracking protection's own tracker
+  // blocks (here the social tracker) stay.
+  ok(veiled.tracker, "veil: what EasyPrivacy matches loads too");
+  ok(!veiled.social, "veil: the social tracker stays blocked by tracking protection");
   isnot(veiled.display, "none", "veil: the ad element keeps its box");
   Assert.greater(veiled.height, 0, "laid out, as a bait-element check expects");
   is(veiled.opacity, "0", "invisible");
@@ -492,6 +536,21 @@ add_task(async function test_veil_mode() {
   ok(!back.ad && !back.network, "block again: the ad and the ad network are blocked again");
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function test_ad_shims_follow_ad_veil() {
+  // Firefox's ad SmartBlock shims would replace the ads veil mode lets
+  // through with stubs: off while Ad Veil is on, Firefox's again without it.
+  const shim = "extensions.webcompat.disabled_shims.GooglePublisherTags";
+  const analytics = "extensions.webcompat.disabled_shims.GoogleAnalyticsAndTagManager";
+  ok(Services.prefs.getBoolPref(shim), "ad shims off while Ad Veil is on");
+  ok(!Services.prefs.getBoolPref(analytics, false), "analytics shims untouched");
+  Services.prefs.setBoolPref(PREF, false);
+  await waitForActive(false);
+  ok(!Services.prefs.getBoolPref(shim), "Ad Veil off: Firefox's ad shims are back");
+  Services.prefs.setBoolPref(PREF, true);
+  await waitForActive(true);
+  ok(Services.prefs.getBoolPref(shim), "Ad Veil on again: off again");
 });
 
 add_task(async function test_dashboard_sites() {

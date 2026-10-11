@@ -39,6 +39,8 @@ support-files = [
   "adveil_app.js",
   "ads.bundle.js",
   "adveil_ad.svg",
+  "adveil_frame.html",
+  "adveil_frame.js",
   "adveil_veil.html",
   "analytics-tracking.js",
   "adveil_network_ad.js",

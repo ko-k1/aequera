@@ -161,12 +161,15 @@ button.danger {
   white-space: nowrap;
 }
 
-/* The Ad Veil mark, in the text color. */
+/* The Ad Veil mark, in the text color (the icon as a mask; --mark swaps it
+   for the mode's). */
 .mark {
+  display: inline-block;
+  flex: none;
   width: 20px;
   height: 20px;
-  -moz-context-properties: fill;
-  fill: currentColor;
+  background: currentColor;
+  mask: var(--mark, url(../icons/veil.svg)) center / contain no-repeat;
 }
 
 .icon-button {

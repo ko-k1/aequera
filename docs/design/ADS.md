@@ -27,7 +27,7 @@ in-player video ad defeat.
 |---|---|---|
 | Block | Cancels requests matched by network rules. | on |
 | Hide | Applies cosmetic rules to what reaches the page. | on |
-| Veil (per site) | Lets ad requests through (Ad Veil's and tracking protection's ad blocks) and hides the ads in place (AdNauseam's model); trackers stay blocked. | off; chosen per site in the popup |
+| Veil (per site) | Lets ad requests through (Ad Veil's lists, tracking protection's ad blocks, Firefox's ad shims) and hides the ads in place (AdNauseam's model); tracking protection keeps blocking analytics, social, fingerprinting, and cryptomining trackers. | off; chosen per site in the popup |
 | Vault | Records blocked and hidden ads locally. | on |
 | Visit | Requests hidden ads' target links in the background. | on, shown at first run |
 | List updates | Fetches current EasyList / EasyPrivacy. | on, shown in the panel |
@@ -127,19 +127,22 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   element's box so size-based bait checks pass. Each style is validated as
   its own rule (only its declarations).
 
-### Address bar button and popup (slice 2)
+### Toolbar button and popup
 
-- A page action (`pageAction-urlbar-adveil_aequera`) on http(s) pages: its
-  tooltip carries this page's counts and mode ("Ad Veil: 12 blocked, 3
-  hidden on this page", "Ad Veil, veil mode: …", "Ad Veil is off for …"),
-  its icon (theme colored, `context-fill`) the mode: shield with a band
-  (block), a dotted band (veil), struck through (off). Page actions have no
-  badge, so the count is in the tooltip and the popup.
-- The popup (`pages/popup.html`): the site, "On this site: Block · Veil ·
-  Off" (native radios: arrow keys, one announced choice) with a line on
-  what the mode does, this page's Blocked and Hidden counts, and "Open
-  vault". Choosing reloads the page, since blocking and hiding apply from a
-  page's start.
+- A toolbar button (`browser_action`, navbar): its badge is this page's
+  blocked count (`12`, `1.2k`; none for 0 or Off), its tooltip the counts
+  and mode ("Ad Veil: 12 blocked, 3 hidden on this page", "Ad Veil, veil
+  mode: …", "Ad Veil is off for …"), its icon (theme colored,
+  `context-fill`) the mode: shield with a band (block), a dotted band
+  (veil), struck through (off).
+- The popup (`pages/popup.html`), after uBlock Origin's and AdNauseam's:
+  the site and "On this site: Block · Veil · Off" (native radios) with a
+  line on what the mode does; tiles for this page (blocked, with its share
+  of the page's requests; ads hidden; domains blocked of those contacted);
+  "Blocked on this page" by host with share bars; "Ads hidden here" (saved
+  image, words, destination); all-time totals; "Open vault" and the
+  dashboard. Choosing a mode reloads the page, since blocking and hiding
+  apply from a page's start.
 - A mode set for a site covers its subdomains (`example.com` covers
   `news.example.com`); the site is the host without a leading `www.`. Off
   wins over veil. Off means no blocking, no hiding, no recording, and the
@@ -154,33 +157,69 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   200 characters of text), deduplicated per page, newest 5,000 kept.
   Content scripts find them by querying the applied selectors when the page
   is idle; what they send is validated (http(s) URLs only, bounded sizes).
+- Reading an ad: real ad slots draw their ad into iframes a script writes
+  after the slot exists (Google Publisher Tags: `src`-less friendly
+  iframes; safeframes on another origin). The page's content script looks
+  inside same-origin frames (largest real image, not 1×1 pixels; its link;
+  visible text, not script text) and looks again at 1, 3, 8, and 15 s; a
+  cross-origin frame found in a hidden slot is reported to the background,
+  and that frame's own content script, told it is an ad, describes it.
+- Which ads there are depends on the mode: in block mode ad requests never
+  happen, so only ads that reached the page anyway are recorded; veil mode
+  is where the vault fills (AdNauseam's model).
+- Links point where the ad leads: the advertiser address in an ad click URL
+  (`adurl=` and similar), opened directly, so following one from Ad Veil is
+  not an ad click.
 - Blocked requests: per day, site, and blocked host, a count (a page can
   block dozens; single entries would drown the ads). Summed in memory,
   written every 5 seconds.
 - Everything older than 90 days is dropped (hourly prune).
 - Private windows are never recorded; their counts exist only in the popup.
-- Creative URLs are stored, not images; the vault shows images only on
-  "Show images": a request to the ad server without cookies or a referrer,
-  shown only if the response is an image. Ad Veil never blocks its own
-  pages' requests.
-- The page (`pages/vault.html`): last 7 days blocked, most blocked hosts and
-  the sites they were on, the hidden ads as cards (text, site, time, link),
-  and the "Keep a vault" switch.
+- Saved images ("Save ad images", on by default): when an ad is recorded and
+  the page had loaded its image (an image still loading is waited for), the
+  background fetches that image once, without cookies or a referrer, and
+  keeps a thumbnail (at most 320 px, WebP; an image it cannot decode is
+  kept as is if small) keyed by its URL, at most 2,000, dropped with the
+  ads. The popup and vault show the saved thumbnail and make no request
+  themselves. Never in private windows; nothing is fetched with the
+  setting off. The fetch has no tab, so Ad Veil's blocking skips it, and
+  tracking protection lets an add-on with host access load it
+  (`UrlClassifierCommon::AddonMayLoad`).
+- The dashboard (`pages/dashboard.html`): Overview (all-time totals, 7-day
+  chart, most blocked hosts and sites), Vault (ads by day, search, site
+  filter), Sites (per-site modes), Settings ("Keep a vault", "Save ad
+  images", export, clear, list versions).
 - Known gap: Firefox's "Clear history" does not clear the vault (an add-on
   learns of it only with the `history` permission); the vault's own Clear
   and its 90-day limit do.
 
 ### Veil mode (slice 2b)
 
-For sites that refuse ad blockers: ads load and are hidden in place,
-trackers stay blocked. Two blockers stand between a page and its ads, and
-veil mode lifts each one only for ads.
+For sites that refuse ad blockers, and the vault's source of ads
+(AdNauseam's model): ads load and are hidden in place. Three things stand
+between a page and its ads; veil mode lifts each.
 
 - **Ad Veil's own.** One engine holds both lists and decides every request,
-  so an exception rule in either list applies to both. When it blocks on a
-  veiled site, a second instance holding EasyPrivacy alone is asked: a
-  tracker (and any beacon, ping, or CSP report) stays blocked; anything
-  else is an EasyList ad and loads.
+  so an exception rule in either list applies to both. On a veiled site its
+  matches load, except beacons, pings, and CSP reports. EasyPrivacy is not
+  kept blocked there: it lists whole ad networks and bidders as trackers
+  (`||media.net^$third-party`, `||nexx360.io^$third-party`, …). Measured on
+  dictionary.com (2026-10-11, live, Strict tracking protection): keeping
+  EasyPrivacy blocked left 0 of its ad slots defined (178 requests
+  blocked); lifting it only for EasyList ad hosts, 0 (132); lifting it,
+  2/2 and 1/2 filled. Trackers on a veiled site are left to Firefox's
+  tracking protection (below), as AdNauseam leaves them to cookie blocking.
+- **Firefox's ad SmartBlock shims.** When tracking protection blocks a known
+  ad script (Google Publisher Tags, AdSense, IMA, Amazon, Criteo, …),
+  Firefox's webcompat add-on redirects it to a stub that never draws an ad,
+  and it does so even after `aequeraVeil` allowed the block (webcompat
+  marks the request "replaced" first; `lib/shims.js`). The 13 ad-delivery
+  shims are off while Ad Veil is on (`extensions.webcompat.disabled_shims.*`
+  on the default branch, from `adveil/aequera-adveil.js`; back on when Ad
+  Veil is off; a value set by hand wins). In block mode nothing changes:
+  Ad Veil's cancel of those scripts runs before webcompat's redirect
+  (measured: `gpt.js` ends `NS_ERROR_ABORT` from Ad Veil). Analytics and
+  measurement shims are untouched.
 - **Firefox's tracking protection.** Strict blocks every major ad network
   (Disconnect's Advertising category: `ads-track-digest256`; Google's ad
   hosts are on the fingerprinting list too), and does it in
@@ -199,11 +238,12 @@ veil mode lifts each one only for ads.
   Ad Veil therefore strips no headers itself.
 - Modes resolve the same way on both sides (`model.js`, `resolveMode`,
   loaded into the parent API).
-- Cost, measured (SpiderMonkey, content process, 30,368 corpus requests):
-  block mode is one check as before (8.7 µs mean, p99 40 µs); on a page
-  where every request is veiled, 13.7 µs mean, p99 80 µs, and 6,921 of
-  13,284 blocked requests stay blocked as trackers. Compiling both
-  instances: 164 ms at start (115 ms with one).
+- Cost: one check per request in every mode (8.7 µs mean, p99 40 µs in
+  SpiderMonkey over 30,368 corpus requests); one engine instance (lists
+  compile in about 115 ms at start).
+- End to end (2026-10-11, live, fresh profile, defaults, dictionary.com
+  veiled): ad slots 1/2 and 2/2 filled over two runs; the vault recorded
+  the Google ads with their destinations and saved images.
 - Not covered: walls that check something other than ad requests and bait
   sizes (scriptlet-level defusing is not loaded), and ads served from
   hosts EasyList does not list whole that Firefox blocks as fingerprinters.
@@ -224,7 +264,7 @@ veil mode lifts each one only for ads.
 |---|---|
 | Page requests not matched | the page itself |
 | Visit | first-run choice, vault log |
-| Vault images | "Show images" |
+| Saved ad images | "Save ad images" (Settings): once per image the page already loaded |
 | List updates | panel: "Lists updated N days ago · Update now" |
 
 A browser test fails on any request from the add-on outside this table.
@@ -245,7 +285,8 @@ Everything else is Ad Veil's own setting, kept in the add-on's
 |---|---|---|---|
 | `offSites` | list of sites | `[]` | popup, Off |
 | `veilSites` | list of sites | `[]` | popup, Veil |
-| `vault` | bool | `true` | vault page, "Keep a vault" |
+| `vault` | bool | `true` | dashboard Settings, "Keep a vault" |
+| `saveImages` | bool | `true` | dashboard Settings, "Save ad images" |
 | visit, list updates | | slices 3–4 | first run, panel |
 
 Settings are validated on every load (`model.js`, `settingsFrom`): unknown

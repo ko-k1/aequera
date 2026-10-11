@@ -471,7 +471,7 @@ Matching runs in the extension process; nothing here touches the network.
 
 Its address bar button (a page action) shows this page's counts and opens
 a popup with the site's mode (Block, Veil: ads load hidden for sites that
-refuse ad blockers, trackers stay blocked; Off) and the vault (what was
+refuse ad blockers, as AdNauseam does; Off) and the vault (what was
 blocked and hidden, kept locally for 90 days; never from private windows).
 `aequera.adveil.veil.adTables` names the tracking-protection tables veil
 mode lifts (Firefox's advertising list).

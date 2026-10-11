@@ -17,9 +17,10 @@ var VeilModel = (() => {
   const MAX_TEXT = 200;
   const MAX_SITES = 10000;
 
-  // showImages: ad images in the popup and vault are requests to the ad
-  // servers, so they are off until the user turns them on.
-  const DEFAULT_SETTINGS = Object.freeze({ offSites: [], veilSites: [], vault: true, showImages: false });
+  // saveImages: keep a small copy of each hidden ad's image in the vault,
+  // fetched once when the ad is recorded, and only for images the page had
+  // already loaded; the popup and vault then show it without a request.
+  const DEFAULT_SETTINGS = Object.freeze({ offSites: [], veilSites: [], vault: true, saveImages: true });
 
   // Per site (ADS.md, Model): block (default), veil (ads load and are
   // hidden, trackers stay blocked), or off.
@@ -123,7 +124,7 @@ var VeilModel = (() => {
       offSites: sitesFrom(value.offSites),
       veilSites: sitesFrom(value.veilSites),
       vault: flag("vault"),
-      showImages: flag("showImages"),
+      saveImages: flag("saveImages"),
     };
   }
 
@@ -176,7 +177,7 @@ var VeilModel = (() => {
     if (!link && !creative) {
       return null;
     }
-    return { link, creative, text };
+    return { link, creative, text, loaded: raw.loaded === true && !!creative };
   }
 
   // All-time counts (normal windows only), whatever was stored: counts are

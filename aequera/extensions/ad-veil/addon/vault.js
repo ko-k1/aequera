@@ -10,14 +10,18 @@
 // - ads: one entry per hidden ad (time, site, page, link, creative, text),
 //   newest kept, capped at VeilModel.MAX_ADS;
 // - blocked: per day, site, and blocked host, a request count (a page can
-//   block dozens of requests; individual entries would drown the ads).
-// Both are dropped after VeilModel.RETENTION_DAYS. If the database cannot be
+//   block dozens of requests; individual entries would drown the ads);
+// - images: a small copy of an ad's image (by its URL, so ads sharing one
+//   image share the copy), saved when the ad was recorded.
+// All are dropped after VeilModel.RETENTION_DAYS. If the database cannot be
 // opened it is deleted and recreated once (known-good: an empty vault);
 // blocking never depends on it.
 
 var VeilVault = (() => {
   const NAME = "adveil-vault";
-  const VERSION = 1;
+  // 2: images.
+  const VERSION = 2;
+  const MAX_IMAGES = 2000;
   // Blocked counts are summed in memory and written in one transaction.
   const FLUSH_MS = 5000;
 
@@ -34,12 +38,19 @@ var VeilVault = (() => {
 
   function openOnce() {
     const req = indexedDB.open(NAME, VERSION);
+    // From any earlier version: create what is missing, keep what exists.
     req.onupgradeneeded = () => {
       const db = req.result;
-      const ads = db.createObjectStore("ads", { keyPath: "id", autoIncrement: true });
-      ads.createIndex("time", "time");
-      const blocked = db.createObjectStore("blocked", { keyPath: "key" });
-      blocked.createIndex("day", "day");
+      const has = name => db.objectStoreNames.contains(name);
+      if (!has("ads")) {
+        db.createObjectStore("ads", { keyPath: "id", autoIncrement: true }).createIndex("time", "time");
+      }
+      if (!has("blocked")) {
+        db.createObjectStore("blocked", { keyPath: "key" }).createIndex("day", "day");
+      }
+      if (!has("images")) {
+        db.createObjectStore("images", { keyPath: "creative" }).createIndex("time", "time");
+      }
     };
     return request(req);
   }
@@ -78,6 +89,28 @@ var VeilVault = (() => {
     });
   }
 
+  async function hasImage(creative) {
+    const tx = (await db()).transaction(["images"], "readonly");
+    return (await request(tx.objectStore("images").count(creative))) > 0;
+  }
+
+  function saveImage(creative, blob) {
+    return transaction(["images"], "readwrite", ({ images }) => {
+      images.put({ creative, blob, time: Date.now() });
+    });
+  }
+
+  // The saved images for these creatives (a Map), in one transaction.
+  async function imagesFor(creatives) {
+    const wanted = [...new Set(creatives.filter(Boolean))];
+    if (!wanted.length) {
+      return new Map();
+    }
+    const store = (await db()).transaction(["images"], "readonly").objectStore("images");
+    const found = await Promise.all(wanted.map(creative => request(store.get(creative))));
+    return new Map(found.filter(Boolean).map(entry => [entry.creative, entry.blob]));
+  }
+
   function countBlocked(site, host, time) {
     const day = VeilModel.dayOf(time);
     const key = `${day}|${site}|${host}`;
@@ -106,40 +139,40 @@ var VeilVault = (() => {
   }
 
   // Drops entries past retention, then the oldest ads past the cap.
+  // Deletes the entries of `index` in `range` (oldest first), at most `limit`.
+  function deleteFrom(index, range, limit = Infinity) {
+    let left = limit;
+    index.openCursor(range).onsuccess = event => {
+      const cursor = event.target.result;
+      if (cursor && left-- > 0) {
+        cursor.delete();
+        cursor.continue();
+      }
+    };
+  }
+
+  // Keeps the newest `max` entries of `store` (by its time index).
+  function cap(store, max) {
+    store.count().onsuccess = event => {
+      const excess = event.target.result - max;
+      if (excess > 0) {
+        deleteFrom(store.index("time"), null, excess);
+      }
+    };
+  }
+
+  // Drops entries past retention, then the oldest past each cap.
   async function prune(now = Date.now()) {
     const oldest = VeilModel.cutoff(now);
-    const oldestDay = VeilModel.dayOf(oldest);
-    await transaction(["ads", "blocked"], "readwrite", ({ ads, blocked }) => {
-      ads.index("time").openCursor(IDBKeyRange.upperBound(oldest, true)).onsuccess = event => {
-        const cursor = event.target.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-      blocked.index("day").openCursor(IDBKeyRange.upperBound(oldestDay, true)).onsuccess = event => {
-        const cursor = event.target.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
+    await transaction(["ads", "blocked", "images"], "readwrite", ({ ads, blocked, images }) => {
+      deleteFrom(ads.index("time"), IDBKeyRange.upperBound(oldest, true));
+      deleteFrom(blocked.index("day"), IDBKeyRange.upperBound(VeilModel.dayOf(oldest), true));
+      deleteFrom(images.index("time"), IDBKeyRange.upperBound(oldest, true));
     });
     // Counted after the expired entries are gone.
-    await transaction(["ads"], "readwrite", ({ ads }) => {
-      ads.count().onsuccess = event => {
-        let excess = event.target.result - VeilModel.MAX_ADS;
-        if (excess <= 0) {
-          return;
-        }
-        ads.index("time").openCursor().onsuccess = e => {
-          const cursor = e.target.result;
-          if (cursor && excess-- > 0) {
-            cursor.delete();
-            cursor.continue();
-          }
-        };
-      };
+    await transaction(["ads", "images"], "readwrite", ({ ads, images }) => {
+      cap(ads, VeilModel.MAX_ADS);
+      cap(images, MAX_IMAGES);
     });
   }
 
@@ -192,7 +225,10 @@ var VeilVault = (() => {
       const day = VeilModel.dayOf(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i).getTime());
       series.push({ day, count: perDay.get(day) || 0 });
     }
-    return { ads: recent, adCount, days, blocked: total, series, hosts: top("host"), sites: top("site") };
+    // Each ad with its saved image, if any (a Blob; pages make the URL).
+    const thumbs = await imagesFor(recent.map(ad => ad.creative));
+    const withThumbs = recent.map(ad => ({ ...ad, thumb: thumbs.get(ad.creative) || null }));
+    return { ads: withThumbs, adCount, days, blocked: total, series, hosts: top("host"), sites: top("site") };
   }
 
   async function exportAll() {
@@ -202,16 +238,18 @@ var VeilVault = (() => {
       collect(tx.objectStore("ads"), null, "next", Infinity),
       collect(tx.objectStore("blocked"), null, "next", Infinity),
     ]);
+    // Saved images stay out of the JSON (the creative URLs are in it).
     return { format: "aequera-adveil-vault", version: 1, ads, blocked };
   }
 
   async function clear() {
     pending.clear();
-    await transaction(["ads", "blocked"], "readwrite", ({ ads, blocked }) => {
+    await transaction(["ads", "blocked", "images"], "readwrite", ({ ads, blocked, images }) => {
       ads.clear();
       blocked.clear();
+      images.clear();
     });
   }
 
-  return { addAds, countBlocked, flush, prune, summary, exportAll, clear };
+  return { addAds, hasImage, saveImage, imagesFor, countBlocked, flush, prune, summary, exportAll, clear };
 })();

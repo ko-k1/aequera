@@ -206,11 +206,6 @@ tbody tr:last-child td {
   flex: 1 1 220px;
 }
 
-.switch.inline {
-  margin-inline-start: auto;
-  gap: 10px;
-}
-
 .day-group {
   display: grid;
   gap: 8px;

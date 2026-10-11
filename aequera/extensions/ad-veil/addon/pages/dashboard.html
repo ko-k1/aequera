@@ -16,7 +16,7 @@
 <div class="shell">
   <header class="top">
     <div class="brand">
-      <img class="mark" src="../icons/veil.svg" alt="">
+      <span class="mark" aria-hidden="true"></span>
       <h1>Ad Veil</h1>
     </div>
     <nav class="tabs" role="tablist" aria-label="Ad Veil">
@@ -77,12 +77,7 @@
           <option value="">All sites</option>
         </select>
         <span id="vault-count" class="dim small"></span>
-        <label class="switch inline">
-          <span>Show ad images</span>
-          <input type="checkbox" role="switch" id="vault-images">
-        </label>
       </div>
-      <p id="images-note" class="dim small" hidden>Images load from the ad servers, without cookies or a referrer.</p>
       <p id="vault-empty" class="empty" hidden>Nothing yet. Ads Ad Veil hides on the sites you visit appear here.</p>
       <div id="vault-days"></div>
     </section>
@@ -116,7 +111,7 @@
           <input type="checkbox" role="switch" id="set-vault">
         </label>
         <label class="switch">
-          <span><strong>Show ad images</strong><br><span class="dim small">In the popup and vault. Each image is a request to the ad server, without cookies or a referrer.</span></span>
+          <span><strong>Save ad images</strong><br><span class="dim small">Keep a small copy of each hidden ad's image, so the popup and vault show it. Only images the page already loaded, fetched once without cookies or a referrer; never in private windows.</span></span>
           <input type="checkbox" role="switch" id="set-images">
         </label>
         <div class="row-actions">

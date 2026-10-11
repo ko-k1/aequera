@@ -173,3 +173,22 @@ pref("aequera.adveil.enabled", true);
 // (comma separated; Firefox's advertising list), and those of EasyList ad
 // server hosts. Other tracking protection blocks stay.
 pref("aequera.adveil.veil.adTables", "ads-track-digest256");
+// Firefox's ad SmartBlock shims (webcompat) replace an ad script tracking
+// protection blocked with a stub. In block mode Ad Veil cancels those
+// scripts before the shim applies; in veil mode the stub would replace the
+// very ads veil mode lets through. Off while Ad Veil is on
+// (adveil/aequera-adveil.js turns them back on when it is off); analytics
+// and measurement shims are untouched.
+pref("extensions.webcompat.disabled_shims.Adform", true);
+pref("extensions.webcompat.disabled_shims.AdNexusAST", true);
+pref("extensions.webcompat.disabled_shims.AdNexusPrebid", true);
+pref("extensions.webcompat.disabled_shims.AdsByGoogle", true);
+pref("extensions.webcompat.disabled_shims.AdvertisingCom", true);
+pref("extensions.webcompat.disabled_shims.AmazonTAM", true);
+pref("extensions.webcompat.disabled_shims.AmazonAdSystem", true);
+pref("extensions.webcompat.disabled_shims.Criteo", true);
+pref("extensions.webcompat.disabled_shims.Doubleclick", true);
+pref("extensions.webcompat.disabled_shims.GoogleIMA", true);
+pref("extensions.webcompat.disabled_shims.GooglePageAd", true);
+pref("extensions.webcompat.disabled_shims.GooglePublisherTags", true);
+pref("extensions.webcompat.disabled_shims.StickyAdsTV", true);

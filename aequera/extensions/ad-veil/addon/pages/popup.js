@@ -8,12 +8,12 @@
 // active tab, refreshes it while open, and sends the mode.
 
 (async () => {
-  const { send, element, plural, number, date, hostOf, showImage } = VeilPage;
+  const { send, element, plural, number, date, hostOf, thumb, dropImages, adLink } = VeilPage;
   const REFRESH_MS = 1000;
   const MAX_ADS = 4;
   const HELP = {
     block: "Ads and trackers are blocked.",
-    veil: "For sites that refuse ad blockers: ads load but stay hidden. Trackers stay blocked, and ad servers' tracking cookies stay off.",
+    veil: "For sites that refuse ad blockers: ads load but stay hidden, and go to the vault. Firefox's tracking protection keeps blocking trackers and their cookies.",
     off: "Nothing is blocked or hidden on this site.",
   };
   const ICONS = { block: "../icons/veil.svg", veil: "../icons/veil-veiled.svg", off: "../icons/veil-off.svg" };
@@ -53,38 +53,20 @@
 
   function renderAds(state) {
     const ads = state.ads.slice(0, MAX_ADS);
-    const key = JSON.stringify(ads) + state.showImages;
+    // Saved images arrive after their ad: they count as a change.
+    const key = JSON.stringify(ads.map(ad => [ad.link, ad.creative, ad.text, !!ad.thumb]));
     if (key == shownAds) {
       return;
     }
     shownAds = key;
+    dropImages();
     $("ads").replaceChildren(
       ...ads.map(ad => {
-        const host = hostOf(ad.link || ad.creative);
-        const img = element("img", { alt: "", hidden: true });
-        const thumb = element(
-          "span",
-          { class: "ad-thumb", "aria-hidden": "true" },
-          element("span", { class: "initial", text: (host[0] || "?").toUpperCase() }),
-          img
-        );
-        if (state.showImages) {
-          showImage(ad.creative, img, thumb);
-        }
-        const link = ad.link
-          ? element("a", {
-              class: "link small",
-              href: ad.link,
-              target: "_blank",
-              rel: "noopener noreferrer",
-              text: hostOf(ad.link),
-              title: ad.link,
-            })
-          : element("span", { class: "dim small", text: host });
+        const link = ad.link ? adLink(ad.link) : element("span", { class: "dim small", text: hostOf(ad.creative) });
         return element(
           "li",
           {},
-          thumb,
+          thumb(ad),
           element("div", { class: "meta" }, element("span", { class: "text", text: ad.text || "Image ad" }), link)
         );
       })
@@ -94,7 +76,7 @@
 
   function render(state) {
     $("site").textContent = state.site || "Not a web page";
-    $("mark").src = ICONS[state.mode];
+    $("mark").style.setProperty("--mark", `url(${ICONS[state.mode]})`);
     $("modes").disabled = busy || !state.site || !state.ready;
     $(`mode-${state.mode}`).checked = true;
     $("mode-help").textContent = state.site ? HELP[state.mode] : "Ad Veil works on web pages.";

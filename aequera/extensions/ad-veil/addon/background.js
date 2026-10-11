@@ -12,10 +12,13 @@
 // (popup.html) shows this page's counts and sets the site's mode:
 // - block (default): EasyList and EasyPrivacy matches are cancelled, what
 //   reaches the page is hidden (display: none);
-// - veil: for sites that refuse ad blockers. EasyList's ads load (Firefox's
-//   tracking protection lets them through too: experiments/veil.js) and are
-//   hidden in place (their box kept); EasyPrivacy's trackers and EasyList's
-//   beacons and pings stay blocked;
+// - veil: for sites that refuse ad blockers (AdNauseam's model). Ads load
+//   and are hidden in place (their box kept): Ad Veil lets its lists'
+//   matches through except beacons, pings, and CSP reports; Firefox's
+//   tracking protection lifts only its ad blocks (experiments/veil.js) and
+//   keeps blocking analytics, social, fingerprinting, and cryptomining
+//   trackers and their cookies; Firefox's ad SmartBlock shims are off while
+//   Ad Veil is on (they would replace the ads with stubs);
 // - off: nothing is blocked, hidden, or recorded.
 
 const LISTS = { ads: "lists/easylist.txt", privacy: "lists/easyprivacy.txt" };
@@ -34,13 +37,77 @@ const MAX_HIDDEN_PER_MESSAGE = 10000;
 const PRUNE_MS = 60 * 60 * 1000;
 const ACTION_UPDATE_MS = 250;
 
-// { all, privacy }. `all` holds both lists and makes every decision, as one
-// engine must: an exception rule in either list applies to both (uBlock
-// Origin semantics). `privacy` (EasyPrivacy alone) is asked only when `all`
-// blocks on a veiled site: a tracker stays blocked, anything else is an ad.
+// { all }: one engine holds both lists and makes every decision, so an
+// exception rule in either list applies to both (uBlock Origin semantics).
 let engines = null;
 // The shipped lists' versions and rule counts, for the dashboard.
 let listsInfo = null;
+// EasyList's ad server hosts: frames from them describe their own ad.
+let adHostSet = new Set();
+
+// Saved ad images (settings.saveImages): one fetch per image URL when its
+// ad is recorded, only for images the page had already loaded, without
+// cookies or a referrer, kept as a thumbnail in the vault. Requests from
+// the background have no tab, so Ad Veil's own blocking skips them, and
+// tracking protection lets an add-on with host access load them.
+const THUMB_SIZE = 320;
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_RAW_THUMB_BYTES = 200 * 1024;
+const IMAGE_FETCHES = 2;
+const imageQueue = [];
+const imagesWanted = new Set();
+let imageFetches = 0;
+
+async function thumbnail(blob) {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const scale = Math.min(1, THUMB_SIZE / Math.max(bitmap.width, bitmap.height));
+    const canvas = new OffscreenCanvas(Math.max(1, Math.round(bitmap.width * scale)), Math.max(1, Math.round(bitmap.height * scale)));
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return await canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
+  } catch {
+    // Not decodable here (an SVG, say): kept as is when small.
+    return blob.size <= MAX_RAW_THUMB_BYTES ? blob : null;
+  }
+}
+
+async function saveImage(url) {
+  if (await VeilVault.hasImage(url)) {
+    return;
+  }
+  const response = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer", cache: "force-cache" });
+  const blob = await response.blob();
+  if (!response.ok || !blob.type.startsWith("image/") || blob.size > MAX_IMAGE_BYTES) {
+    return;
+  }
+  const thumb = await thumbnail(blob);
+  if (thumb) {
+    await VeilVault.saveImage(url, thumb);
+  }
+}
+
+function pumpImages() {
+  while (imageFetches < IMAGE_FETCHES && imageQueue.length) {
+    const url = imageQueue.shift();
+    imageFetches++;
+    saveImage(url)
+      .catch(() => {})
+      .finally(() => {
+        imageFetches--;
+        imagesWanted.delete(url);
+        pumpImages();
+      });
+  }
+}
+
+function wantImage(url) {
+  if (url && !imagesWanted.has(url)) {
+    imagesWanted.add(url);
+    imageQueue.push(url);
+    pumpImages();
+  }
+}
 
 // Settings live in this add-on's storage (an add-on cannot read prefs) and
 // are validated on every load. Choices made in private windows are kept only
@@ -82,24 +149,23 @@ const settingsReady = browser.storage.local
   .catch(error => console.error("Ad Veil: settings unreadable, using defaults", error));
 
 const ready = (async () => {
-  const [all, privacy, adsText, privacyText] = await Promise.all([
-    VeilEngine.load(),
+  const [all, adsText, privacyText] = await Promise.all([
     VeilEngine.load(),
     fetch(browser.runtime.getURL(LISTS.ads)).then(response => response.text()),
     fetch(browser.runtime.getURL(LISTS.privacy)).then(response => response.text()),
   ]);
-  if (!all.compile(`${adsText}\n${privacyText}`) || !privacy.compile(privacyText)) {
+  if (!all.compile(`${adsText}\n${privacyText}`)) {
     throw new Error("filter lists did not compile");
   }
-  browser.aequeraVeil
-    .setAdHosts(VeilModel.adHostsFrom(adsText))
-    .catch(error => console.error("Ad Veil: veil mode unavailable", error));
+  const adHosts = VeilModel.adHostsFrom(adsText);
+  adHostSet = new Set(adHosts);
+  browser.aequeraVeil.setAdHosts(adHosts).catch(error => console.error("Ad Veil: veil mode unavailable", error));
   await settingsReady;
   listsInfo = [
     { name: "EasyList", ...VeilModel.listInfo(adsText) },
     { name: "EasyPrivacy", ...VeilModel.listInfo(privacyText) },
   ];
-  engines = { all, privacy };
+  engines = { all };
 })();
 ready.catch(error => console.error("Ad Veil: engine unavailable, nothing is blocked", error));
 
@@ -156,6 +222,7 @@ function startPage(tabId, url, incognito) {
     domains: new Set(),
     blockedHosts: new Map(),
     ads: new Set(),
+    adFrames: new Set(),
     recentAds: [],
     timer: 0,
   });
@@ -286,12 +353,10 @@ function decide(details) {
   if (engines.all.check(details.url, source, details.type) != 1) {
     return {};
   }
-  if (
-    mode == "veil" &&
-    !NON_VISUAL.has(details.type) &&
-    engines.privacy.check(details.url, source, details.type) != 1
-  ) {
-    // An ad: loads, hidden in place by the cosmetic rules.
+  if (mode == "veil" && !NON_VISUAL.has(details.type)) {
+    // Loads; ads are hidden in place by the cosmetic rules. EasyPrivacy is
+    // not kept here: it lists whole ad networks and bidders as trackers,
+    // and with it no real ad slot fills (measured, docs/design/ADS.md).
     return {};
   }
   return cancel(details, site);
@@ -434,6 +499,30 @@ function names(list) {
     .filter(name => typeof name == "string" && name.length && name.length <= MAX_NAME_LENGTH);
 }
 
+// An ad frame describes its own ad (the page cannot look into it): a frame
+// from an EasyList ad server host, or one the page found in a hidden slot.
+const MAX_AD_FRAMES = 200;
+const MAX_AD_FRAMES_PER_MESSAGE = 50;
+
+function frameKey(url) {
+  if (!VeilModel.hostOf(url)) {
+    return null;
+  }
+  const parsed = new URL(url);
+  parsed.hash = "";
+  return parsed.href;
+}
+
+function isAdFrame(sender) {
+  if (!sender.frameId) {
+    return false;
+  }
+  if (VeilModel.covers(adHostSet, VeilModel.hostOf(sender.url))) {
+    return true;
+  }
+  return !!tabs.get(sender.tab?.id)?.adFrames.has(frameKey(sender.url));
+}
+
 // The sender frame's mode, and whether it may record; null when Ad Veil
 // does nothing there.
 function frameStatus(sender) {
@@ -455,9 +544,24 @@ function contentMessage(message, sender) {
         return Promise.resolve({ active: false });
       }
       const selectors = validRules(cosmeticFor(sender.url).hide, status.mode).map(rule => rule.selector);
-      // The content script always describes hidden ads (the popup lists
-      // them, in memory); only the vault decides whether they are kept.
-      return Promise.resolve({ active: true, collect: true, selectors });
+      return Promise.resolve({ active: true, selectors, adFrame: isAdFrame(sender) });
+    }
+    // Cross-origin frames the page found in hidden ad slots.
+    case "adframes": {
+      const state = tabs.get(sender.tab?.id);
+      if (status && state && Array.isArray(message.urls)) {
+        for (const url of message.urls.slice(0, MAX_AD_FRAMES_PER_MESSAGE)) {
+          const key = typeof url == "string" && url.length <= 2048 ? frameKey(url) : null;
+          if (key && state.adFrames.size < MAX_AD_FRAMES) {
+            state.adFrames.add(key);
+          }
+        }
+      }
+      return undefined;
+    }
+    // A frame asking, after it loaded, whether the page found it in a slot.
+    case "adframe?": {
+      return Promise.resolve({ adFrame: !!status && isAdFrame(sender) });
     }
     // Generic rules, for the class and id names content.js saw.
     case "seen": {
@@ -488,7 +592,14 @@ function contentMessage(message, sender) {
       for (const raw of message.ads.slice(0, MAX_ADS_PER_MESSAGE)) {
         const ad = VeilModel.adFrom(raw);
         const key = ad && `${ad.link}|${ad.creative}`;
-        if (!ad || state.ads.has(key)) {
+        if (!ad) {
+          continue;
+        }
+        if (state.ads.has(key)) {
+          // Seen already; its image may have finished loading since.
+          if (ad.loaded && status.collect && settings.saveImages) {
+            wantImage(ad.creative);
+          }
           continue;
         }
         state.ads.add(key);
@@ -500,6 +611,13 @@ function contentMessage(message, sender) {
       }
       if (status.collect) {
         VeilVault.addAds(entries).catch(error => console.error("Ad Veil: vault write failed", error));
+        if (settings.saveImages) {
+          for (const entry of entries) {
+            if (entry.loaded) {
+              wantImage(entry.creative);
+            }
+          }
+        }
       }
       return undefined;
     }
@@ -527,10 +645,18 @@ async function tabSummary(tabId) {
     blockedDomains: hosts.length,
     hosts: hosts.slice(0, MAX_POPUP_HOSTS),
     moreHosts: Math.max(hosts.length - MAX_POPUP_HOSTS, 0),
-    ads: state?.recentAds || [],
+    ads: await withThumbs(state?.recentAds || []),
     totals,
-    showImages: settings.showImages,
   };
+}
+
+// Ads with their saved image (a Blob), when there is one.
+async function withThumbs(ads) {
+  if (!ads.length) {
+    return ads;
+  }
+  const thumbs = await VeilVault.imagesFor(ads.map(ad => ad.creative)).catch(() => new Map());
+  return ads.map(ad => ({ ...ad, thumb: thumbs.get(ad.creative) || null }));
 }
 
 // The sites with a mode of their own (normal windows; private choices are
@@ -542,7 +668,7 @@ function siteList() {
   ].sort((a, b) => a.site.localeCompare(b.site));
 }
 
-const SETTINGS_KEYS = ["vault", "showImages"];
+const SETTINGS_KEYS = ["vault", "saveImages"];
 
 async function setMode(tabId, mode) {
   const state = await tabState(tabId);
@@ -574,7 +700,7 @@ function ownMessage(message) {
         ready: !!engines,
         vault,
         totals,
-        settings: { vault: settings.vault, showImages: settings.showImages },
+        settings: { vault: settings.vault, saveImages: settings.saveImages },
         sites: siteList(),
         lists: listsInfo,
       }));

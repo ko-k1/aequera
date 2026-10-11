@@ -13,10 +13,14 @@ third-party blocker extension (uBlock Origin, AdNauseam).
   the network layer; ads that still reach the page (first-party, inline,
   static) are hidden by cosmetic rules. Per site, the user can switch to
   **veil** mode: AdNauseam's model, where visual ads load and are hidden
-  instead of blocked, for sites that wall ad blockers. Trackers stay
-  blocked, and Firefox's tracking protection stays on for the site: veil
-  mode lifts only its blocks of ad servers, through one parent-only
-  privileged API (`aequeraVeil`).
+  instead of blocked, for sites that wall ad blockers and as the vault's
+  source of ads. Firefox's tracking protection stays on for the site and
+  keeps blocking analytics, social, fingerprinting, and cryptomining
+  trackers: veil mode lifts only its blocks of ad servers, through one
+  parent-only privileged API (`aequeraVeil`), and Firefox's ad SmartBlock
+  shims are off while Ad Veil is on (they would stub out those ads). Ad
+  Veil's own lists let their matches through on a veiled site (EasyPrivacy
+  lists whole ad networks as trackers; measured in `docs/design/ADS.md`).
 - **Vault and Visit.** What was blocked or hidden is kept in a local vault;
   hidden ads can be *visited* in the background (AdNauseam's simulated
   click). All on by default, shown and changeable at first run.
@@ -87,9 +91,8 @@ Design and measurements: `docs/design/ADS.md`.
   system, and recovery rules.
 - Matching cost lands in the extension process, not on the chrome thread.
 - One engine (both lists) decides every request and every cosmetic rule, so
-  exception rules apply across lists; a second, EasyPrivacy-only instance of
-  the same module tells trackers from ads on veiled sites. The same code
-  compiles the shipped snapshots at start and updated lists later.
+  exception rules apply across lists. The same code compiles the shipped
+  snapshots at start and updated lists later.
 
 ### Costs
 

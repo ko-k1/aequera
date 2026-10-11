@@ -30,10 +30,10 @@ Design, decisions, and measurements: `docs/design/ADS.md` and
 | `addon/background.js` | Compiles the lists, blocking `webRequest`, cosmetic injection, per-tab counts, per-site modes, messages |
 | `addon/model.js` | Pure model: sites and modes, settings validation, ad hosts, vault records (`model.test.mjs`); also loaded by the parent API |
 | `addon/experiments/` | `aequeraVeil`: lifts tracking protection's ad blocks on veiled sites (parent process) |
-| `addon/vault.js` | The vault store (IndexedDB): hidden ads, daily blocked totals, prune, export, clear |
+| `addon/vault.js` | The vault store (IndexedDB): hidden ads, daily blocked totals, saved ad images, prune, export, clear |
 | `addon/engine.js` | `engine.wasm` wrapper |
-| `addon/content.js` | Reports class and id names for generic rules; finds hidden ads for the vault |
-| `addon/pages/` | `popup.html` (address bar button), `vault.html`, shared `ui.css` |
+| `addon/content.js` | Reports class and id names for generic rules; finds and describes hidden ads (inside ad frames too) for the popup and vault |
+| `addon/pages/` | `popup.html` (toolbar button), `dashboard.html` (overview, vault, sites, settings), shared `common.js` and `ui.css` |
 | `addon/icons/` | Theme-colored button icons (on, off for this site) |
 | `addon/lists/` | Filter list snapshots, versions, license |
 
@@ -106,11 +106,36 @@ Slice 2b:
   chaining `.catch` on it threw before the icon was set, so the off icon
   never showed. The tests now check the icon.
 
+Display (toolbar badge, popup, dashboard) and the ad view:
+
+- Toolbar button with this page's blocked count as its badge; popup with
+  this page's tiles, blocked hosts, and hidden ads; dashboard with
+  overview (7-day chart), vault, sites, and settings.
+- Ads are read from inside the frames real ad slots draw into (same-origin
+  friendly iframes from the page, cross-origin safeframes from their own
+  content script), retried while they load; images the page loaded are
+  saved once as thumbnails, so the view needs no request; links go to the
+  advertiser (click URL `adurl=`), not through the ad click.
+- Veil mode follows AdNauseam (Ad Veil's lists let through on a veiled
+  site) and Firefox's ad SmartBlock shims are off while Ad Veil is on:
+  with EasyPrivacy blocked or the shims on, no real ad slot filled.
+  Measured live (dictionary.com, defaults): slots filled 1/2 and 2/2, the
+  vault recorded the Google ads with destinations and saved images.
+- Tests: `browser_aequera_adveil.js` 67 checks, adding the badge, popup
+  contents, saved images (and none fetched with the setting off), an ad a
+  script draws into a `src`-less iframe (with a 1×1 pixel and script text
+  it leaves out, and a click URL whose destination it shows), dashboard
+  sites, and the ad shims following Ad Veil. Full shell gate 1219/0.
+
 ## Known gaps (later slices)
 
 - Startup cost: instantiate + compile (about 270 ms) runs on every start;
   requests wait for it. A cached serialized engine (load 44 ms in the spike)
   and a smaller module are the first candidates.
+- Block mode stops ads before they exist, so the vault fills mostly from
+  veiled sites; ads drawn on a canvas or as HTML5 without an `<img>` are
+  recorded without an image; lazy images never scrolled into view are not
+  loaded, so not saved.
 - No list updates, first-run screen, or Visit yet (`docs/design/ADS.md`,
   Slices). Veil mode's effect on real walled sites is slice 5's
   measurement.

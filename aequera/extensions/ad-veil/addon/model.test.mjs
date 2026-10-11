@@ -56,25 +56,25 @@ test("private-window choices win there, nearest site first, and nowhere else", (
 });
 
 test("settings recover to defaults from anything", () => {
-  const defaults = { offSites: [], veilSites: [], vault: true, showImages: false };
+  const defaults = { offSites: [], veilSites: [], vault: true, saveImages: true };
   assert.deepEqual(settingsFrom(undefined), defaults);
   assert.deepEqual(settingsFrom("garbage"), defaults);
-  assert.deepEqual(settingsFrom({ offSites: "x", veilSites: {}, vault: "yes", showImages: 1 }), defaults);
+  assert.deepEqual(settingsFrom({ offSites: "x", veilSites: {}, vault: "yes", saveImages: 1 }), defaults);
   assert.deepEqual(
     settingsFrom({
       offSites: ["example.com", "example.com", 3, "", "a b", "https://x.com/"],
       veilSites: ["b.test", "a.test", null],
       vault: false,
-      showImages: true,
+      saveImages: false,
     }),
-    { offSites: ["example.com"], veilSites: ["a.test", "b.test"], vault: false, showImages: true }
+    { offSites: ["example.com"], veilSites: ["a.test", "b.test"], vault: false, saveImages: false }
   );
   // Settings from before veil mode (slice 2) keep their sites.
   assert.deepEqual(settingsFrom({ offSites: ["example.com"], vault: true }), {
     offSites: ["example.com"],
     veilSites: [],
     vault: true,
-    showImages: false,
+    saveImages: true,
   });
 });
 
@@ -151,7 +151,12 @@ test("adFrom keeps only http(s) links and creatives, bounded text", () => {
     link: "https://ad.test/c?x=1",
     creative: "https://cdn.test/a.png",
     text: "Buy now",
+    loaded: false,
   });
+  // `loaded` only when said exactly, and only with an image.
+  assert.equal(adFrom({ creative: "https://cdn.test/a.png", loaded: true }).loaded, true);
+  assert.equal(adFrom({ creative: "https://cdn.test/a.png", loaded: "yes" }).loaded, false);
+  assert.equal(adFrom({ link: "https://ad.test/", loaded: true }).loaded, false);
   assert.equal(adFrom({ link: "javascript:alert(1)" }), null);
   assert.equal(adFrom({ text: "only text" }), null);
   assert.equal(adFrom(null), null);

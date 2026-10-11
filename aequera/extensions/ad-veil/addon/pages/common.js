@@ -24,6 +24,39 @@ var VeilPage = (() => {
     }
   }
 
+  // Where an ad leads: ad click URLs (googleads.g.doubleclick.net/pcs/click
+  // and the like) carry the advertiser's address in a parameter; else the
+  // link itself.
+  const DESTINATION_PARAMS = ["adurl", "url", "dest", "redirect", "u"];
+  function destinationOf(link) {
+    try {
+      const url = new URL(link);
+      for (const name of DESTINATION_PARAMS) {
+        const value = url.searchParams.get(name);
+        if (value && /^https?:\/\//i.test(value)) {
+          return new URL(value).href;
+        }
+      }
+      return url.href;
+    } catch {
+      return link;
+    }
+  }
+
+  // A link to where the ad leads, opened directly: following it from Ad
+  // Veil's pages is not an ad click.
+  function adLink(link) {
+    const destination = destinationOf(link);
+    return element("a", {
+      class: "link small",
+      href: destination,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      text: hostOf(destination),
+      title: destination,
+    });
+  }
+
   function plural(count, one, many) {
     return `${numbers.format(count)} ${count == 1 ? one : many}`;
   }
@@ -45,56 +78,24 @@ var VeilPage = (() => {
     return node;
   }
 
-  // Ad images are a request to the ad server: only when the user turned
-  // "Show ad images" on, without cookies or a referrer, and only responses
-  // that are images. Object URLs are revoked with the page.
-  const IMAGE_FETCHES = 4;
+  // An ad's thumbnail: its saved image (a Blob from the vault; viewing makes
+  // no request), else the initial of its host. Object URLs are revoked when
+  // the view is rebuilt and with the page.
   const urls = [];
-  const queue = [];
-  let running = 0;
 
-  async function fetchImage(url) {
-    try {
-      const response = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer", cache: "force-cache" });
-      const blob = await response.blob();
-      if (!response.ok || !blob.type.startsWith("image/")) {
-        return null;
-      }
-      const objectUrl = URL.createObjectURL(blob);
-      urls.push(objectUrl);
-      return objectUrl;
-    } catch {
-      return null;
+  function thumb(ad, tag = "span") {
+    const host = hostOf(ad.link ? destinationOf(ad.link) : ad.creative);
+    const box = element(tag, { class: "ad-thumb", "aria-hidden": "true" }, element("span", { class: "initial", text: (host[0] || "?").toUpperCase() }));
+    if (ad.thumb instanceof Blob) {
+      const url = URL.createObjectURL(ad.thumb);
+      urls.push(url);
+      box.append(element("img", { alt: "", src: url }));
+      box.dataset.hasImage = "true";
     }
-  }
-
-  function pump() {
-    while (running < IMAGE_FETCHES && queue.length) {
-      const { url, img, box } = queue.shift();
-      running++;
-      fetchImage(url).then(objectUrl => {
-        running--;
-        if (objectUrl && img.isConnected) {
-          img.src = objectUrl;
-          img.hidden = false;
-          box.dataset.hasImage = "true";
-        }
-        pump();
-      });
-    }
-  }
-
-  // Fills `img` (hidden until loaded) with the ad's creative and marks its
-  // `box` (data-has-image), which then stops showing the host's initial.
-  function showImage(url, img, box) {
-    if (url) {
-      queue.push({ url, img, box });
-      pump();
-    }
+    return box;
   }
 
   function dropImages() {
-    queue.length = 0;
     for (const url of urls.splice(0)) {
       URL.revokeObjectURL(url);
     }
@@ -105,9 +106,11 @@ var VeilPage = (() => {
   return {
     send,
     hostOf,
+    destinationOf,
+    adLink,
     plural,
     element,
-    showImage,
+    thumb,
     dropImages,
     number: n => numbers.format(n),
     date: t => dates.format(t),
