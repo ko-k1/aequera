@@ -34,8 +34,11 @@
   transition: clip-path var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out);
 }
 
-/* Fullscreen shows the page edge to edge: never clip it. */
-:root:is([inDOMFullscreen], [inFullscreen]) #tabbrowser-tabbox {
+/* Fullscreen with the chrome hidden (DOM fullscreen, or F11 with
+ * browser.fullscreen.autohide) shows the page edge to edge: never clip it.
+ * While F11 keeps the chrome up (the Aequera default), the page stays a card
+ * and the widened rail still clips it back, as in a window. */
+:root:is([inDOMFullscreen], [fullscreenNavToolboxHidden]) #tabbrowser-tabbox {
   clip-path: none;
 }
 

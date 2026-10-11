@@ -193,7 +193,8 @@ display); they stay covered on headed runs.
 - While widened, the rail is the same material as when collapsed (no
   second opaque panel, no divider), and the page's left edge clips back
   in step with the rail. The page itself does not reflow.
-- Fullscreen shows the page unclipped.
+- Window fullscreen (F11) keeps the top bar and the rail; video
+  (DOM) fullscreen hides them and shows the page unclipped.
 - Browser Console (`Ctrl+Shift+J`) shows no `aequera-shell` errors.
 - `about:config`: the prefs in `aequera-prefs.js` show as defaults.
 

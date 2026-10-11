@@ -46,6 +46,12 @@ pref("aequera.rail.expandOnAddressFocus", true);
 pref("browser.toolbars.bookmarks.visibility", "always");
 pref("aequera.bookmarks.hoverPeek", true);
 
+// Window fullscreen (F11, View > Full Screen) keeps the top bar and the tab
+// rail on screen instead of sliding them away (Firefox's default on macOS).
+// Page-requested (DOM) fullscreen, e.g. video, still hides all chrome. The
+// toolbar context menu's "Hide Toolbars" item flips this back.
+pref("browser.fullscreen.autohide", false);
+
 // Workspaces park inactive tab sets as hidden tabs; closing the last visible
 // tab must not close the window and discard them (patch
 // browser/workspace-hooks/0001: it is replaced by a new tab instead).

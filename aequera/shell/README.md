@@ -12,8 +12,8 @@ pref-gated browser patches. No telemetry, no network.
 
 | File | Role |
 |---|---|
-| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, frame material (Mica on Windows, opaque toolbar fallback elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`) |
-| `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions |
+| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, window fullscreen keeps chrome up, frame material (Mica on Windows, opaque toolbar fallback elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`) |
+| `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome |
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
 | `aequera-frame.js` | `AequeraFrame`: publishes motion tokens from prefs, owns the page's top inset |
@@ -144,6 +144,17 @@ one-time migrations (`aequera.layout.migrationVersion`) that bring profiles
 saved before a new default to it, like Firefox's own layout migrations; a
 widget the user adds back afterwards stays. Test:
 `browser_aequera_default_layout.js`.
+
+### Fullscreen
+
+Window fullscreen (F11, View > Full Screen) keeps the top bar and the tab
+rail on screen: Aequera defaults Firefox's own `browser.fullscreen.autohide`
+to `false` (Firefox's macOS default), so no patch. The page stays a card,
+clipped by the widened rail as in a window. Page-requested (DOM) fullscreen,
+e.g. video, still hides all chrome and shows the page unclipped, and so does
+F11 once the user turns "Hide Toolbars" back on in the toolbar context menu.
+The bookmarks drawer is a toolbar Firefox collapses in fullscreen; it stays
+hidden there. Test: `browser_aequera_fullscreen.js`.
 
 ## Workspaces (`workspaces/`)
 
