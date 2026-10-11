@@ -13,6 +13,15 @@ pref("startup.homepage_welcome_url.additional", "");
 // may point at Mozilla's update pages.
 pref("app.update.url.manual", "");
 pref("app.update.url.details", "");
+// The old-build check runs when the first window opens and asks Mozilla's
+// update service for a newer build: off. Artifact builds still carry the
+// updater, so this is not a no-op there. The day count is Firefox's own
+// contract with every branding (official: 63): BrowserGlue reads it
+// unguarded, and without it first-window startup throws before
+// browser-first-window-ready, so the new tab backend never starts (every
+// about:newtab and about:home load hangs) if the check is ever turned on.
+pref("app.update.checkInstallTime", false);
+pref("app.update.checkInstallTime.days", 63);
 
 // Number of usages of the web console.
 // If this is less than 5, then pasting code into the web console is disabled
