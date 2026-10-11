@@ -126,6 +126,11 @@ paths must be plain relative paths. The patch series then carries only the
 hooks that make Firefox build and load the overlay (for Stage 1:
 `patches/browser/shell-hooks`, 4 lines).
 
+An overlay that only packages files can be reached from another overlay's
+`moz.build` with a topsrcdir path (`DIRS += ["/browser/aequera-adveil"]` in
+the shell overlay, as `mozglue/moz.build` lists `/third_party/fmt`), so it
+needs no hook of its own.
+
 ## Patch vs Aequera Source
 
 Use a patch only when the Firefox source boundary must be crossed.

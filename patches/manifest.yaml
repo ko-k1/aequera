@@ -76,3 +76,9 @@ overlays:
   - id: branding-assets
     source: aequera/design/branding
     dest: browser/branding/aequera
+  # Ad Veil, the built-in ad and tracker blocker (docs/design/ADS.md, ADR
+  # 0003): a built-in add-on packaged under builtin-addons/, built through
+  # the shell-chrome overlay's moz.build. Aequera source, no Firefox patch.
+  - id: ad-veil
+    source: aequera/extensions/ad-veil/addon
+    dest: browser/aequera-adveil

@@ -30,3 +30,10 @@ prefs = [
 ["browser_aequera_private.js"]
 
 ["browser_aequera_privacy.js"]
+
+["browser_aequera_adveil.js"]
+support-files = [
+  "adveil_page.html",
+  "adveil_app.js",
+  "ads.bundle.js",
+]

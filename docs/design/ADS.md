@@ -1,197 +1,195 @@
 # Ad Veil
 
-Status: proposed (ADR 0003). Nothing here is implemented yet.
+Status: proposed (ADR 0003). Slice 1 (block and hide) is implemented
+(`aequera/extensions/ad-veil`); the rest is design.
 
-Ad Veil is how Aequera handles ads: hide them instead of blocking them, keep
-what was hidden in a local vault, and let the user choose whether hidden ads
-are also visited. The reference is AdNauseam's model; the implementation is
-Aequera's own (`docs/adr/0003-aequera-owned-ad-veil.md`).
+Ad Veil is how Aequera handles ads: block what the filter lists match at the
+network layer, hide what still reaches the page, keep a local vault of it,
+and optionally visit hidden ads the way AdNauseam does
+(`docs/adr/0003-aequera-owned-ad-veil.md`).
 
 ## Goals
 
-1. Pages read without ads, with their layout and scripts intact.
-2. Fewer "disable your ad blocker" walls than a request blocker causes.
-3. The user can see what was hidden (vault) and controls every part of it.
-4. Sites are not broken for the sake of blocking; ad requests still happen.
-5. No Aequera network request without a user-visible reason.
+1. Pages read without ads or trackers from the first run.
+2. Matching never runs on the chrome thread.
+3. Sites that wall ad blockers can be read through veil mode.
+4. The user sees what was blocked or hidden (vault) and controls all of it.
+5. No Aequera request without a user-visible reason.
 
-Non-goals: tracker blocking (ETP Strict owns it), malware blocking (Safe
-Browsing owns it), full uBlock Origin filter syntax, element picker (later,
-if a recurring task shows up), YouTube-style in-player ad defeat.
+Non-goals: malware blocking (Safe Browsing owns it), full uBlock Origin
+filter syntax, an element picker (later, if a recurring task shows it),
+in-player video ad defeat.
 
 ## Model
 
 | Part | What it does | Default |
 |---|---|---|
-| Hide | Applies cosmetic rules so ad elements are not shown. Ad requests still load. | on |
-| Vault | Records each hidden ad (target link, creative URL, size, page, time) locally. | on |
-| Visit | Requests a hidden ad's target link in the background, as AdNauseam's "click". | off until chosen at first run |
+| Block | Cancels requests matched by network rules. | on |
+| Hide | Applies cosmetic rules to what reaches the page. | on |
+| Veil (per site) | Lets visual ad requests through and hides them instead (AdNauseam's model). | off; offered on sites with a wall |
+| Vault | Records blocked and hidden ads locally. | on |
+| Visit | Requests hidden ads' target links in the background. | on, shown at first run |
+| List updates | Fetches current EasyList / EasyPrivacy. | on, shown in the panel |
 
-All three are user-visible: a per-site count and toggle in the address bar,
-and the vault page. Turning Hide off for a site restores it immediately.
+"On by default" (decided 2026-10-11) still means shown: the first-run
+screen lists each part with its effect and the user confirms it.
+
+## Engine (measured)
+
+adblock-rust 0.13.3 (`adblock` crate, MPL-2.0) behind a small C ABI
+(`aequera/extensions/ad-veil/engine`), built for `wasm32-unknown-unknown`
+(no imports), loaded by the add-on's background page in the extension
+process. Requests reach it through blocking `webRequest.onBeforeRequest`;
+the parent process only suspends and resumes the channel.
+
+Spike, 2026-10-11, EasyList + EasyPrivacy (138,470 lines), adblock-rust's
+242,945-request corpus:
+
+| | native | WebAssembly (bun/JSC) |
+|---|---|---|
+| compile both lists | 70 ms | 107 ms (40 MiB peak) |
+| load serialized engine | 17 ms | 44 ms |
+| memory, loaded | | 13.7 MiB |
+| check, mean | 3.6 µs | 7.3 µs (p50 5.7, p99 28.6) |
+| blocked | 105,644 | 105,644 |
+| cosmetic lookup per page | | 0.05 ms |
+
+In Aequera (slice 1, SpiderMonkey in a content process, the JIT the
+extension process uses; 30,368 corpus requests, timer precision restored for
+the run): 8.5 µs mean per check, p99 40 µs, p999 60–120 µs (20 µs timer
+granularity), rare maxima near 2 ms; list compile 115 ms; module
+instantiate 157 ms; cosmetic lookup 0.18 ms per page; 43.7% blocked, as
+native. Why not declarativeNetRequest: ADR 0003 (parent-process linear
+scan, 30,000-rule guarantee).
 
 ## Architecture
 
 ```text
-build time                                    runtime (built-in add-on)
-------------------------------------------    ---------------------------------------------
-lists.lock (url, sha256, license)             background
-  -> fetch pinned snapshot                      host index lookup (suffix walk)
-  -> compile (subset)                           per-frame CSS injection (cssOrigin: user)
-       generic.css   (shared sheet)             vault store (IndexedDB, capped)
-       specific.json (host -> selectors,        visit queue (opt-in, rate limited)
-                      host -> exceptions)     content script (all frames, document_start)
-  -> packaged into builtin-addons/ad-veil/      collect hidden-ad metadata -> background
-                                              address bar: count + per-site toggle
+build time                                    runtime (built-in add-on, extension process)
+------------------------------------------    -------------------------------------------------
+lists/ snapshots (EasyList, EasyPrivacy)      background
+engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each start, update)
+                                                webRequest.onBeforeRequest (blocking) -> check
+                                                cosmetic lookup per frame -> insertCSS (user)
+                                              content script (all frames, document_start)
+                                                class/id scan -> generic selectors
+                                              vault store, visit queue (later slices)
 ```
 
 ### Packaging (verified against Firefox 157)
 
-- `aequera/extensions/ad-veil/` holds the add-on (manifest, background,
-  content script, vault page, compiled rules).
-- The shell overlay's `jar.mn` lists it under `browser.jar:
-  builtin-addons/ad-veil/…`. `gen_built_in_addons.py` scans
-  `browser/chrome/browser/builtin-addons/*/manifest.json` into
-  `built_in_addons.json`; the XPIProvider built-in location installs every
-  entry at startup. No Firefox patch.
-- Built-in add-ons are hidden, system, and privileged. Consequences: Ad Veil
-  needs its own controls (it does not appear in about:addons), and a test
-  holds `manifest.json` to an allowed permission set: `storage`,
-  `unlimitedStorage`, `tabs`, `webNavigation`, `<all_urls>` host access, and
-  `management` only if coexistence detection ships. No `mozillaAddons`, no
-  `experiment_apis`.
-- To verify in slice 1: `built_in_addons.json` is regenerated after the
-  overlay's `jar.mn` under `mach build faster` (the manifest is
-  `force = True`, but the order relative to the overlay is unproven).
+- Overlay `ad-veil`: `aequera/extensions/ad-veil/addon` →
+  `worktree/firefox/browser/aequera-adveil`. Its `jar.mn` packages the
+  add-on under `browser.jar: builtin-addons/adveil/…`.
+- The shell overlay's `moz.build` adds `DIRS += ["/browser/aequera-adveil"]`
+  (topsrcdir path, as `mozglue/moz.build` does for `/third_party/fmt`), so no
+  Firefox patch lists the new directory.
+- `gen_built_in_addons.py` scans `builtin-addons/*/manifest.json` into
+  `built_in_addons.json`; the XPIProvider built-in location installs it.
+- Built-in add-ons are hidden, system, privileged, and get private-window
+  access. A test holds `manifest.json` to `storage`, `unlimitedStorage`,
+  `tabs`, `webNavigation`, `webRequest`, `webRequestBlocking`, and
+  `<all_urls>`. No `mozillaAddons`, no `experiment_apis`.
+- `aequera.adveil.enabled` (default true) is applied by Aequera chrome code
+  with `AddonManager` enable/disable and `allowSystemAddons` (the add-on
+  manager refuses to disable a system add-on otherwise), as Firefox does in
+  `BrowserGlue` for the webcompat reporter.
 
 ### Rules
 
-- Source: EasyList (and later, optionally, regional lists) as **data**,
-  pinned by sha256 in `lists.lock`, with its license and attribution in the
-  package. EasyList is dual GPLv3 / CC BY-SA 3.0.
-- Supported: `##selector`, `domain##selector`, `~domain`, `#@#` exceptions.
-  Skipped and counted in the compile report: procedural (`#?#`), scriptlets
-  (`##+js`, `#$#`), HTML filters (`##^`), network rules.
-- Generic selectors that are expensive for Gecko's matcher (attribute
-  substring, `:has()` over broad scopes) are moved out of the shared sheet;
-  only id, class, tag, and simple attribute selectors stay generic.
-- The compiler is a deterministic Rust tool (same input → byte-identical
-  output) with unit tests; its report lists rule counts per class.
+- Snapshots of EasyList and EasyPrivacy are committed under
+  `addon/lists/` with their license and version header (the uBlock Origin
+  and AdNauseam repositories do the same). They are refreshed per release
+  and are the known-good fallback for updates.
+- The engine compiles them at every start (slice 1; about 270 ms with
+  instantiation). Caching the serialized engine (44 ms load in the spike)
+  is the planned startup improvement, with the snapshots as fallback.
+- Until the engine is ready, `onBeforeRequest` waits for it (as uBlock
+  Origin does on Firefox) instead of letting requests through.
+- Unsupported syntax is skipped by adblock-rust; scriptlets are not loaded
+  (no resources), so `##+js` rules do nothing.
 
-### Hiding modes
+### Hiding
 
-| Mode | CSS | Effect |
-|---|---|---|
-| collapse | `display: none !important` | Clean layout. Size-based bait checks (`offsetHeight == 0`) see the element as blocked. |
-| veil | `opacity: 0 !important; pointer-events: none !important` | Keeps the element's box: gaps remain, size-based bait checks pass. Viewability scripts may count the ad as seen. |
+- Host-specific selectors: from `url_cosmetic_resources`, injected per frame
+  with `tabs.insertCSS({ cssOrigin: "user" })` when the navigation commits
+  (`webNavigation.onCommitted`).
+- Generic selectors: the content script collects class and id names and
+  asks for matches (`hidden_class_id_selectors`), so no page carries the
+  full generic list.
+- Every selector is parsed by Gecko as one rule and kept only if it is a
+  single style rule whose only declaration is the hiding one, so list data
+  cannot add declarations (a `url()` that leaks page state) or rules.
+- `display: none !important` (collapse) by default; veil mode uses
+  `opacity: 0 !important; pointer-events: none !important`, which keeps the
+  element's box so size-based bait checks pass.
 
-Both keep the requests: an iframe or image loads whether or not it is
-rendered. Which mode applies to which rule class (likely: veil for generic
-selectors, where bait elements live; collapse for site-specific ones) is
-decided by the measurement below, not assumed. The veil trade-off is stated
-plainly: the site may be paid for an impression nobody saw.
+### Vault (slice 2)
 
-### Vault
-
-- Stored only in the add-on's IndexedDB. Capped (proposed 5,000 entries or
-  90 days, oldest first). Never synced, never uploaded. Export (JSON) and
-  clear are explicit actions.
+- IndexedDB in the add-on only, capped (proposed 5,000 entries or 90 days),
+  never synced or uploaded; export and clear are explicit.
 - Private windows are never recorded.
-- The vault page stores creative **URLs**, not images. Showing thumbnails
-  is a network request to the ad server, so the page shows text cards and
-  loads images only when the user asks ("Show images", credentials omitted).
+- Creative URLs are stored, not images; the vault shows images only on
+  "Show images" (a request to the ad server, credentials omitted).
 
-### Visit (opt-in)
+### Visit (slice 4)
 
-- Off until the user turns it on (first run or settings), with the
-  explanation: it uses your connection, it is treated by ad networks as
-  invalid traffic, and it may count against the site rather than for it.
-- Mechanism: background `fetch(target, { credentials: "omit",
-  referrerPolicy: "no-referrer", redirect: "follow" })`, response discarded,
-  status logged on the vault entry.
-- Limits: at most once per ad, a configurable probability, a per-hour cap,
-  randomized delay, never from private windows, never for sites the user
-  has turned Ad Veil off on.
+- Background `fetch(target, { credentials: "omit", referrerPolicy:
+  "no-referrer" })`, response discarded, status logged in the vault.
+- At most once per ad, a probability setting, a per-hour cap, randomized
+  delay; never from private windows or sites the user turned Ad Veil off on.
+- First-run text says it plainly: it uses your connection, ad networks
+  treat it as invalid traffic, and it may count against the site.
 
 ### Network
 
-| Request | Reason the user can see | When |
-|---|---|---|
-| Ad requests made by the page | the page itself | always (not blocked) |
-| Visit | Visit setting + vault log | opt-in only |
-| Vault images | "Show images" | on demand |
-| List update | Ad Veil panel: "Lists updated N days ago · Update now" | open decision (below) |
+| Request | Reason the user can see |
+|---|---|
+| Page requests not matched | the page itself |
+| Visit | first-run choice, vault log |
+| Vault images | "Show images" |
+| List updates | panel: "Lists updated N days ago · Update now" |
 
-Nothing else. A browser test observes every request whose loading principal
-is the add-on and fails on any request not in this table.
-
-### Coexistence
-
-If the user installs another content blocker, Ad Veil offers to pause
-itself (one prompt, remembered). Running both is allowed and documented as
-double work, not prevented.
+A browser test fails on any request from the add-on outside this table.
 
 ## Configuration
-
-Prefs (documented in `aequera/shell/README.md` when they land), each with
-a known-good default that invalid values fall back to:
 
 | Pref | Type | Default |
 |---|---|---|
 | `aequera.adveil.enabled` | bool | `true` |
-| `aequera.adveil.vault.enabled` | bool | `true` |
-| `aequera.adveil.visit.enabled` | bool | `false` |
-| `aequera.adveil.visit.probability` | int 0–100 | `100` |
-| `aequera.adveil.lists.autoUpdate` | bool | open decision |
+| `aequera.adveil.vault.enabled` | bool | `true` (slice 2) |
+| `aequera.adveil.visit.enabled` | bool | `true` after first-run confirm (slice 4) |
+| `aequera.adveil.lists.autoUpdate` | bool | `true` (slice 3) |
 
-Per-site off is stored in the add-on (host list), not in prefs. A corrupt
-rule set or store falls back to the build-time snapshot and an empty vault
+Per-site off and veil are stored in the add-on. A compiled engine or list
+update that fails to load falls back to the shipped snapshots
 (`AGENTS.md`: configuration failures recover to a known-good state).
 
-## Performance budget (proposed numbers, confirmed in slice 1)
+## Performance budget
 
-- Startup: no measurable first-window delay; background work starts after
-  the first window is painted.
-- Page load: style time delta under 5% on the corpus versus Ad Veil off.
-- Chrome: rail, address bar, and command surface input latency unchanged
-  under the corpus (`docs/engineering/PERFORMANCE.md`).
-- Memory: background under 30 MB with the full EasyList compile loaded.
+- Chrome: no new parent-process work per request beyond webRequest's
+  channel suspend; rail, address bar, and command surface latency unchanged.
+- Startup: first window not delayed; first-run compile happens in the
+  extension process.
+- Per request: p99 under 100 µs in SpiderMonkey.
+- Memory: add-on process share under 60 MiB with both lists loaded.
 
-Missing the budget triggers the Gecko-level alternative in ADR 0003, not a
-weaker product.
+Missing the budget points to the Gecko-level alternative in ADR 0003.
 
-## Measurement
+## Measurement (slice 5)
 
 A real-launch corpus of about 30 live sites (news with anti-adblock walls,
-recipes, forums, video, regional), driven by Marionette as in
-`tools/build` real-launch checks, run manually (live sites are not CI).
-Per site and per configuration (Ad Veil off / collapse / veil / mixed), with
-uBlock Origin temp-installed as a dev-only baseline:
-
-- anti-adblock wall shown (yes/no);
-- ads hidden, ads leaked (screenshot review), layout gaps;
-- page-load time and style time;
-- whether ETP's `ads-track-digest256` blocked the ad before Ad Veil saw it.
-
-The last metric is what decides whether ETP's ads list should yield to Ad
-Veil (kept Strict until then, decided 2026-10-11).
+recipes, forums, video, regional), driven by Marionette, run manually. Per
+site and mode (off, block, veil), with uBlock Origin temp-installed as a
+dev-only baseline: wall shown, ads leaked, layout gaps, load time, and
+whether ETP's `ads-track-digest256` blocked a request before Ad Veil saw it.
 
 ## Slices
 
 | Slice | Delivers | Acceptance |
 |---|---|---|
-| 1 Hide | compiler + pinned EasyList + built-in packaging + hiding runtime + `aequera.adveil.enabled` | compiler tests green; fixture page ads hidden, pref off restores them; manifest permission test; zero add-on requests; startup check in a real launch |
-| 2 Vault | vault store + page + address bar count and per-site toggle | entries recorded and capped; private windows unrecorded; per-site off restores the page live |
-| 3 Lists | user-visible list updates with last-known-good fallback | update shows in the panel; corrupt download keeps the old set |
-| 4 Visit | first-run screen + visit queue | off by default until chosen; every visit logged; limits enforced; private windows never visit |
-| 5 Tune | corpus run, mode assignment, ETP ads-list decision | numbers recorded in this file |
-
-## Open decisions
-
-1. **Rule source:** EasyList as data (recommended), or an Aequera-written
-   list (much smaller coverage).
-2. **List updates:** on by default and shown in the panel, or manual only.
-   Build-time-only lists go stale within weeks.
-3. **Visit at first run:** shown unchecked (recommended, since it works
-   against the "sustainable for sites" goal) or pre-checked as AdNauseam does.
-4. **Name:** "Ad Veil" is a working name.
+| 1 Block + hide | engine crate + wasm, list snapshots, built-in add-on, webRequest blocking, cosmetic hiding, `aequera.adveil.enabled` | engine tests; fixture page: ad request blocked and ad element hidden, pref off restores both; manifest permission test; real launch installs the add-on; SpiderMonkey per-request numbers recorded |
+| 2 Vault + controls | vault store and page, address bar count, per-site off and veil | entries recorded and capped; private windows unrecorded; per-site changes apply live |
+| 3 Updates | automatic list updates with fallback | update shows in the panel; a corrupt download keeps the previous set |
+| 4 First run + Visit | first-run screen, visit queue | every visit logged; limits enforced; private windows never visit |
+| 5 Tune | corpus run, ETP ads-list decision | numbers recorded here |

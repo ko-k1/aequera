@@ -1,0 +1,12 @@
+# Ad Veil built-in add-on -> resource://builtin-addons/adveil/
+# (gen_built_in_addons.py lists every builtin-addons/*/manifest.json).
+
+browser.jar:
+    builtin-addons/adveil/manifest.json        (manifest.json)
+    builtin-addons/adveil/background.js        (background.js)
+    builtin-addons/adveil/content.js           (content.js)
+    builtin-addons/adveil/engine.js            (engine.js)
+    builtin-addons/adveil/engine.wasm          (engine.wasm)
+    builtin-addons/adveil/lists/easylist.txt    (lists/easylist.txt)
+    builtin-addons/adveil/lists/easyprivacy.txt (lists/easyprivacy.txt)
+    builtin-addons/adveil/lists/README.md      (lists/README.md)

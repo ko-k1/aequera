@@ -17,8 +17,8 @@ Examples:
 - sidebar experiences;
 - productivity/reader helpers;
 - privacy/status surfaces;
-- ad handling: Ad Veil, a built-in add-on that hides ads instead of
-  blocking them (`ADS.md`, ADR 0003).
+- ad handling: Ad Veil, a built-in add-on that blocks ad and tracker
+  requests and hides what reaches the page (`ADS.md`, ADR 0003).
 
 ## Shell APIs
 

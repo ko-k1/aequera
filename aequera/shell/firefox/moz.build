@@ -8,6 +8,10 @@
 
 JAR_MANIFESTS += ["jar.mn"]
 
+# Ad Veil, the built-in ad and tracker blocker (overlay "ad-veil": its
+# own directory, built from here so no Firefox moz.build lists it).
+DIRS += ["/browser/aequera-adveil"]
+
 # Installs to browser/defaults/preferences/. Default-pref files load in
 # reverse-alphabetical order, so "aequera-prefs.js" is read after
 # "firefox.js" and its defaults win (the firefox-branding.js mechanism).

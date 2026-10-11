@@ -12,6 +12,9 @@ aequera/design/branding/linux/** text eol=lf
 # Overlays are copied verbatim into worktree/firefox/browser/aequera: CRLF
 # would ship divergent bytes on Windows checkouts (core.autocrlf=true).
 aequera/shell/** text eol=lf
+# Ad Veil overlay: same, into worktree/firefox/browser/aequera-adveil (its
+# engine.wasm is exempted below).
+aequera/extensions/ad-veil/addon/** text eol=lf
 # Branding overlays are also copied verbatim, but the tree mixes text and
 # binary assets. Scope LF-only to text types; binaries are exempted below
 # (later rules win). A broad `text` rule here strips 0D bytes from PNG
@@ -43,3 +46,4 @@ aequera/design/branding/**/*.md text eol=lf
 *.bmp -text -diff
 *.jpg -text -diff
 *.jpeg -text -diff
+*.wasm -text -diff

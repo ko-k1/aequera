@@ -12,7 +12,7 @@ pref-gated browser patches. No telemetry, no network.
 
 | File | Role |
 |---|---|
-| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (Mica on Windows, opaque toolbar fallback elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore |
+| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (Mica on Windows, opaque toolbar fallback elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on |
 | `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome |
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
@@ -23,6 +23,7 @@ pref-gated browser patches. No telemetry, no network.
 | `newtab/` | New tab page (about:newtab, about:home): shortcuts grid |
 | `privatebrowsing/` | about:privatebrowsing in the new tab page design (stylesheet) |
 | `privacy/` | Privacy model: applies Strict tracking protection once per profile |
+| `adveil/` | Ad Veil switch: `aequera.adveil.enabled` enables or disables the built-in ad blocker (`aequera/extensions/ad-veil`) |
 | `bookmarks/` | Bookmarks drawer |
 | `moz.build`, `jar.mn` | Build registration -> `chrome://browser/content/aequera/` |
 
@@ -381,6 +382,20 @@ previous session's windows and tabs are restored at startup
 
 Tests: `tests/browser/browser_aequera_privacy.js`. The upstream gate runs
 Firefox's tests with Standard protection, GPC off, and the light scheme.
+
+## Ad Veil (`adveil/`, `aequera/extensions/ad-veil`)
+
+Aequera's built-in ad and tracker blocker (`docs/design/ADS.md`, ADR 0003):
+requests EasyList or EasyPrivacy match are cancelled, and ads that still
+reach the page are hidden. It is a built-in add-on (overlay `ad-veil`),
+hidden from about:addons, so `aequera.adveil.enabled` (default true) is its
+control: `adveil/aequera-adveil.js` keeps the add-on's enabled state equal
+to the pref, as Firefox does for its own pref-driven system add-ons.
+Matching runs in the extension process; nothing here touches the network.
+
+Tests: `tests/browser/browser_aequera_adveil.js` (built-in install, least
+privilege, blocking and hiding on a fixture, the pref off and on, no request
+of its own). The upstream gate runs Firefox's tests with the pref off.
 
 ## Robustness
 

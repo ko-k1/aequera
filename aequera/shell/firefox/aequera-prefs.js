@@ -153,3 +153,9 @@ pref("browser.startup.page", 3);
 // same paint as the top bar, so chrome stays seamless without depending on
 // a backdrop that may not exist. Solid chrome there, never floating text.
 pref("widget.windows.mica", true);
+
+// Ad Veil (docs/design/ADS.md): Aequera's built-in ad and tracker blocker
+// (EasyList, EasyPrivacy). Requests the lists match are cancelled and ads
+// that reach the page are hidden. Off disables the built-in add-on
+// (adveil/aequera-adveil.js).
+pref("aequera.adveil.enabled", true);

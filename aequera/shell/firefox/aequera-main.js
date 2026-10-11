@@ -20,6 +20,7 @@ for (const name of [
   "layout/aequera-layout.js",
   "narrow/aequera-narrow.js",
   "privacy/aequera-privacy.js",
+  "adveil/aequera-adveil.js",
 ]) {
   try {
     Services.scriptloader.loadSubScriptWithOptions(`chrome://browser/content/aequera/${name}`, {

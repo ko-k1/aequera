@@ -21,6 +21,7 @@ browser.jar:
     content/browser/aequera/layout/aequera-layout.js           (layout/aequera-layout.js)
     content/browser/aequera/narrow/aequera-narrow.js           (narrow/aequera-narrow.js)
     content/browser/aequera/privacy/aequera-privacy.js         (privacy/aequera-privacy.js)
+    content/browser/aequera/adveil/aequera-adveil.js           (adveil/aequera-adveil.js)
     content/browser/aequera/newtab/aequera-newtab.html         (newtab/aequera-newtab.html)
     content/browser/aequera/newtab/aequera-newtab.css          (newtab/aequera-newtab.css)
     content/browser/aequera/newtab/aequera-newtab.js           (newtab/aequera-newtab.js)

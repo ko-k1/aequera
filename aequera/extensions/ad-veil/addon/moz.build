@@ -1,0 +1,13 @@
+# Ad Veil, a built-in add-on (docs/design/ADS.md, ADR 0003).
+#
+# Copied into worktree/firefox/browser/aequera-adveil/ by `aequera patch
+# apply` (overlay "ad-veil" in patches/manifest.yaml) and reached from the
+# shell overlay's moz.build (DIRS += ["/browser/aequera-adveil"]), so no
+# Firefox file lists it.
+
+DIST_SUBDIR = "browser"
+
+JAR_MANIFESTS += ["jar.mn"]
+
+with Files("**"):
+    BUG_COMPONENT = ("Firefox", "General")

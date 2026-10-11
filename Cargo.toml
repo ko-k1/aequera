@@ -8,5 +8,6 @@
 resolver = "2"
 members = [
     "aequera/core",
+    "aequera/extensions/ad-veil/engine",
     "tools/cli",
 ]

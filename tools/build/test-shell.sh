@@ -49,6 +49,9 @@ FIREFOX_DEFAULTS=(
   --setpref aequera.privacy.trackingProtectionApplied=true
   --setpref privacy.globalprivacycontrol.enabled=false
   --setpref ui.systemUsesDarkTheme=0
+  # Ad Veil: Firefox has no built-in content blocker; its tests must not
+  # run behind EasyList.
+  --setpref aequera.adveil.enabled=false
 )
 # Frame material is per-OS (Windows 11 Mica; opaque toolbar fallback
 # elsewhere): only reset it where the pref means something.

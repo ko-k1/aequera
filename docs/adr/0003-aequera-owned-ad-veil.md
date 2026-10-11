@@ -7,92 +7,102 @@ Proposed
 ## Decision
 
 Aequera ships its own ad handling, **Ad Veil**, instead of bundling a
-third-party blocker (uBlock Origin, AdNauseam). Ad Veil follows AdNauseam's
-model rather than uBlock Origin's: ads are *hidden*, not blocked, so pages
-keep loading the way their authors expect; hidden ads are kept in a local
-**vault** the user can browse; *visiting* hidden ads (AdNauseam's simulated
-click) is a separate, opt-in action.
+third-party blocker extension (uBlock Origin, AdNauseam).
 
-It is a first-party built-in WebExtension (`aequera/extensions/ad-veil/`),
-packaged through the shell overlay's `jar.mn` under `builtin-addons/`, so it
-needs no Firefox patch. Rules come from published filter lists (data, not
-code), compiled at build time. Design: `docs/design/ADS.md`.
+- **Block, then hide.** Requests matching the filter lists are blocked at
+  the network layer; ads that still reach the page (first-party, inline,
+  static) are hidden by cosmetic rules. Per site, the user can switch to
+  **veil** mode: AdNauseam's model, where visual ads load and are hidden
+  instead of blocked, for sites that wall ad blockers.
+- **Vault and Visit.** What was blocked or hidden is kept in a local vault;
+  hidden ads can be *visited* in the background (AdNauseam's simulated
+  click). All on by default, shown and changeable at first run.
+- **Engine.** adblock-rust (Brave, MPL-2.0) compiled to WebAssembly, running
+  in the extension process behind blocking `webRequest`. Rules: EasyList and
+  EasyPrivacy, shipped as snapshots and kept current by automatic,
+  user-visible updates.
+- **Packaging.** A first-party built-in add-on: overlay `ad-veil`
+  (`aequera/extensions/ad-veil/addon` → `browser/aequera-adveil`), reached
+  from the shell overlay's `moz.build` and packaged under `builtin-addons/`.
+  No Firefox patch.
+
+Design and measurements: `docs/design/ADS.md`.
 
 ## Context
 
-- Helium bundles a uBlock Origin fork as a Chromium component extension. The
-  goal here is different: less hostile pages (fewer anti-adblock walls,
-  intact layout) and a web that keeps working for sites, not maximal
-  request blocking.
-- Bundling AdNauseam was evaluated and rejected (below). Its approach is the
-  reference; its code is not the product.
+- Helium bundles a uBlock Origin fork as a Chromium component extension.
+  Aequera wants the same "works from the first run", without third-party
+  extension code, defaults, or update channels.
 - Strict Enhanced Tracking Protection stays the network privacy model
-  (decided 2026-10-11): Ad Veil adds a presentation layer on top of it, it
-  does not replace it. Whether ETP's `ads-track-digest256` list should yield
-  to Ad Veil is decided by measurement (`docs/design/ADS.md`, Measurement).
+  (decided 2026-10-11); Ad Veil adds to it.
+- The engine must not load the parent process main thread, which is the
+  browser chrome thread (`AGENTS.md`: chrome stays responsive under heavy
+  content).
 
 ## Rationale
 
-- **Owned behavior.** Every network request and every default is Aequera's
-  to justify under `docs/RESTRICTIONS.md`. A bundled third-party extension
-  brings its own (AdNauseam 3.29: an `api.github.com` release check on every
-  startup, unused on Firefox).
-- **No patch.** Firefox 157 installs every add-on listed under
-  `browser/chrome/browser/builtin-addons/*/manifest.json`
-  (`toolkit/mozapps/extensions/gen_built_in_addons.py` → `built_in_addons.json`
-  → the XPIProvider built-in location). The overlay already contributes to
-  `browser.jar`.
-- **Fit.** Cosmetic hiding, a vault, and opt-in visits map onto ordinary
-  WebExtension APIs (`docs/design/EXTENSIONS.md`: first-party extensions for
-  privacy/status surfaces).
+- **Owned behavior.** Every request and default is Aequera's to justify
+  under `docs/RESTRICTIONS.md`. AdNauseam 3.29, for one, requests
+  `api.github.com` on every startup and discards the answer on Firefox.
+- **Engine placement.** Firefox 157's declarativeNetRequest evaluates rules
+  in the parent process (`WebRequest.sys.mjs` → `ExtensionDNR.handleRequest`)
+  with a linear scan over every enabled rule per request
+  (`#collectMatchInRuleset`), and guarantees 30,000 static rules; EasyList
+  + EasyPrivacy are about 138,000 lines. Blocking `webRequest` instead
+  suspends the channel and matches in the extension process.
+- **Engine choice.** adblock-rust parses EasyList syntax, token-indexes
+  network rules, serializes to a flat buffer, and builds for
+  `wasm32-unknown-unknown` with no imports. Measured on 242,945 corpus
+  requests: 7.3 µs per request in WebAssembly under JSC, 13.7 MiB loaded,
+  same block decisions as native; in Aequera's SpiderMonkey 8.5 µs mean,
+  p99 40 µs (slice 1).
+- **No patch.** `gen_built_in_addons.py` lists every
+  `browser/chrome/browser/builtin-addons/*/manifest.json`; the XPIProvider
+  built-in location installs each. The `aequera.adveil.enabled` pref
+  enables and disables it with `allowSystemAddons`, as Firefox does for its
+  own pref-driven system add-ons (`BrowserGlue`, webcompat reporter).
 
 ## Consequences
 
 ### Positive
 
-- Ad handling is part of the browser from the first run, with Aequera's
-  design system, prefs, and recovery rules.
-- No third-party extension code, no third-party update channel.
-- Hidden ads still load, so bait-element and request-based anti-adblock
-  checks see a normal page more often (hypothesis; measured, not assumed).
+- Ad and tracker blocking from the first run, with Aequera's prefs, design
+  system, and recovery rules.
+- Matching cost lands in the extension process, not on the chrome thread.
+- One engine for network and cosmetic rules; the same code compiles the
+  shipped snapshots at start and updated lists later.
 
 ### Costs
 
-- Aequera owns a rule compiler, a hiding runtime, list updates, and their
-  breakage reports. Filter syntax support is a deliberate subset.
+- A third-party library (adblock-rust, MPL-2.0) and third-party data
+  (EasyList, EasyPrivacy: GPLv3 / CC BY-SA 3.0, dual) become dependencies.
+  Both are pinned, attributed, and updated deliberately.
+- A committed WebAssembly binary built from `aequera/extensions/ad-veil/engine`;
+  a script rebuilds it and checks the hash.
 - Built-in add-ons are hidden from about:addons and run in the privileged,
-  system location. Ad Veil must therefore expose its own on/off and per-site
-  controls, and a test must hold its manifest to least privilege
-  (no `mozillaAddons`, no experiment APIs).
-- Hiding instead of blocking lets ad scripts run. Trackers inside them are
-  left to ETP Strict; Ad Veil is not a tracker blocker.
-- Filter lists are third-party data with their own licenses (EasyList:
-  GPLv3 / CC BY-SA 3.0, dual); attribution and license files ship with them.
-- Visiting ads costs the user's bandwidth and IP exposure and is treated by
-  ad networks as invalid traffic, which may count against the site. It is
-  therefore opt-in, explained, and never silent.
+  system location: Ad Veil needs its own controls, and a test holds its
+  manifest to least privilege (no `mozillaAddons`, no experiment APIs).
+- Blocking makes anti-adblock walls more likely than AdNauseam's model;
+  veil mode per site is the answer, measured on a site corpus.
+- Visiting ads uses the user's connection and is treated by ad networks as
+  invalid traffic. It is visible (first run, vault log) and can be turned
+  off at any time.
 
 ## Rejected Alternatives
 
-### Bundle AdNauseam (AMO-signed XPI via `distribution/extensions`)
+### Bundle AdNauseam or uBlock Origin
 
-Works without a patch (Mozilla-signed 3.28.8, GPLv3, MV2), but its startup
-GitHub request cannot be removed without breaking the signature, its
-updates come from AMO on its own schedule, and its defaults and UI are not
-Aequera's.
+Signed AMO builds work through `distribution/extensions` with no patch, but
+bring third-party requests (AdNauseam's startup GitHub check), defaults, UI,
+and update channels. Building either from source makes Aequera the
+maintainer of a large fork.
 
-### Build AdNauseam or uBlock Origin from source as a built-in add-on
+### declarativeNetRequest
 
-Removes the request but makes Aequera the maintainer of a large fork of
-someone else's product.
+Parent-process, linear matching and a 30,000-rule guarantee (above).
 
-### Bundle uBlock Origin (the Helium approach)
-
-Blocks rather than hides: the opposite of the intended experience, with the
-same third-party ownership costs.
-
-### Gecko-level engine (e.g. adblock-rust in a Gecko patch)
+### Gecko-level engine (adblock-rust in a Gecko patch)
 
 Fastest matching, but an exceptional Gecko patch with a permanent rebase
-cost. Revisit only if the extension runtime misses the performance budget
-in `docs/design/ADS.md`.
+cost. Revisit only if the extension engine misses the budget in
+`docs/design/ADS.md`.

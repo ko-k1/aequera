@@ -1,0 +1,17 @@
+[package]
+name = "aequera-adveil-engine"
+version = "0.1.0"
+edition = "2024"
+license = "MPL-2.0"
+description = "Ad Veil filter engine: adblock-rust behind a small C ABI for wasm32."
+
+# cdylib: engine.wasm for the add-on (build-engine.sh); rlib: native tests.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Pinned exactly: the serialized engine format is only stable within a
+# version (adblock::Engine::serialize).
+adblock = { version = "=0.13.3", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling", "single-thread"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
