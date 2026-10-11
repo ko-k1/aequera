@@ -91,18 +91,25 @@ async function withoutOwnRequests(task) {
   Assert.deepEqual(own, [], "Ad Veil made no network request of its own");
 }
 
-// The address bar button and its popup (makeWidgetId("adveil@aequera")).
-const BUTTON = "pageAction-urlbar-adveil_aequera";
-const PANEL = "adveil_aequera-panel";
+// The toolbar button (makeWidgetId("adveil@aequera") + "-browser-action"):
+// title, badge, and icon (custom properties in its style) are attributes of
+// its action button, as Firefox's own browserAction tests read them.
+const WIDGET = "adveil_aequera-browser-action";
 
-function buttonTitle(win = window) {
-  const button = win.document.getElementById(BUTTON);
-  return button?.getAttribute("tooltiptext") || button?.getAttribute("aria-label") || "";
+function actionButton(win = window) {
+  return win.document.getElementById(WIDGET)?.querySelector(".unified-extensions-item-action-button");
 }
 
-// The button's icon: Firefox applies it as custom properties in its style.
+function buttonTitle(win = window) {
+  return actionButton(win)?.getAttribute("tooltiptext") || "";
+}
+
+function buttonBadge(win = window) {
+  return actionButton(win)?.getAttribute("badge") || "";
+}
+
 function buttonIcon(win = window) {
-  return win.document.getElementById(BUTTON)?.getAttribute("style") || "";
+  return actionButton(win)?.getAttribute("style") || "";
 }
 
 async function openFixture(win = window) {
@@ -130,47 +137,69 @@ function fixtureState(browser) {
 // Opens the popup for the selected tab and runs `task` in it (a content
 // task: it gets the popup's document as `content`).
 async function inPopup(win, task, args = []) {
-  await AppUiTestDelegate.clickPageAction(win, ID);
-  let panel;
-  await TestUtils.waitForCondition(() => {
-    panel = win.document.getElementById(PANEL);
-    return panel?.state == "open" && panel.querySelector("browser")?.currentURI?.spec.endsWith("pages/popup.html");
-  }, "popup open");
-  const browser = panel.querySelector("browser");
+  const loaded = AppUiTestDelegate.awaitExtensionPanel(win, ID);
+  await AppUiTestDelegate.clickBrowserAction(win, ID);
+  const browser = await loaded;
   await SpecialPowers.spawn(browser, [], () =>
     ContentTaskUtils.waitForCondition(() => content.document.getElementById("site")?.textContent, "popup rendered")
   );
   try {
     return await SpecialPowers.spawn(browser, args, task);
   } finally {
-    const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
-    panel.hidePopup();
-    await hidden;
+    const panel = browser.closest("panel");
+    if (panel?.state == "open") {
+      const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
+      panel.hidePopup();
+      await hidden;
+    }
   }
 }
 
-// The vault page, as rendered.
+// The popup's view of this page.
+function readPopup() {
+  return inPopup(window, () => {
+    const doc = content.document;
+    return {
+      site: doc.getElementById("site").textContent,
+      mode: doc.querySelector("input[name=mode]:checked").value,
+      blocked: Number(doc.getElementById("blocked").textContent.replace(/\D/g, "")),
+      hidden: Number(doc.getElementById("hidden").textContent.replace(/\D/g, "")),
+      share: doc.getElementById("blocked-share").textContent,
+      domains: doc.getElementById("domains").textContent,
+      hosts: [...doc.querySelectorAll("#hosts li .name")].map(s => s.textContent),
+      ads: [...doc.querySelectorAll("#ads li .text")].map(s => s.textContent),
+      totals: doc.getElementById("totals").textContent,
+    };
+  });
+}
+
+// The dashboard, as rendered (every tab's content is in the document).
 async function readVault(tab) {
   await BrowserTestUtils.reloadTab(tab);
   return SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
     const doc = content.document;
-    await ContentTaskUtils.waitForCondition(() => doc.body.dataset.ready, "vault rendered");
+    await ContentTaskUtils.waitForCondition(() => doc.body.dataset.ready, "dashboard rendered");
     return {
-      blocked: Number(doc.getElementById("blocked-total").textContent.replace(/\D/g, "")),
-      hosts: [...doc.querySelectorAll("#hosts li span:first-child")].map(s => s.textContent),
-      ads: [...doc.querySelectorAll(".ad")].map(card => ({
+      blocked: Number(doc.getElementById("chart-total").textContent.replace(/\D/g, "")),
+      hosts: [...doc.querySelectorAll("#top-hosts li .name")].map(s => s.textContent),
+      ads: [...doc.querySelectorAll(".ad-card")].map(card => ({
         link: card.querySelector(".link")?.href || null,
-        site: card.querySelector(".where").textContent,
+        site: card.querySelector(".meta").textContent.split(" · ")[0],
         text: card.querySelector(".text").textContent,
         creative: card.dataset.creative,
+        image: card.querySelector("img")?.getAttribute("src") || null,
       })),
-      keep: doc.getElementById("keep").checked,
+      keep: doc.getElementById("set-vault").checked,
+      sites: [...doc.querySelectorAll("#site-rows tr")].map(row => ({
+        site: row.cells[0].textContent,
+        mode: row.querySelector("select").value,
+      })),
     };
   });
 }
 
 async function openVault() {
-  const url = WebExtensionPolicy.getByID(ID).getURL("pages/vault.html");
+  const url = WebExtensionPolicy.getByID(ID).getURL("pages/dashboard.html#vault");
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
   return tab;
 }
@@ -298,12 +327,23 @@ add_task(async function test_vault_records_hidden_ads_and_blocked_requests() {
   Assert.greaterOrEqual(state.blocked, 1, "the blocked request is counted");
   ok(state.hosts.includes("example.com"), "by blocked host");
 
+  ok(!state.ads[0].image, "no ad image while Show ad images is off");
+
   // Using the page and reading the vault again stays local (images are off).
   await withoutOwnRequests(async () => {
     await BrowserTestUtils.reloadTab(page);
     await waitForHidden(page.linkedBrowser);
     await readVault(vault);
   });
+
+  // Show ad images: the creative is fetched by the dashboard, and shown.
+  await SpecialPowers.spawn(vault.linkedBrowser, [], () => content.document.getElementById("set-images").click());
+  await TestUtils.waitForCondition(async () => {
+    state = await readVault(vault);
+    return state.ads[0]?.image?.startsWith("blob:");
+  }, "the ad image is shown");
+  ok(true, "Show ad images loads the ad's image");
+  await SpecialPowers.spawn(vault.linkedBrowser, [], () => content.document.getElementById("set-images").click());
   BrowserTestUtils.removeTab(page);
   await clearVault(vault);
   BrowserTestUtils.removeTab(vault);
@@ -338,22 +378,27 @@ async function pickMode(tab, mode) {
 add_task(async function test_popup_turns_a_site_off_and_on() {
   await waitForActive(true);
   const tab = await openFixture();
-  const counts = await inPopup(window, () => ({
-    site: content.document.getElementById("site").textContent,
-    mode: content.document.querySelector("input[name=mode]:checked").value,
-    blocked: Number(content.document.getElementById("blocked").textContent),
-  }));
+  await TestUtils.waitForCondition(() => buttonBadge() == "1", "the toolbar badge counts the blocked request");
+  let popup;
+  await TestUtils.waitForCondition(async () => {
+    popup = await readPopup();
+    return popup.ads.length > 0;
+  }, "the popup lists the hidden ad");
   Assert.deepEqual(
-    { site: counts.site, mode: counts.mode },
-    { site: "example.com", mode: "block" },
-    "the popup names this site, blocking"
+    { site: popup.site, mode: popup.mode, blocked: popup.blocked, hidden: popup.hidden, domains: popup.domains },
+    { site: "example.com", mode: "block", blocked: 1, hidden: 1, domains: "1 / 1" },
+    "the popup names this site and counts this page"
   );
-  Assert.greaterOrEqual(counts.blocked, 1, "and counts this page's blocked requests");
+  ok(/% of \d+ requests?$/.test(popup.share), `and the blocked share (${popup.share})`);
+  Assert.deepEqual(popup.hosts, ["example.com"], "blocked on this page, by host");
+  Assert.deepEqual(popup.ads, ["Veil test ad"], "the ads hidden here");
+  ok(/^All time: /.test(popup.totals), "and all-time totals");
 
   // Off: the page reloads with nothing blocked or hidden.
   await pickMode(tab, "off");
   await TestUtils.waitForCondition(() => /off for example\.com/.test(buttonTitle()), "the button shows off");
   await TestUtils.waitForCondition(() => /icons\/veil-off\.svg/.test(buttonIcon()), "with the off icon");
+  await TestUtils.waitForCondition(() => buttonBadge() == "", "and no badge");
   const off = await fixtureState(tab.linkedBrowser);
   ok(off.adLoaded, "off for this site: nothing is blocked");
   isnot(off.banner, "none", "off for this site: nothing is hidden");
@@ -447,4 +492,50 @@ add_task(async function test_veil_mode() {
   ok(!back.ad && !back.network, "block again: the ad and the ad network are blocked again");
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function test_dashboard_sites() {
+  await waitForActive(true);
+  const dashboard = await openVault();
+  const ready = () =>
+    SpecialPowers.spawn(dashboard.linkedBrowser, [], () =>
+      ContentTaskUtils.waitForCondition(() => content.document.body.dataset.ready, "dashboard rendered")
+    );
+
+  // Add a site from the form, typed as a URL: its site is the host without
+  // "www.".
+  await ready();
+  await SpecialPowers.spawn(dashboard.linkedBrowser, [], () => {
+    const doc = content.document;
+    doc.getElementById("site-name").value = "https://www.example.com/some/page";
+    doc.getElementById("site-mode").value = "veil";
+    doc.getElementById("site-add").requestSubmit();
+  });
+  let state;
+  await TestUtils.waitForCondition(async () => {
+    state = await readVault(dashboard);
+    return state.sites.length == 1;
+  }, "the site is listed");
+  Assert.deepEqual(state.sites, [{ site: "example.com", mode: "veil" }], "listed as its site, veiled");
+
+  // Change its mode: pages on the site follow.
+  await ready();
+  await SpecialPowers.spawn(dashboard.linkedBrowser, [], () => {
+    const select = content.document.querySelector("#site-rows select");
+    select.value = "off";
+    select.dispatchEvent(new content.Event("change"));
+  });
+  await TestUtils.waitForCondition(async () => (await readVault(dashboard)).sites[0]?.mode == "off", "mode changed");
+  const page = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  ok((await fixtureState(page.linkedBrowser)).adLoaded, "a site turned off in the dashboard is off on its pages");
+  BrowserTestUtils.removeTab(page);
+
+  // Remove it: back to the default (block).
+  await ready();
+  await SpecialPowers.spawn(dashboard.linkedBrowser, [], () => content.document.querySelector("#site-rows button").click());
+  await TestUtils.waitForCondition(async () => (await readVault(dashboard)).sites.length == 0, "the site is removed");
+  const after = await openFixture();
+  ok(!(await fixtureState(after.linkedBrowser)).adLoaded, "removed: blocking is back");
+  BrowserTestUtils.removeTab(after);
+  BrowserTestUtils.removeTab(dashboard);
 });

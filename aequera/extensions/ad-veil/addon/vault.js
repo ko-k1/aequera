@@ -164,7 +164,8 @@ var VeilVault = (() => {
   // last `days` days, by blocked host and by site.
   async function summary({ ads = 300, days = 7, now = Date.now() } = {}) {
     await flush();
-    const since = VeilModel.dayOf(now - (days - 1) * 86400000);
+    const start = new Date(now);
+    const since = VeilModel.dayOf(new Date(start.getFullYear(), start.getMonth(), start.getDate() - (days - 1)).getTime());
     const tx = (await db()).transaction(["ads", "blocked"], "readonly");
     const [recent, blocked, adCount] = await Promise.all([
       collect(tx.objectStore("ads").index("time"), null, "prev", ads),
@@ -179,7 +180,19 @@ var VeilVault = (() => {
       }
       return [...sums].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
     };
-    return { ads: recent, adCount, days, blocked: total, hosts: top("host"), sites: top("site") };
+    // Blocked per day, oldest first, every day present (0 when quiet).
+    const perDay = new Map();
+    for (const entry of blocked) {
+      perDay.set(entry.day, (perDay.get(entry.day) || 0) + entry.count);
+    }
+    // Calendar days, not 24-hour steps (a DST day is 23 or 25 hours).
+    const today = new Date(now);
+    const series = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const day = VeilModel.dayOf(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i).getTime());
+      series.push({ day, count: perDay.get(day) || 0 });
+    }
+    return { ads: recent, adCount, days, blocked: total, series, hosts: top("host"), sites: top("site") };
   }
 
   async function exportAll() {

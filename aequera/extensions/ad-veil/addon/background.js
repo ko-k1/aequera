@@ -39,6 +39,8 @@ const ACTION_UPDATE_MS = 250;
 // Origin semantics). `privacy` (EasyPrivacy alone) is asked only when `all`
 // blocks on a veiled site: a tracker stays blocked, anything else is an ad.
 let engines = null;
+// The shipped lists' versions and rule counts, for the dashboard.
+let listsInfo = null;
 
 // Settings live in this add-on's storage (an add-on cannot read prefs) and
 // are validated on every load. Choices made in private windows are kept only
@@ -93,6 +95,10 @@ const ready = (async () => {
     .setAdHosts(VeilModel.adHostsFrom(adsText))
     .catch(error => console.error("Ad Veil: veil mode unavailable", error));
   await settingsReady;
+  listsInfo = [
+    { name: "EasyList", ...VeilModel.listInfo(adsText) },
+    { name: "EasyPrivacy", ...VeilModel.listInfo(privacyText) },
+  ];
   engines = { all, privacy };
 })();
 ready.catch(error => console.error("Ad Veil: engine unavailable, nothing is blocked", error));
@@ -109,11 +115,50 @@ browser.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-// Per tab: the page being shown and what Ad Veil did to it.
+// All-time counts for the popup and dashboard, from normal windows only
+// (numbers, no sites), saved every few seconds.
+const TOTALS_SAVE_MS = 10000;
+let totals = VeilModel.totalsFrom(null, Date.now());
+let totalsTimer = 0;
+browser.storage.local
+  .get("totals")
+  .then(stored => {
+    const saved = VeilModel.totalsFrom(stored.totals, Date.now());
+    // Counts made before the read finished are kept.
+    totals = { blocked: saved.blocked + totals.blocked, hidden: saved.hidden + totals.hidden, since: saved.since };
+  })
+  .catch(error => console.error("Ad Veil: totals unreadable, starting from zero", error));
+
+function addTotals(incognito, key, count) {
+  if (incognito || !count) {
+    return;
+  }
+  totals[key] += count;
+  totalsTimer ||= setTimeout(() => {
+    totalsTimer = 0;
+    browser.storage.local.set({ totals }).catch(() => {});
+  }, TOTALS_SAVE_MS);
+}
+
+// Per tab: the page being shown and what Ad Veil did to it. Kept in memory
+// only, for the toolbar button and popup.
+const MAX_RECENT_ADS = 12;
 const tabs = new Map();
 
 function startPage(tabId, url, incognito) {
-  tabs.set(tabId, { url, incognito: !!incognito, blocked: 0, hidden: 0, ads: new Set(), timer: 0 });
+  tabs.set(tabId, {
+    url,
+    incognito: !!incognito,
+    requests: 0,
+    blocked: 0,
+    hidden: 0,
+    // Hosts contacted, and the blocked ones with their counts.
+    domains: new Set(),
+    blockedHosts: new Map(),
+    ads: new Set(),
+    recentAds: [],
+    timer: 0,
+  });
   scheduleAction(tabId);
 }
 
@@ -135,10 +180,23 @@ browser.tabs.onRemoved.addListener(tabId => {
   tabs.delete(tabId);
 });
 
-// The address bar button: its tooltip carries this page's counts and mode,
-// its icon the mode. Coalesced, since a page can block dozens of requests in
-// a burst.
+// The toolbar button: its badge is this page's blocked count, its tooltip
+// the counts and mode, its icon the mode. Coalesced, since a page can block
+// dozens of requests in a burst.
 const ICONS = { block: "icons/veil.svg", veil: "icons/veil-veiled.svg", off: "icons/veil-off.svg" };
+// A neutral badge, readable on light and dark toolbars.
+browser.browserAction.setBadgeBackgroundColor({ color: "#5b5b66" });
+browser.browserAction.setBadgeTextColor({ color: "#ffffff" });
+
+// browserAction setters return a promise or nothing depending on the
+// method; either way a closed tab is not an error worth reporting.
+function quietly(call) {
+  try {
+    Promise.resolve(call()).catch(() => {});
+  } catch {
+    // The tab closed first.
+  }
+}
 
 function scheduleAction(tabId) {
   const state = tabs.get(tabId);
@@ -155,6 +213,10 @@ function updateAction(tabId) {
   state.timer = 0;
   const site = VeilModel.siteOf(state.url);
   if (!site) {
+    // Not a web page (new tab, settings): nothing to count.
+    quietly(() => browser.browserAction.setTitle({ tabId, title: "Ad Veil" }));
+    quietly(() => browser.browserAction.setIcon({ tabId, path: ICONS.block }));
+    quietly(() => browser.browserAction.setBadgeText({ tabId, text: "" }));
     return;
   }
   const mode = modeOf(site, state.incognito);
@@ -164,13 +226,9 @@ function updateAction(tabId) {
     veil: `Ad Veil, veil mode: ${counts}`,
     off: `Ad Veil is off for ${site}`,
   }[mode];
-  try {
-    // Synchronous in Firefox (no promise); throws for a closed tab.
-    browser.pageAction.setTitle({ tabId, title });
-  } catch {
-    return;
-  }
-  browser.pageAction.setIcon({ tabId, path: ICONS[mode] }).catch(() => {});
+  quietly(() => browser.browserAction.setTitle({ tabId, title }));
+  quietly(() => browser.browserAction.setIcon({ tabId, path: ICONS[mode] }));
+  quietly(() => browser.browserAction.setBadgeText({ tabId, text: mode == "off" ? "" : VeilModel.badgeText(state.blocked) }));
 }
 
 function fromOwnPage(details) {
@@ -192,12 +250,16 @@ function topUrl(details) {
 }
 
 function cancel(details, site) {
+  const host = VeilModel.hostOf(details.url);
   const state = tabs.get(details.tabId);
   if (state) {
     state.blocked++;
+    if (host) {
+      state.blockedHosts.set(host, (state.blockedHosts.get(host) || 0) + 1);
+    }
     scheduleAction(details.tabId);
   }
-  const host = VeilModel.hostOf(details.url);
+  addTotals(details.incognito, "blocked", 1);
   if (settings.vault && !details.incognito && site && host) {
     VeilVault.countBlocked(site, host, Date.now());
   }
@@ -207,6 +269,16 @@ function cancel(details, site) {
 function decide(details) {
   const site = VeilModel.siteOf(topUrl(details));
   const mode = modeOf(site, details.incognito);
+  // Every request the page makes counts toward "N% of requests" and the
+  // domains it contacted, whatever happens to it.
+  const state = tabs.get(details.tabId);
+  if (state) {
+    state.requests++;
+    const host = VeilModel.hostOf(details.url);
+    if (host) {
+      state.domains.add(host);
+    }
+  }
   if (mode == "off") {
     return {};
   }
@@ -383,7 +455,9 @@ function contentMessage(message, sender) {
         return Promise.resolve({ active: false });
       }
       const selectors = validRules(cosmeticFor(sender.url).hide, status.mode).map(rule => rule.selector);
-      return Promise.resolve({ active: true, collect: status.collect, selectors });
+      // The content script always describes hidden ads (the popup lists
+      // them, in memory); only the vault decides whether they are kept.
+      return Promise.resolve({ active: true, collect: true, selectors });
     }
     // Generic rules, for the class and id names content.js saw.
     case "seen": {
@@ -403,8 +477,9 @@ function contentMessage(message, sender) {
       }
       const count = Number.isInteger(message.count) ? Math.min(Math.max(message.count, 0), MAX_HIDDEN_PER_MESSAGE) : 0;
       state.hidden += count;
+      addTotals(sender.tab.incognito, "hidden", count);
       scheduleAction(sender.tab.id);
-      if (!status.collect || !Array.isArray(message.ads)) {
+      if (!Array.isArray(message.ads)) {
         return undefined;
       }
       const now = Date.now();
@@ -417,27 +492,57 @@ function contentMessage(message, sender) {
           continue;
         }
         state.ads.add(key);
-        entries.push({ time: now, site, page: sender.tab.url, ...ad });
+        const entry = { time: now, site, page: sender.tab.url, ...ad };
+        if (state.recentAds.length < MAX_RECENT_ADS) {
+          state.recentAds.push(entry);
+        }
+        entries.push(entry);
       }
-      VeilVault.addAds(entries).catch(error => console.error("Ad Veil: vault write failed", error));
+      if (status.collect) {
+        VeilVault.addAds(entries).catch(error => console.error("Ad Veil: vault write failed", error));
+      }
       return undefined;
     }
   }
   return undefined;
 }
 
+const MAX_POPUP_HOSTS = 8;
+
 async function tabSummary(tabId) {
   const state = await tabState(tabId);
   const site = state && VeilModel.siteOf(state.url);
+  const hosts = [...(state?.blockedHosts || [])]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([host, count]) => ({ host, count }));
   return {
     ready: !!engines,
     site,
     incognito: !!state?.incognito,
     mode: site ? modeOf(site, state.incognito) : "block",
+    requests: state?.requests || 0,
     blocked: state?.blocked || 0,
     hidden: state?.hidden || 0,
+    domains: state?.domains.size || 0,
+    blockedDomains: hosts.length,
+    hosts: hosts.slice(0, MAX_POPUP_HOSTS),
+    moreHosts: Math.max(hosts.length - MAX_POPUP_HOSTS, 0),
+    ads: state?.recentAds || [],
+    totals,
+    showImages: settings.showImages,
   };
 }
+
+// The sites with a mode of their own (normal windows; private choices are
+// not listed anywhere).
+function siteList() {
+  return [
+    ...settings.veilSites.map(site => ({ site, mode: "veil" })),
+    ...settings.offSites.map(site => ({ site, mode: "off" })),
+  ].sort((a, b) => a.site.localeCompare(b.site));
+}
+
+const SETTINGS_KEYS = ["vault", "showImages"];
 
 async function setMode(tabId, mode) {
   const state = await tabState(tabId);
@@ -457,17 +562,35 @@ async function setMode(tabId, mode) {
   return tabSummary(tabId);
 }
 
-// Messages from Ad Veil's own pages (popup.html, vault.html).
+// Messages from Ad Veil's own pages (popup.html, dashboard.html).
 function ownMessage(message) {
   switch (message.type) {
     case "popup:state":
       return tabSummary(message.tabId);
     case "popup:setMode":
       return setMode(message.tabId, message.mode);
-    case "vault:summary":
-      return VeilVault.summary().then(summary => ({ ...summary, enabled: settings.vault }));
-    case "vault:setEnabled":
-      return saveSettings({ ...settings, vault: !!message.on }).then(() => ({ enabled: settings.vault }));
+    case "dash:summary":
+      return VeilVault.summary().then(vault => ({
+        ready: !!engines,
+        vault,
+        totals,
+        settings: { vault: settings.vault, showImages: settings.showImages },
+        sites: siteList(),
+        lists: listsInfo,
+      }));
+    // A site's mode from the dashboard (no tab: nothing to reload).
+    case "dash:setSiteMode": {
+      const site = typeof message.site == "string" ? VeilModel.siteOf(`https://${message.site.trim()}/`) : null;
+      if (!site || !VeilModel.MODES.includes(message.mode)) {
+        return Promise.resolve(siteList());
+      }
+      return saveSettings({ ...settings, ...VeilModel.withMode(settings, site, message.mode) }).then(siteList);
+    }
+    case "dash:setSetting":
+      if (!SETTINGS_KEYS.includes(message.key) || typeof message.value != "boolean") {
+        return Promise.resolve(settings);
+      }
+      return saveSettings({ ...settings, [message.key]: message.value }).then(() => settings);
     case "vault:clear":
       return VeilVault.clear();
     case "vault:export":

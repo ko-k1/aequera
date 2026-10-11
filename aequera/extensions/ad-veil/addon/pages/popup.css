@@ -2,18 +2,32 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* The address bar popup: this site's mode and this page's counts. */
+/* The toolbar popup: this site's mode, this page's counts, what was blocked
+   and hidden here. */
 
 main {
   display: grid;
-  gap: calc(var(--ae-gap) * 2);
-  width: 280px;
+  gap: 14px;
+  width: 320px;
   padding: 14px;
 }
 
-header p {
-  margin: 2px 0 0;
-  overflow-wrap: anywhere;
+.head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.who {
+  min-width: 0;
+}
+
+.who p {
+  margin: 1px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modes {
@@ -81,29 +95,72 @@ header p {
 
 #mode-help {
   margin: 0;
-  min-height: 3lh;
+  min-height: 2lh;
 }
 
-.counts {
+.tiles {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--ae-gap);
+}
+
+.block {
+  display: grid;
+  gap: 8px;
+}
+
+.block h2 {
+  color: var(--ae-text-dim);
+  font-weight: 500;
+}
+
+.ad-list {
+  display: grid;
   gap: var(--ae-gap);
   margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.counts div {
-  padding: 8px 10px;
-  border-radius: var(--ae-rad);
-  background: var(--ae-surface);
+.ad-list li {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
-.counts dd {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+.ad-list .ad-thumb {
+  width: 40px;
+  height: 40px;
+}
+
+.ad-list .text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow-wrap: anywhere;
+}
+
+.ad-list .meta {
+  display: grid;
+  min-width: 0;
 }
 
 #note {
+  margin: 0;
+}
+
+.foot {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ae-border);
+}
+
+.foot p {
   margin: 0;
 }

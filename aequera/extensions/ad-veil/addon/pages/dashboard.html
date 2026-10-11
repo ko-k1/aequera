@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>Ad Veil</title>
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="dashboard.css">
+<script src="common.js" defer></script>
+<script src="dashboard.js" defer></script>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div class="brand">
+      <img class="mark" src="../icons/veil.svg" alt="">
+      <h1>Ad Veil</h1>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Ad Veil">
+      <button role="tab" id="tab-overview" aria-controls="overview" data-tab="overview">Overview</button>
+      <button role="tab" id="tab-vault" aria-controls="vault" data-tab="vault">Vault</button>
+      <button role="tab" id="tab-sites" aria-controls="sites" data-tab="sites">Sites</button>
+      <button role="tab" id="tab-settings" aria-controls="settings" data-tab="settings">Settings</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Overview -->
+    <section id="overview" role="tabpanel" aria-labelledby="tab-overview" class="panel">
+      <div class="hero">
+        <div class="tile"><span class="value" id="total-blocked">0</span><span class="label">requests blocked</span></div>
+        <div class="tile"><span class="value" id="total-hidden">0</span><span class="label">ads hidden</span></div>
+        <div class="tile"><span class="value" id="ad-count">0</span><span class="label">ads in the vault</span></div>
+      </div>
+      <p id="since" class="dim small"></p>
+
+      <div class="card">
+        <div class="card-head">
+          <h2 id="chart-title">Requests blocked, last 7 days</h2>
+          <span id="chart-total" class="dim small"></span>
+        </div>
+        <div class="chart" id="chart" role="group" aria-labelledby="chart-title"></div>
+        <div id="chart-tip" class="tip" role="status" hidden></div>
+        <details class="table-view">
+          <summary class="small">Show as a table</summary>
+          <table>
+            <thead><tr><th scope="col">Day</th><th scope="col">Requests blocked</th></tr></thead>
+            <tbody id="chart-table"></tbody>
+          </table>
+        </details>
+        <p id="chart-empty" class="empty small" hidden>Keep a vault (Settings) to see blocking by day.</p>
+      </div>
+
+      <div class="pair">
+        <div class="card">
+          <h2>Most blocked, last 7 days</h2>
+          <ol id="top-hosts" class="rows"></ol>
+          <p id="top-hosts-empty" class="empty small">Nothing yet.</p>
+        </div>
+        <div class="card">
+          <h2>On these sites</h2>
+          <ol id="top-sites" class="rows"></ol>
+          <p id="top-sites-empty" class="empty small">Nothing yet.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vault -->
+    <section id="vault" role="tabpanel" aria-labelledby="tab-vault" class="panel" hidden>
+      <p class="dim">The ads Ad Veil hid, kept on this device only for 90 days and never uploaded. Private windows are never recorded.</p>
+      <div class="bar">
+        <input type="search" id="vault-search" placeholder="Search ads" aria-label="Search ads">
+        <select id="vault-site" aria-label="Site">
+          <option value="">All sites</option>
+        </select>
+        <span id="vault-count" class="dim small"></span>
+        <label class="switch inline">
+          <span>Show ad images</span>
+          <input type="checkbox" role="switch" id="vault-images">
+        </label>
+      </div>
+      <p id="images-note" class="dim small" hidden>Images load from the ad servers, without cookies or a referrer.</p>
+      <p id="vault-empty" class="empty" hidden>Nothing yet. Ads Ad Veil hides on the sites you visit appear here.</p>
+      <div id="vault-days"></div>
+    </section>
+
+    <!-- Sites -->
+    <section id="sites" role="tabpanel" aria-labelledby="tab-sites" class="panel" hidden>
+      <p class="dim">Sites with their own mode. Every other site is blocked. A site covers its subdomains.</p>
+      <form id="site-add" class="bar">
+        <input type="text" id="site-name" placeholder="example.com" aria-label="Site" autocomplete="off" spellcheck="false">
+        <select id="site-mode" aria-label="Mode">
+          <option value="veil">Veil</option>
+          <option value="off">Off</option>
+        </select>
+        <button type="submit" class="primary">Add</button>
+      </form>
+      <p id="site-error" class="small danger-text" hidden>Enter a site name, such as example.com.</p>
+      <div class="card">
+        <table class="sites">
+          <thead><tr><th scope="col">Site</th><th scope="col">Mode</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+          <tbody id="site-rows"></tbody>
+        </table>
+        <p id="sites-empty" class="empty small">No site has its own mode. Choose Veil or Off for a site from Ad Veil's toolbar button, or add one above.</p>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="settings" role="tabpanel" aria-labelledby="tab-settings" class="panel" hidden>
+      <div class="card settings">
+        <label class="switch">
+          <span><strong>Keep a vault</strong><br><span class="dim small">Record hidden ads and blocked requests on this device for 90 days.</span></span>
+          <input type="checkbox" role="switch" id="set-vault">
+        </label>
+        <label class="switch">
+          <span><strong>Show ad images</strong><br><span class="dim small">In the popup and vault. Each image is a request to the ad server, without cookies or a referrer.</span></span>
+          <input type="checkbox" role="switch" id="set-images">
+        </label>
+        <div class="row-actions">
+          <button id="export" type="button">Export vault</button>
+          <button id="clear" type="button" class="danger">Clear vault</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Filter lists</h2>
+        <table class="lists">
+          <thead><tr><th scope="col">List</th><th scope="col">Version</th><th scope="col">Rules</th></tr></thead>
+          <tbody id="list-rows"></tbody>
+        </table>
+        <p class="dim small">EasyList and EasyPrivacy, by the EasyList authors (easylist.to), dual licensed GPLv3 or CC BY-SA 3.0. Shipped with Aequera; Ad Veil makes no request of its own to update them yet.</p>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

@@ -17,7 +17,9 @@ var VeilModel = (() => {
   const MAX_TEXT = 200;
   const MAX_SITES = 10000;
 
-  const DEFAULT_SETTINGS = Object.freeze({ offSites: [], veilSites: [], vault: true });
+  // showImages: ad images in the popup and vault are requests to the ad
+  // servers, so they are off until the user turns them on.
+  const DEFAULT_SETTINGS = Object.freeze({ offSites: [], veilSites: [], vault: true, showImages: false });
 
   // Per site (ADS.md, Model): block (default), veil (ads load and are
   // hidden, trackers stay blocked), or off.
@@ -116,8 +118,13 @@ var VeilModel = (() => {
   // failures recover to a known-good state).
   function settingsFrom(stored) {
     const value = stored && typeof stored == "object" ? stored : {};
-    const vault = typeof value.vault == "boolean" ? value.vault : DEFAULT_SETTINGS.vault;
-    return { offSites: sitesFrom(value.offSites), veilSites: sitesFrom(value.veilSites), vault };
+    const flag = name => (typeof value[name] == "boolean" ? value[name] : DEFAULT_SETTINGS[name]);
+    return {
+      offSites: sitesFrom(value.offSites),
+      veilSites: sitesFrom(value.veilSites),
+      vault: flag("vault"),
+      showImages: flag("showImages"),
+    };
   }
 
   // The site lists with `site` set to `mode` (an exact site; covered
@@ -172,6 +179,44 @@ var VeilModel = (() => {
     return { link, creative, text };
   }
 
+  // All-time counts (normal windows only), whatever was stored: counts are
+  // whole non-negative numbers, `since` a past time (else `now`).
+  function totalsFrom(stored, now) {
+    const value = stored && typeof stored == "object" ? stored : {};
+    const count = n => (Number.isSafeInteger(n) && n >= 0 ? n : 0);
+    const since = Number.isFinite(value.since) && value.since > 0 && value.since <= now ? value.since : now;
+    return { blocked: count(value.blocked), hidden: count(value.hidden), since };
+  }
+
+  // The toolbar badge: nothing for 0, then 1–999, 1.2k, 12k, 1.2M.
+  function badgeText(count) {
+    if (!Number.isFinite(count) || count < 1) {
+      return "";
+    }
+    const short = (n, unit) => `${n < 10 ? Math.floor(n * 10) / 10 : Math.floor(n)}${unit}`;
+    if (count < 1000) {
+      return String(Math.floor(count));
+    }
+    if (count < 1e6) {
+      return short(count / 1000, "k");
+    }
+    return short(count / 1e6, "M");
+  }
+
+  // A filter list's "! Version:" header and its rule count (lines that are
+  // not blank, comments, or the "[Adblock Plus …]" header).
+  function listInfo(text) {
+    const version = /^! Version:\s*(\S+)/m.exec(text)?.[1] || null;
+    let rules = 0;
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith("!") && !trimmed.startsWith("[")) {
+        rules++;
+      }
+    }
+    return { version, rules };
+  }
+
   // Local calendar day, for the blocked-request totals.
   function dayOf(time) {
     const date = new Date(time);
@@ -198,6 +243,9 @@ var VeilModel = (() => {
     withMode,
     adHostsFrom,
     adFrom,
+    totalsFrom,
+    badgeText,
+    listInfo,
     dayOf,
     cutoff,
   };

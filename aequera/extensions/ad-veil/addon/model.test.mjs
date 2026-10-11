@@ -56,24 +56,66 @@ test("private-window choices win there, nearest site first, and nowhere else", (
 });
 
 test("settings recover to defaults from anything", () => {
-  const defaults = { offSites: [], veilSites: [], vault: true };
+  const defaults = { offSites: [], veilSites: [], vault: true, showImages: false };
   assert.deepEqual(settingsFrom(undefined), defaults);
   assert.deepEqual(settingsFrom("garbage"), defaults);
-  assert.deepEqual(settingsFrom({ offSites: "x", veilSites: {}, vault: "yes" }), defaults);
+  assert.deepEqual(settingsFrom({ offSites: "x", veilSites: {}, vault: "yes", showImages: 1 }), defaults);
   assert.deepEqual(
     settingsFrom({
       offSites: ["example.com", "example.com", 3, "", "a b", "https://x.com/"],
       veilSites: ["b.test", "a.test", null],
       vault: false,
+      showImages: true,
     }),
-    { offSites: ["example.com"], veilSites: ["a.test", "b.test"], vault: false }
+    { offSites: ["example.com"], veilSites: ["a.test", "b.test"], vault: false, showImages: true }
   );
   // Settings from before veil mode (slice 2) keep their sites.
   assert.deepEqual(settingsFrom({ offSites: ["example.com"], vault: true }), {
     offSites: ["example.com"],
     veilSites: [],
     vault: true,
+    showImages: false,
   });
+});
+
+test("totals recover from anything; since is never in the future", () => {
+  const now = 1_800_000_000_000;
+  assert.deepEqual(model.totalsFrom(undefined, now), { blocked: 0, hidden: 0, since: now });
+  assert.deepEqual(model.totalsFrom({ blocked: -1, hidden: 2.5, since: now + 1 }, now), {
+    blocked: 0,
+    hidden: 0,
+    since: now,
+  });
+  assert.deepEqual(model.totalsFrom({ blocked: 12, hidden: 3, since: now - 5 }, now), {
+    blocked: 12,
+    hidden: 3,
+    since: now - 5,
+  });
+});
+
+test("badgeText is short and never shows 0", () => {
+  const cases = [
+    [0, ""],
+    [-3, ""],
+    [NaN, ""],
+    [7, "7"],
+    [999, "999"],
+    [1000, "1k"],
+    [1250, "1.2k"],
+    [9999, "9.9k"],
+    [12500, "12k"],
+    [999999, "999k"],
+    [1500000, "1.5M"],
+  ];
+  for (const [count, text] of cases) {
+    assert.equal(model.badgeText(count), text, String(count));
+  }
+});
+
+test("listInfo reads the version and counts rules", () => {
+  const list = "[Adblock Plus 2.0]\n! Version: 202610110853\n! Title: x\n\n||ads.example^\nexample.com##.ad\n";
+  assert.deepEqual(model.listInfo(list), { version: "202610110853", rules: 2 });
+  assert.deepEqual(model.listInfo(""), { version: null, rules: 0 });
 });
 
 test("withMode moves a site between block, veil, and off", () => {
