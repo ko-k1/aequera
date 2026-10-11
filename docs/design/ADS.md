@@ -185,10 +185,31 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   setting off. The fetch has no tab, so Ad Veil's blocking skips it, and
   tracking protection lets an add-on with host access load it
   (`UrlClassifierCommon::AddonMayLoad`).
-- The dashboard (`pages/dashboard.html`): Overview (all-time totals, 7-day
-  chart, most blocked hosts and sites), Vault (ads by day, search, site
-  filter), Sites (per-site modes), Settings ("Keep a vault", "Save ad
-  images", export, clear, list versions).
+- The dashboard (`pages/dashboard.html`): Vault (first), Blocking
+  (all-time totals, 7-day chart, most blocked hosts and sites), Sites
+  (per-site modes), Settings ("Keep a vault", "Save ad images", export,
+  clear, list versions).
+- The vault view follows AdNauseam's vault, in Aequera's own code and
+  tokens:
+  - numbers: ads found (every sighting), different ads, advertisers (sites
+    ads lead to), sites they were found on; a Statistics section with the
+    top advertisers, ad networks (sites serving the images), and sites;
+  - the same ad found again is one ad with a count (an image ad by its
+    image URL; a text ad by its words and the site it leads to;
+    `VeilModel.groupAds`);
+  - a wall that packs ads of any shape (CSS grid rows by height), newest
+    first, at six sizes (zoom buttons, Ctrl+wheel; the size is remembered
+    in `localStorage`, a per-viewer convenience); text ads as text boxes;
+    added 120 at a time as it scrolls;
+  - a timeline of ads found per day (from the first ad, 14 to 90 days):
+    dragging across it, or the From/To date fields, filters the wall to
+    those days, and the days left out are faded; tooltip and table view;
+  - search, site, and kind (image, text) filters;
+  - an inspector (a modal dialog): the image at full size, words, where it
+    leads, the ad network, the page it was found on and when, and each
+    time it was found ("2 / 5", arrows and arrow keys); removing it from
+    the vault (two clicks) drops every sighting and its saved image.
+  - No click count or cost estimate (AdNauseam's) until Visit exists.
 - Known gap: Firefox's "Clear history" does not clear the vault (an add-on
   learns of it only with the `history` permission); the vault's own Clear
   and its 90-day limit do.

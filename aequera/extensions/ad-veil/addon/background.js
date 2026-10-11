@@ -717,6 +717,14 @@ function ownMessage(message) {
         return Promise.resolve(settings);
       }
       return saveSettings({ ...settings, [message.key]: message.value }).then(() => settings);
+    case "vault:ads":
+      return VeilVault.everything();
+    // One ad (every sighting of it) from the vault view.
+    case "vault:remove": {
+      const ids = Array.isArray(message.ids) ? message.ids.filter(Number.isSafeInteger).slice(0, VeilModel.MAX_ADS) : [];
+      const creative = VeilModel.adFrom({ creative: message.creative })?.creative || null;
+      return VeilVault.remove(ids, creative);
+    }
     case "vault:clear":
       return VeilVault.clear();
     case "vault:export":

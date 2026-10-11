@@ -124,7 +124,7 @@
   }
 
   $("vault").addEventListener("click", () => open("#vault"));
-  $("dashboard").addEventListener("click", () => open("#overview"));
+  $("dashboard").addEventListener("click", () => open("#blocking"));
 
   await refresh();
   setInterval(refresh, REFRESH_MS);

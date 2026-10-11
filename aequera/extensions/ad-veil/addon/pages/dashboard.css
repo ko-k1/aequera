@@ -194,7 +194,12 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 
-/* Vault. */
+/* Vault: AdNauseam's layout, in Aequera's tokens. The wall takes the
+   window's width. */
+body[data-tab="vault"] .shell {
+  max-width: 1440px;
+}
+
 .bar {
   display: flex;
   flex-wrap: wrap;
@@ -206,49 +211,296 @@ tbody tr:last-child td {
   flex: 1 1 220px;
 }
 
-.day-group {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 16px;
+input[type="date"] {
+  min-height: var(--ae-ctl);
+  margin-inline-start: 4px;
+  padding: 0 8px;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+  background: var(--ae-surface);
+  color: var(--ae-text);
+  font: inherit;
 }
 
-.ad-grid {
+.range .hint {
+  margin-inline-start: auto;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The timeline: drag across it to pick days; days outside are faded. */
+.brushable svg {
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.chart g.out .bar {
+  fill: var(--ae-chart-track);
+}
+
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px;
+  border-radius: var(--ae-rad);
+  background: var(--ae-surface);
+}
+
+.zoom output {
+  min-width: 4ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The wall: columns of --ad-width; each ad spans as many 2px rows as it is
+   tall (dashboard.js), so images of any shape pack without gaps. */
+.wall {
+  --ad-width: 176px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--ad-width), 100%), 1fr));
+  grid-auto-rows: 2px;
+  column-gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.ad-card {
-  display: grid;
-  align-content: start;
-  gap: var(--ae-gap);
+.ad-tile {
+  align-self: start;
   min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--ae-border);
-  border-radius: var(--ae-rad);
 }
 
-.ad-card .ad-thumb {
+.ad-tile-inner {
+  position: relative;
+  display: grid;
+  gap: 4px;
+}
+
+.ad-open {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+  background: var(--ae-surface);
+  text-align: start;
+}
+
+.ad-open:hover {
+  border-color: var(--ae-accent);
+  background: var(--ae-surface);
+}
+
+.ad-open .ad-thumb {
+  border-radius: 0;
+  background: transparent;
+}
+
+.ad-open .ad-thumb img {
+  display: block;
+  height: auto;
+}
+
+/* No image saved: the advertiser's initial on a 16:9 placeholder. */
+.ad-open .ad-thumb:not([data-has-image]) {
   aspect-ratio: 16 / 9;
   font-size: 28px;
 }
 
-.ad-card .text {
+/* How many times this ad was found: on the ad's corner, ringed in the page
+   surface so it reads over any image. */
+.count-badge {
+  position: absolute;
+  inset-block-start: -7px;
+  inset-inline-end: -7px;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px var(--ae-bg);
+  pointer-events: none;
+  line-height: 20px;
+  background: var(--ae-accent);
+  color: var(--ae-on-accent);
+  font-size: var(--ae-tl);
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A text ad: its words and where it leads, as a search ad shows them. */
+.text-ad {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.text-ad-words {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 6;
   overflow-wrap: anywhere;
-  min-height: 2lh;
 }
 
-.ad-card .meta {
+.text-ad-cite {
+  overflow: hidden;
+  color: var(--ae-accent);
+  font-size: var(--ae-tl);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caption {
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Small sizes are a collage: names are in the inspector and the label. */
+.wall[data-compact="true"] .caption {
+  display: none;
+}
+
+.wall[data-compact="true"] .text-ad-words {
+  -webkit-line-clamp: 3;
+}
+
+.wall-more {
+  height: 1px;
+}
+
+.statistics summary {
+  cursor: pointer;
+}
+
+.statistics summary h2 {
+  display: inline;
+}
+
+.statistics .pair {
+  margin-top: 12px;
+}
+
+.statistics h3 {
+  margin-bottom: 6px;
+}
+
+/* The inspector. */
+#inspector {
+  width: min(880px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+  background: var(--ae-bg);
+  color: var(--ae-text);
+}
+
+#inspector::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+
+.ins-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--ae-border);
+}
+
+.ins-head h2 {
+  flex: 1;
+}
+
+.ins-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ins-nav[hidden] {
+  display: none;
+}
+
+.ins-nav span {
+  min-width: 6ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ins-body {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+.ins-media {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  border-radius: calc(var(--ae-rad) - 3px);
+  background: var(--ae-surface);
+}
+
+.ins-media img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+}
+
+.ins-media .text-ad.large {
+  font-size: 16px;
+}
+
+.ins-info {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ins-text {
+  overflow-wrap: anywhere;
+}
+
+.ins-info dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.ins-info dt {
+  color: var(--ae-text-dim);
+  font-size: var(--ae-tl);
+  line-height: 20px;
+}
+
+.ins-info dd {
+  display: grid;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .ins-body {
+    grid-template-columns: 1fr;
+  }
+
+  .range .hint {
+    display: none;
+  }
 }
 
 /* Sites. */

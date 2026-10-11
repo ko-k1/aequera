@@ -193,18 +193,14 @@ var VeilVault = (() => {
     });
   }
 
-  // What the vault page shows: the newest ads and blocked totals for the
-  // last `days` days, by blocked host and by site.
-  async function summary({ ads = 300, days = 7, now = Date.now() } = {}) {
+  // The dashboard's blocking view: blocked totals for the last `days` days,
+  // by day, blocked host, and site.
+  async function summary({ days = 7, now = Date.now() } = {}) {
     await flush();
     const start = new Date(now);
     const since = VeilModel.dayOf(new Date(start.getFullYear(), start.getMonth(), start.getDate() - (days - 1)).getTime());
-    const tx = (await db()).transaction(["ads", "blocked"], "readonly");
-    const [recent, blocked, adCount] = await Promise.all([
-      collect(tx.objectStore("ads").index("time"), null, "prev", ads),
-      collect(tx.objectStore("blocked").index("day"), IDBKeyRange.lowerBound(since), "next", Infinity),
-      request(tx.objectStore("ads").count()),
-    ]);
+    const tx = (await db()).transaction(["blocked"], "readonly");
+    const blocked = await collect(tx.objectStore("blocked").index("day"), IDBKeyRange.lowerBound(since), "next", Infinity);
     const total = blocked.reduce((n, e) => n + e.count, 0);
     const top = key => {
       const sums = new Map();
@@ -225,10 +221,41 @@ var VeilVault = (() => {
       const day = VeilModel.dayOf(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i).getTime());
       series.push({ day, count: perDay.get(day) || 0 });
     }
-    // Each ad with its saved image, if any (a Blob; pages make the URL).
-    const thumbs = await imagesFor(recent.map(ad => ad.creative));
-    const withThumbs = recent.map(ad => ({ ...ad, thumb: thumbs.get(ad.creative) || null }));
-    return { ads: withThumbs, adCount, days, blocked: total, series, hosts: top("host"), sites: top("site") };
+    return { days, blocked: total, series, hosts: top("host"), sites: top("site") };
+  }
+
+  // The vault view: every ad entry (at most VeilModel.MAX_ADS) and the saved
+  // image of each creative that has one ([creative, Blob] pairs; pages make
+  // the URLs, so viewing makes no request).
+  async function everything() {
+    const tx = (await db()).transaction(["ads", "images"], "readonly");
+    const [ads, images] = await Promise.all([
+      collect(tx.objectStore("ads"), null, "next", Infinity),
+      collect(tx.objectStore("images"), null, "next", Infinity),
+    ]);
+    return { ads, images: images.map(entry => [entry.creative, entry.blob]) };
+  }
+
+  // Removes ad entries by id (one ad and every sighting of it, from the
+  // vault view), and the saved image of `creative`, if no entry left uses it.
+  async function remove(ids, creative = null) {
+    await transaction(["ads", "images"], "readwrite", ({ ads, images }) => {
+      for (const id of ids) {
+        ads.delete(id);
+      }
+      if (creative) {
+        // After the deletes (requests run in order): any entry still showing it?
+        const left = ads.openCursor();
+        left.onsuccess = () => {
+          const cursor = left.result;
+          if (!cursor) {
+            images.delete(creative);
+          } else if (cursor.value.creative != creative) {
+            cursor.continue();
+          }
+        };
+      }
+    });
   }
 
   async function exportAll() {
@@ -251,5 +278,5 @@ var VeilVault = (() => {
     });
   }
 
-  return { addAds, hasImage, saveImage, imagesFor, countBlocked, flush, prune, summary, exportAll, clear };
+  return { addAds, hasImage, saveImage, imagesFor, countBlocked, flush, prune, summary, everything, remove, exportAll, clear };
 })();

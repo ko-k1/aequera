@@ -24,24 +24,8 @@ var VeilPage = (() => {
     }
   }
 
-  // Where an ad leads: ad click URLs (googleads.g.doubleclick.net/pcs/click
-  // and the like) carry the advertiser's address in a parameter; else the
-  // link itself.
-  const DESTINATION_PARAMS = ["adurl", "url", "dest", "redirect", "u"];
-  function destinationOf(link) {
-    try {
-      const url = new URL(link);
-      for (const name of DESTINATION_PARAMS) {
-        const value = url.searchParams.get(name);
-        if (value && /^https?:\/\//i.test(value)) {
-          return new URL(value).href;
-        }
-      }
-      return url.href;
-    } catch {
-      return link;
-    }
-  }
+  // Where an ad leads (the advertiser, not the ad click URL).
+  const destinationOf = link => VeilModel.destinationOf(link) || link;
 
   // A link to where the ad leads, opened directly: following it from Ad
   // Veil's pages is not an ad click.
@@ -83,13 +67,17 @@ var VeilPage = (() => {
   // the view is rebuilt and with the page.
   const urls = [];
 
+  function imageUrl(blob) {
+    const url = URL.createObjectURL(blob);
+    urls.push(url);
+    return url;
+  }
+
   function thumb(ad, tag = "span") {
     const host = hostOf(ad.link ? destinationOf(ad.link) : ad.creative);
     const box = element(tag, { class: "ad-thumb", "aria-hidden": "true" }, element("span", { class: "initial", text: (host[0] || "?").toUpperCase() }));
     if (ad.thumb instanceof Blob) {
-      const url = URL.createObjectURL(ad.thumb);
-      urls.push(url);
-      box.append(element("img", { alt: "", src: url }));
+      box.append(element("img", { alt: "", src: imageUrl(ad.thumb) }));
       box.dataset.hasImage = "true";
     }
     return box;
@@ -111,6 +99,7 @@ var VeilPage = (() => {
     plural,
     element,
     thumb,
+    imageUrl,
     dropImages,
     number: n => numbers.format(n),
     date: t => dates.format(t),

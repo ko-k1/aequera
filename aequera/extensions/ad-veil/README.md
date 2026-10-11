@@ -33,7 +33,7 @@ Design, decisions, and measurements: `docs/design/ADS.md` and
 | `addon/vault.js` | The vault store (IndexedDB): hidden ads, daily blocked totals, saved ad images, prune, export, clear |
 | `addon/engine.js` | `engine.wasm` wrapper |
 | `addon/content.js` | Reports class and id names for generic rules; finds and describes hidden ads (inside ad frames too) for the popup and vault |
-| `addon/pages/` | `popup.html` (toolbar button), `dashboard.html` (overview, vault, sites, settings), shared `common.js` and `ui.css` |
+| `addon/pages/` | `popup.html` (toolbar button), `dashboard.html` (vault, blocking, sites, settings), shared `common.js` and `ui.css` |
 | `addon/icons/` | Theme-colored button icons (on, off for this site) |
 | `addon/lists/` | Filter list snapshots, versions, license |
 
@@ -126,6 +126,25 @@ Display (toolbar badge, popup, dashboard) and the ad view:
   script draws into a `src`-less iframe (with a 1×1 pixel and script text
   it leaves out, and a click URL whose destination it shows), dashboard
   sites, and the ad shims following Ad Veil. Full shell gate 1219/0.
+
+AdNauseam-style vault (`docs/design/ADS.md`, Vault):
+
+- The vault is the dashboard's first tab: ads found, different ads,
+  advertisers, and sites; the same ad found again shown once with a count;
+  a packed, zoomable wall (text ads as text boxes); a timeline of ads per
+  day whose dragged days (or date fields) filter the wall; search, site,
+  and kind filters; statistics (top advertisers, ad networks, sites); an
+  inspector stepping through each time an ad was found, which can remove it.
+- `model.test.mjs`: 17 tests, adding destinations, grouping, filtering, the
+  timeline's days, and the vault's numbers.
+- `browser_aequera_adveil.js`: every vault check reads ads through the
+  inspector; a new task finds the fixture ad twice (one ad, count 2,
+  "1 / 2", stepping to "2 / 2", the page it was found on, the saved image
+  at full size, the timeline's count), filters it out by day and kind, and
+  removes it (two clicks).
+- Real launch, seeded with 81 sightings of 28 ads (light and dark, 1366 px
+  and 420 px): a drag across the timeline picked Oct 3 – Oct 8 and the wall
+  showed those days' 19 ads.
 
 ## Known gaps (later slices)
 

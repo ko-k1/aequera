@@ -178,22 +178,39 @@ function readPopup() {
   });
 }
 
-// The dashboard, as rendered (every tab's content is in the document).
+// The dashboard, as rendered (every tab's content is in the document). Each
+// ad on the vault's wall is read through its inspector, as a person would.
 async function readVault(tab) {
   await BrowserTestUtils.reloadTab(tab);
   return SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
     const doc = content.document;
     await ContentTaskUtils.waitForCondition(() => doc.body.dataset.ready, "dashboard rendered");
+    const $ = id => doc.getElementById(id);
+    const ads = [];
+    for (const tile of doc.querySelectorAll(".ad-tile")) {
+      tile.querySelector(".ad-open").click();
+      await ContentTaskUtils.waitForCondition(() => $("inspector").open, "inspector open");
+      ads.push({
+        link: $("ins-target").querySelector("a")?.href || null,
+        site: $("ins-page").querySelector(".site").textContent,
+        page: $("ins-page").querySelector("a")?.href || null,
+        text: $("ins-text").textContent || tile.querySelector(".text-ad-words")?.textContent || "",
+        creative: tile.dataset.creative,
+        image: tile.querySelector("img")?.getAttribute("src") || null,
+        inspectedImage: $("ins-media").querySelector("img")?.getAttribute("src") || null,
+        count: Number(tile.querySelector(".count-badge")?.textContent || 1),
+        seen: $("ins-seen").textContent,
+        index: $("ins-nav").hidden ? null : $("ins-index").textContent,
+      });
+      $("ins-close").click();
+    }
     return {
-      blocked: Number(doc.getElementById("chart-total").textContent.replace(/\D/g, "")),
+      blocked: Number($("chart-total").textContent.replace(/\D/g, "")),
       hosts: [...doc.querySelectorAll("#top-hosts li .name")].map(s => s.textContent),
-      ads: [...doc.querySelectorAll(".ad-card")].map(card => ({
-        link: card.querySelector(".link")?.href || null,
-        site: card.querySelector(".meta").textContent.split(" · ")[0],
-        text: card.querySelector(".text").textContent,
-        creative: card.dataset.creative,
-        image: card.querySelector("img")?.getAttribute("src") || null,
-      })),
+      found: Number($("v-found").textContent.replace(/\D/g, "")),
+      unique: Number($("v-unique").textContent.replace(/\D/g, "")),
+      timeline: [...doc.querySelectorAll("#timeline-table tr")].map(row => Number(row.cells[1].textContent.replace(/\D/g, ""))),
+      ads,
       keep: doc.getElementById("set-vault").checked,
       sites: [...doc.querySelectorAll("#site-rows tr")].map(row => ({
         site: row.cells[0].textContent,
@@ -385,6 +402,80 @@ add_task(async function test_vault_reads_ads_drawn_in_frames() {
     [{ link: "https://example.net/advertiser?ref=veil", text: "Framed test ad", creative: AD_IMAGE }],
     "link, words, and image from inside the frame the script drew"
   );
+  BrowserTestUtils.removeTab(page);
+  await clearVault(vault);
+  BrowserTestUtils.removeTab(vault);
+});
+
+// The vault as AdNauseam shows it: the same ad found again is one ad with a
+// count, the inspector steps through each time it was found, the timeline's
+// days filter the wall, and an ad can be removed.
+add_task(async function test_vault_groups_filters_and_removes_ads() {
+  await waitForActive(true);
+  const vault = await openVault();
+  await clearVault(vault);
+  const page = await openFixture();
+  let state;
+  await TestUtils.waitForCondition(async () => {
+    state = await readVault(vault);
+    return state.ads.length == 1;
+  }, "the ad is found");
+  is(state.ads[0].count, 1, "found once: no count");
+  is(state.ads[0].index, null, "found once: nothing to step through");
+
+  // A reload is a new page view: the ad is found again.
+  await BrowserTestUtils.reloadTab(page);
+  await waitForHidden(page.linkedBrowser);
+  await TestUtils.waitForCondition(async () => {
+    state = await readVault(vault);
+    return state.found == 2;
+  }, "the ad is found again");
+  is(state.ads.length, 1, "the same ad is one ad on the wall");
+  is(state.unique, 1, "one different ad");
+  is(state.ads[0].count, 2, "with its count");
+  is(state.ads[0].index, "1 / 2", "the inspector steps through both times");
+  ok(state.ads[0].seen.startsWith("2 times on 1 site"), `seen: ${state.ads[0].seen}`);
+  is(state.ads[0].page, PAGE, "found on the fixture page");
+  ok(state.ads[0].inspectedImage?.startsWith("blob:"), "the inspector shows the saved image");
+  Assert.deepEqual(state.timeline, [2], "two ads found today");
+
+  await SpecialPowers.spawn(vault.linkedBrowser, [], async () => {
+    const doc = content.document;
+    const $ = id => doc.getElementById(id);
+    // A day before today, without ads: the wall empties.
+    const from = $("range-from");
+    from.value = from.min;
+    $("range-to").value = from.min;
+    $("range-to").dispatchEvent(new content.Event("change"));
+    from.dispatchEvent(new content.Event("change"));
+    is(doc.querySelectorAll(".ad-tile").length, 0, "a day without ads shows none");
+    ok(!$("vault-none").hidden, "and says so");
+    ok(doc.querySelector("#timeline g.out"), "the timeline marks the days left out");
+    $("range-all").click();
+    is(doc.querySelectorAll(".ad-tile").length, 1, "all days show the ad again");
+
+    // Kind filter: the fixture's ad has an image.
+    $("vault-kind").value = "text";
+    $("vault-kind").dispatchEvent(new content.Event("change"));
+    is(doc.querySelectorAll(".ad-tile").length, 0, "no text ad");
+    $("vault-kind").value = "";
+    $("vault-kind").dispatchEvent(new content.Event("change"));
+
+    // The inspector's next step shows the earlier time.
+    doc.querySelector(".ad-open").click();
+    $("ins-next").click();
+    is($("ins-index").textContent, "2 / 2", "stepped to the first time found");
+    ok($("ins-next").disabled, "the last step");
+
+    // Remove: two clicks.
+    $("ins-remove").click();
+    ok($("inspector").open, "the first click only asks");
+    $("ins-remove").click();
+    await ContentTaskUtils.waitForCondition(() => !$("inspector").open && !doc.querySelector(".ad-tile"), "the ad is removed");
+  });
+  state = await readVault(vault);
+  is(state.ads.length, 0, "removed from the vault");
+  is(state.found, 0, "every time it was found");
   BrowserTestUtils.removeTab(page);
   await clearVault(vault);
   BrowserTestUtils.removeTab(vault);

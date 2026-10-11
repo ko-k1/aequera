@@ -9,6 +9,7 @@
 <title>Ad Veil</title>
 <link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="dashboard.css">
+<script src="../model.js" defer></script>
 <script src="common.js" defer></script>
 <script src="dashboard.js" defer></script>
 </head>
@@ -20,20 +21,98 @@
       <h1>Ad Veil</h1>
     </div>
     <nav class="tabs" role="tablist" aria-label="Ad Veil">
-      <button role="tab" id="tab-overview" aria-controls="overview" data-tab="overview">Overview</button>
       <button role="tab" id="tab-vault" aria-controls="vault" data-tab="vault">Vault</button>
+      <button role="tab" id="tab-blocking" aria-controls="blocking" data-tab="blocking">Blocking</button>
       <button role="tab" id="tab-sites" aria-controls="sites" data-tab="sites">Sites</button>
       <button role="tab" id="tab-settings" aria-controls="settings" data-tab="settings">Settings</button>
     </nav>
   </header>
 
   <main>
-    <!-- Overview -->
-    <section id="overview" role="tabpanel" aria-labelledby="tab-overview" class="panel">
+    <!-- Vault: the ads Ad Veil hid, as AdNauseam shows them. -->
+    <section id="vault" role="tabpanel" aria-labelledby="tab-vault" class="panel" hidden>
+      <div class="hero">
+        <div class="tile"><span class="value" id="v-found">0</span><span class="label">ads found</span></div>
+        <div class="tile"><span class="value" id="v-unique">0</span><span class="label">different ads</span></div>
+        <div class="tile"><span class="value" id="v-advertisers">0</span><span class="label">advertisers</span></div>
+        <div class="tile"><span class="value" id="v-sites">0</span><span class="label">sites</span></div>
+      </div>
+      <p id="v-since" class="dim small"></p>
+
+      <div class="card timeline">
+        <div class="card-head">
+          <h2 id="timeline-title">Ads found per day</h2>
+          <span id="timeline-range" class="dim small"></span>
+        </div>
+        <div class="chart brushable" id="timeline" role="img" aria-labelledby="timeline-title"></div>
+        <div id="timeline-tip" class="tip" role="status" hidden></div>
+        <div class="bar range">
+          <label class="small dim">From <input type="date" id="range-from"></label>
+          <label class="small dim">To <input type="date" id="range-to"></label>
+          <button type="button" id="range-all">All days</button>
+          <span class="dim small hint">Drag across the chart to pick days.</span>
+        </div>
+        <details class="table-view">
+          <summary class="small">Show as a table</summary>
+          <table>
+            <thead><tr><th scope="col">Day</th><th scope="col">Ads found</th></tr></thead>
+            <tbody id="timeline-table"></tbody>
+          </table>
+        </details>
+      </div>
+
+      <div class="bar wall-bar">
+        <input type="search" id="vault-search" placeholder="Search ads" aria-label="Search ads">
+        <select id="vault-site" aria-label="Site">
+          <option value="">All sites</option>
+        </select>
+        <select id="vault-kind" aria-label="Kind">
+          <option value="">Image and text ads</option>
+          <option value="image">Image ads</option>
+          <option value="text">Text ads</option>
+        </select>
+        <div class="zoom" role="group" aria-label="Ad size">
+          <button type="button" id="zoom-out" class="icon-button" aria-label="Smaller">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 7.25h10v1.5H3z"/></svg>
+          </button>
+          <output id="zoom-ratio" class="small" aria-live="polite">100%</output>
+          <button type="button" id="zoom-in" class="icon-button" aria-label="Larger">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7.25 3h1.5v4.25H13v1.5H8.75V13h-1.5V8.75H3v-1.5h4.25z"/></svg>
+          </button>
+        </div>
+        <span id="vault-count" class="dim small"></span>
+      </div>
+      <p id="vault-empty" class="empty" hidden>Nothing yet. Ads Ad Veil hides on the sites you visit appear here; choose Veil for a site to collect the ads it shows.</p>
+      <p id="vault-none" class="empty" hidden>No ad matches. <button type="button" id="vault-reset">Show every ad</button></p>
+      <ul id="wall" class="wall"></ul>
+      <div id="wall-more" class="wall-more" hidden></div>
+
+      <details class="card statistics">
+        <summary><h2>Statistics</h2></summary>
+        <div class="pair">
+          <div>
+            <h3 class="dim">Top advertisers</h3>
+            <ol id="top-advertisers" class="rows"></ol>
+          </div>
+          <div>
+            <h3 class="dim">Top ad networks</h3>
+            <ol id="top-networks" class="rows"></ol>
+          </div>
+          <div>
+            <h3 class="dim">Found on</h3>
+            <ol id="top-found" class="rows"></ol>
+          </div>
+        </div>
+        <p id="kinds" class="dim small"></p>
+      </details>
+      <p class="dim small">Kept on this device only, for 90 days, and never uploaded. Private windows are never recorded.</p>
+    </section>
+
+    <!-- Blocking -->
+    <section id="blocking" role="tabpanel" aria-labelledby="tab-blocking" class="panel" hidden>
       <div class="hero">
         <div class="tile"><span class="value" id="total-blocked">0</span><span class="label">requests blocked</span></div>
         <div class="tile"><span class="value" id="total-hidden">0</span><span class="label">ads hidden</span></div>
-        <div class="tile"><span class="value" id="ad-count">0</span><span class="label">ads in the vault</span></div>
       </div>
       <p id="since" class="dim small"></p>
 
@@ -66,20 +145,6 @@
           <p id="top-sites-empty" class="empty small">Nothing yet.</p>
         </div>
       </div>
-    </section>
-
-    <!-- Vault -->
-    <section id="vault" role="tabpanel" aria-labelledby="tab-vault" class="panel" hidden>
-      <p class="dim">The ads Ad Veil hid, kept on this device only for 90 days and never uploaded. Private windows are never recorded.</p>
-      <div class="bar">
-        <input type="search" id="vault-search" placeholder="Search ads" aria-label="Search ads">
-        <select id="vault-site" aria-label="Site">
-          <option value="">All sites</option>
-        </select>
-        <span id="vault-count" class="dim small"></span>
-      </div>
-      <p id="vault-empty" class="empty" hidden>Nothing yet. Ads Ad Veil hides on the sites you visit appear here.</p>
-      <div id="vault-days"></div>
     </section>
 
     <!-- Sites -->
@@ -130,5 +195,40 @@
     </section>
   </main>
 </div>
+
+<!-- One ad, every time it was found (AdNauseam's inspector). -->
+<dialog id="inspector" aria-labelledby="ins-title">
+  <div class="ins-head">
+    <h2 id="ins-title">Ad</h2>
+    <div class="ins-nav" id="ins-nav">
+      <button type="button" id="ins-prev" class="icon-button" aria-label="Previous time found">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5 5 8l5.5 5.5 1.06-1.06L7.12 8l4.44-4.44z"/></svg>
+      </button>
+      <span id="ins-index" class="small dim" aria-live="polite"></span>
+      <button type="button" id="ins-next" class="icon-button" aria-label="Next time found">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 2.5 11 8l-5.5 5.5-1.06-1.06L8.88 8 4.44 3.56z"/></svg>
+      </button>
+    </div>
+    <button type="button" id="ins-close" class="icon-button" aria-label="Close">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.06 3 3.94 3.94L11.94 3 13 4.06 9.06 8 13 11.94 11.94 13 8 9.06 4.06 13 3 11.94 6.94 8 3 4.06z"/></svg>
+    </button>
+  </div>
+  <div class="ins-body">
+    <div id="ins-media" class="ins-media"></div>
+    <div class="ins-info">
+      <p id="ins-text" class="ins-text"></p>
+      <dl>
+        <dt>Leads to</dt><dd id="ins-target"></dd>
+        <dt>Served by</dt><dd id="ins-network"></dd>
+        <dt>Found on</dt><dd id="ins-page"></dd>
+        <dt>Found</dt><dd id="ins-time"></dd>
+        <dt>Seen</dt><dd id="ins-seen"></dd>
+      </dl>
+      <div class="row-actions">
+        <button type="button" id="ins-remove" class="danger">Remove from vault</button>
+      </div>
+    </div>
+  </div>
+</dialog>
 </body>
 </html>
