@@ -16,7 +16,9 @@ Examples:
 - workspace controls;
 - sidebar experiences;
 - productivity/reader helpers;
-- privacy/status surfaces.
+- privacy/status surfaces;
+- ad handling: Ad Veil, a built-in add-on that hides ads instead of
+  blocking them (`ADS.md`, ADR 0003).
 
 ## Shell APIs
 
