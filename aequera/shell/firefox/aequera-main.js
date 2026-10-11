@@ -19,6 +19,7 @@ for (const name of [
   "bookmarks/aequera-bookmarks.js",
   "layout/aequera-layout.js",
   "narrow/aequera-narrow.js",
+  "privacy/aequera-privacy.js",
 ]) {
   try {
     Services.scriptloader.loadSubScriptWithOptions(`chrome://browser/content/aequera/${name}`, {

@@ -22,6 +22,12 @@ The copy drops [Crash Reporter] and [AppUpdate]: the artifact binary has
 both compiled in (they cannot be configured out of an artifact build), and
 their servers are Mozilla's. Without them nothing is uploaded or updated.
 
+It also adds UAName=Firefox: the user agent's product token falls back to
+Name, so without it every request says "Aequera/<version>" and no
+"Firefox/" token, which sites treat as an unknown browser (captchas) and
+which singles Aequera users out. A compiled build has the same value built
+in (MOZ_APP_UA_NAME, patches/build/branding/0001).
+
 Usage: python aequera_app_ini.py <build application.ini> <output ini>
 """
 
@@ -35,6 +41,7 @@ IDENTITY = {
     "Profile": "Aequera",
 }
 MOZILLA_SERVICES = ("Crash Reporter", "AppUpdate")
+UA_NAME = "Firefox"
 
 
 def main(source: str, target: str) -> int:
@@ -59,6 +66,7 @@ def main(source: str, target: str) -> int:
         return 1
     for section in MOZILLA_SERVICES:
         ini.remove_section(section)
+    ini.set("App", "UAName", UA_NAME)
     with open(target, "w", encoding="utf-8", newline="\n") as handle:
         handle.write("; Copied by tools/build/aequera_app_ini.py - do not edit.\n")
         ini.write(handle, space_around_delimiters=False)

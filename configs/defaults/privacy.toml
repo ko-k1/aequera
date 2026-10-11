@@ -9,7 +9,9 @@
 # docs/engineering/RELEASE.md) pending a separate ADR.
 # Security protections (site isolation, sandboxing, certificate validation,
 # Safe Browsing) are NOT weakened here; this file only removes product-level
-# data collection and merchandising.
+# data collection and merchandising. Protections that are on by default
+# (Strict tracking protection, Global Privacy Control) are the privacy model
+# in aequera/shell/README.md, not policy here.
 
 [meta]
 schema_version = 1

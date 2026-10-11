@@ -118,7 +118,8 @@ build's prebuilt binary is Mozilla's, which ignores that file and uses the
 Firefox identity compiled into it, opening your Firefox profile and
 colliding with a Firefox you have open. All launchers copy the ini to
 `browser/aequera-application.ini` (`aequera_app_ini.py` refuses one without
-the Aequera identity) and start with `-app`, `-no-remote`, and
+the Aequera identity, and adds `UAName=Firefox` so the user agent is
+Firefox's, not "Aequera/<version>") and start with `-app`, `-no-remote`, and
 `-purgecaches`.
 
 ## Compiled build (full C++/Rust; Aequera binary and icons end to end)

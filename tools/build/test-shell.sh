@@ -42,6 +42,13 @@ FIREFOX_DEFAULTS=(
   # profile sets them (testing/profiles), so tests stay offline.
   --setpref toolkit.telemetry.unified=true
   --setpref toolkit.telemetry.archive.enabled=true
+  # Privacy model and appearance: Firefox's Standard tracking protection
+  # (the one-time Strict switch is marked done before the first window),
+  # no GPC header, and the light scheme headless Firefox reports without
+  # the dark default.
+  --setpref aequera.privacy.trackingProtectionApplied=true
+  --setpref privacy.globalprivacycontrol.enabled=false
+  --setpref ui.systemUsesDarkTheme=0
 )
 # Frame material is per-OS (Windows 11 Mica; opaque toolbar fallback
 # elsewhere): only reset it where the pref means something.

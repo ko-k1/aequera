@@ -54,7 +54,8 @@ patch series is one small patch:
 | Linux bus/service names (`org.aequera.*`, never `org.mozilla.*`) | patch | `patches/toolkit/linux-desktop/`: 0001 session-bus + single-instance remote names, 0002 GNOME search-provider identity (matches the shipped `.ini`/`.service`), 0003 portal app ID (`org.aequera.browser`, matches the desktop entry) + MPRIS suffix |
 | `--with-branding`, `--with-app-basename=Aequera` (Name), `MOZ_APP_REMOTINGNAME=aequera`, `--with-distribution-id=org.aequera` | configuration | `tools/build/mozconfig.branding` (sourced by every Aequera mozconfig). The distribution ID prefixes every mac helper bundle ID and the app itself (`org.aequera.browser` via `MOZ_MACBUNDLE_ID=browser` in the branding `configure.sh`), and surfaces truthfully as Distribution ID in about:support |
 | No Mozilla update or crash-report server | launcher (artifact) / configuration (compiled) | the artifact binary has both compiled in and will not start without their front end, so `aequera_app_ini.py` drops `[AppUpdate]` and `[Crash Reporter]` from the launch ini; a compiled build uses `--disable-updater --disable-crashreporter` |
-| `MOZ_APP_VENDOR=Aequera`, `MOZ_APP_PROFILE=Aequera` | patch | `0001-product-identity.patch`: project flags only `browser/moz.configure` may set (a mozconfig is refused) |
+| `MOZ_APP_VENDOR=Aequera`, `MOZ_APP_PROFILE=Aequera`, `MOZ_APP_UA_NAME=Firefox` | patch | `0001-product-identity.patch`: project flags only `browser/moz.configure` may set (a mozconfig is refused). The user agent names Firefox, not Aequera: "Aequera/157" is an unknown browser to sites (captchas) and a rare fingerprint |
+| User agent on artifact builds | launcher | the prebuilt binary ignores `MOZ_APP_UA_NAME`, so `aequera_app_ini.py` writes `UAName=Firefox` into the launch ini |
 | `MOZ_APP_ID` | unchanged | Firefox's ID keeps WebExtension compatibility |
 
 Result, checked on the artifact build: `dist/bin/application.ini` carries

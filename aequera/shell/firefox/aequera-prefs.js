@@ -114,6 +114,37 @@ pref("extensions.pocket.enabled", false);
 pref("browser.crashReports.unsubmittedCheck.autoSubmit", false);
 pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
 
+// Privacy protections: LibreWolf's direction (block tracking by default),
+// softened where its hardening costs everyday use. All are Firefox features
+// with a Settings control, so every one stays a user choice.
+//   On: Enhanced Tracking Protection "Strict" (cross-site tracking content,
+//   fingerprinters, cryptominers, social trackers, query-parameter stripping,
+//   bounce tracking, fingerprinting protection in all windows), applied once
+//   per profile by privacy/aequera-privacy.js because Firefox's category
+//   model has no default (see there); with Firefox's "convenience"
+//   exceptions on, so logins, embeds, and video keep working. Global
+//   Privacy Control: sites are told not to sell or share the user's data.
+//   Not taken from LibreWolf: resistFingerprinting (forces a light color
+//   scheme, UTC time, and letterboxed windows; search engines answer it with
+//   captchas), clearing cookies and history on exit (logs the user out and
+//   defeats session restore), and disabling search suggestions. The user
+//   agent stays Firefox's own (tools/build: UAName), so Aequera looks like
+//   every other Firefox instead of a rare browser.
+// "" leaves the profile's category to Firefox.
+pref("aequera.privacy.trackingProtection", "strict");
+pref("privacy.globalprivacycontrol.enabled", true);
+
+// Dark appearance by default: the system theme ("Auto" in Add-ons > Themes)
+// reports dark, so Firefox's default theme draws dark chrome and pages
+// follow it (prefers-color-scheme: dark; Settings > Website appearance).
+// Picking the Light theme, or a Light website appearance, still wins.
+// 0 = light, 1 = dark; resetting the pref in about:config follows the OS.
+pref("ui.systemUsesDarkTheme", 1);
+
+// Session restore: start with the previous session's windows and tabs
+// (Settings > General > "Open previous windows and tabs").
+pref("browser.startup.page", 3);
+
 // Frame material: one OS backdrop behind all chrome. On Windows 11 that is
 // Mica (widget.windows.mica below), the native counterpart of the
 // prototype's single #frame glass layer. macOS (vibrancy) and Linux

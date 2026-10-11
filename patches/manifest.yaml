@@ -35,8 +35,9 @@ patches:
   # the defaults; empty by default).
   - id: customization-defaults
     series: browser/customization-defaults
-  # Product identity: Aequera vendor and profile root (project flags only
-  # the project's moz.configure may set; the rest is mozconfig.branding).
+  # Product identity: Aequera vendor and profile root, Firefox's user agent
+  # name (project flags only the project's moz.configure may set; the rest
+  # is mozconfig.branding).
   - id: branding
     series: build/branding
   # Default page icon: Aequera mark instead of the Mozilla globe

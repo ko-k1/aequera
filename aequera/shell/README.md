@@ -12,7 +12,7 @@ pref-gated browser patches. No telemetry, no network.
 
 | File | Role |
 |---|---|
-| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (Mica on Windows, opaque toolbar fallback elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`) |
+| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (Mica on Windows, opaque toolbar fallback elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore |
 | `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome |
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
@@ -22,6 +22,7 @@ pref-gated browser patches. No telemetry, no network.
 | `command/` | Command surface: Aequera rows in the address bar |
 | `newtab/` | New tab page (about:newtab, about:home): shortcuts grid |
 | `privatebrowsing/` | about:privatebrowsing in the new tab page design (stylesheet) |
+| `privacy/` | Privacy model: applies Strict tracking protection once per profile |
 | `bookmarks/` | Bookmarks drawer |
 | `moz.build`, `jar.mn` | Build registration -> `chrome://browser/content/aequera/` |
 
@@ -343,6 +344,43 @@ by pref, here and on the other pages that show them.
 Tests: `tests/browser/browser_aequera_private.js`. The upstream gate runs
 Firefox's about:privatebrowsing tests with the pref off and Firefox's promo
 defaults.
+
+## Privacy model (`privacy/`, `aequera-prefs.js`)
+
+LibreWolf's direction (block tracking by default) without the hardening
+that costs everyday use. Every piece is a Firefox feature with a Settings
+control, so each stays a user choice; nothing changes the web platform.
+
+| | Aequera | Why |
+|---|---|---|
+| Data collection | off (telemetry, studies, sponsored UI, Pocket, crash upload) | `configs/defaults/privacy.toml`, enforced by `aequera config validate` |
+| Tracking protection | Enhanced Tracking Protection **Strict** + Firefox's "convenience" exceptions | blocks cross-site tracking content, fingerprinters, cryptominers, social trackers, tracking query parameters, bounce trackers, and turns on fingerprinting protection in every window; the exceptions keep logins, embeds, and video working |
+| Global Privacy Control | on | tells sites not to sell or share the user's data |
+| User agent | Firefox's own (`UAName=Firefox`, see `tools/build/aequera_app_ini.py`) | "Aequera/157" is an unknown browser to sites (captchas) and a rare fingerprint |
+| Language | the app locale's (`en-US, en` on an en-US build) | Settings > Language; Firefox's `privacy.spoof_english` only works with resistFingerprinting |
+| resistFingerprinting | off | forces a light color scheme, UTC time, and letterboxed windows; search engines answer it with captchas |
+| Clear cookies/history on exit | off | logs the user out and defeats session restore |
+| Search suggestions, Safe Browsing | Firefox's defaults | usability; Safe Browsing is a security protection (`docs/RESTRICTIONS.md`) |
+
+Strict cannot be a pref default: Firefox defines its Standard category as
+"every tracking-protection pref at its default" and writes the matching
+category into the profile at startup, so a default of `strict` is rewritten
+to `standard` before any window opens. `privacy/aequera-privacy.js`
+therefore switches the category the way Settings does, once per profile on
+its first window (`aequera.privacy.trackingProtectionApplied` marks it), and
+only over Firefox's automatic Standard (Custom is left alone). After that,
+Settings is the control: choosing Standard there sticks.
+`aequera.privacy.trackingProtection = ""` leaves new profiles to Firefox.
+
+Appearance and startup defaults that go with it: dark by default
+(`ui.systemUsesDarkTheme = 1`: the default theme draws dark chrome and pages
+get `prefers-color-scheme: dark`; the Light theme or a Light website
+appearance still wins, and resetting the pref follows the OS), and the
+previous session's windows and tabs are restored at startup
+(`browser.startup.page = 3`).
+
+Tests: `tests/browser/browser_aequera_privacy.js`. The upstream gate runs
+Firefox's tests with Standard protection, GPC off, and the light scheme.
 
 ## Robustness
 
