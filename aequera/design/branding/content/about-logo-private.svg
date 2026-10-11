@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 200 200" role="img">
+<title id="title">Aequera private browsing icon</title>
+  <desc id="desc">Aequera geometric icon constructed from one congruent three-face block repeated by exact 120 degree rotations.</desc>
+
+  <defs>
+    <g id="unit-sector">
+      <!--
+        Common construction:
+        - all long/short transitions use exact 30° / 90° / 150° directions
+        - block thickness = 50 source units
+        - the three copies are exact 120° rotations about (205,214)
+      -->
+
+      <!-- Outer blue face: 50-unit thickness, exact 30° side angle -->
+      <path fill="#8C5ADC"
+            d="M295 160
+               L295 260
+               L335 282
+               L335 185 Z"/>
+
+      <!-- Outer cyan bent face: exact 30° diagonals and 50-unit vertical thickness -->
+      <path fill="#C4A8FF"
+            d="M199 67
+               L199 113
+               L255 142
+               L255 185
+               L290 205
+               L290 115 Z"/>
+
+      <!-- Inner blue face: exact 90×50 rectangle -->
+      <rect fill="#8C5ADC" x="154" y="145" width="95" height="40"/>
+    </g>
+  </defs>
+
+  <!-- Single construction center. Every face is derived from the same sector. -->
+  <g transform="scale(0.5)" shape-rendering="geometricPrecision">
+    <use href="#unit-sector"/>
+    <use href="#unit-sector" transform="rotate(120 205 214)"/>
+    <use href="#unit-sector" transform="rotate(240 205 214)"/>
+  </g>
+</svg>

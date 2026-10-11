@@ -5,7 +5,9 @@
 
 // Aequera private browsing page (privatebrowsing/aequera-private.css,
 // patches/browser/privatebrowsing): Firefox's about:privatebrowsing with its
-// text intact, without the Firefox artwork, in-page search box, or promos.
+// text intact, without the Firefox artwork, in-page search box, or promos,
+// under the Aequera brand row with the branding's private mark, centered
+// like the new tab page.
 
 add_task(async function test_promos_off_by_default() {
   const defaults = Services.prefs.getDefaultBranch("");
@@ -31,11 +33,20 @@ add_task(async function test_private_window_page() {
         const el = document.querySelector(selector);
         return !!el && content.getComputedStyle(el).display != "none" && el.getBoundingClientRect().height > 0;
       };
-      const logo = content.getComputedStyle(document.querySelector(".logo"));
+      const logoEl = document.querySelector(".logo");
+      const logo = content.getComputedStyle(logoEl);
+      const wordmark = document.querySelector(".logo-and-wordmark .wordmark");
+      const rect = el => el.getBoundingClientRect();
+      const row = rect(document.querySelector(".logo-and-wordmark"));
+      const link = document.getElementById("private-browsing-myths");
       return {
         sheet: [...document.styleSheets].some(s => s.href?.endsWith("/aequera/privatebrowsing/aequera-private.css")),
         search: shown(".search-inner-wrapper"),
-        wordmark: shown(".wordmark"),
+        wordmark: shown(".logo-and-wordmark .wordmark") && content.getComputedStyle(wordmark).backgroundImage,
+        wordmarkSize: [rect(wordmark).width, rect(wordmark).height],
+        rowCenter: row.left + row.width / 2,
+        blockCenter: (row.top + rect(link).bottom) / 2,
+        viewport: [content.innerWidth, content.innerHeight],
         banner: shown("#search-banner"),
         promo: shown(".promo") || shown(".nova-promo-wrapper"),
         artwork: content.getComputedStyle(document.body, "::before").display,
@@ -50,12 +61,17 @@ add_task(async function test_private_window_page() {
     });
     ok(page.sheet, "Aequera stylesheet loaded");
     ok(!page.search, "no in-page search box: the address bar is the search");
-    ok(!page.wordmark, "no wordmark");
+    ok(page.wordmark.includes("chrome://branding/content/firefox-wordmark.svg"), "the branding's wordmark");
+    Assert.deepEqual(page.wordmarkSize, [104, 32], "in the new tab page's size");
     ok(!page.banner, "no search-engine banner");
     ok(!page.promo, "no promo");
     is(page.artwork, "none", "no Firefox artwork");
-    ok(page.logoIcon.includes("privateBrowsing.svg"), "the browser's private icon");
-    Assert.deepEqual(page.logoSize, ["56px", "56px"], "in the new tab page's tile size");
+    ok(page.logoIcon.includes("chrome://branding/content/about-logo-private.svg"), "the branding's private mark");
+    Assert.deepEqual(page.logoSize, ["48px", "48px"], "in the new tab page's size");
+    const [width, height] = page.viewport;
+    Assert.less(Math.abs(page.rowCenter - width / 2), 1, "brand row centered horizontally");
+    Assert.greater(page.blockCenter, height * 0.35, "block in the middle of the page");
+    Assert.lessOrEqual(page.blockCenter, height / 2 + 1, "never below the center");
     ok(page.heading.length > 0, `Firefox's localized heading is shown: ${page.heading}`);
     ok(page.link, "the explanation link stays");
   } finally {

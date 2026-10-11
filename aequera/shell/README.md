@@ -324,10 +324,12 @@ upstream gate runs Firefox's about:home cache tests with the pref off.
 
 about:privatebrowsing stays Firefox's page (its markup, localized strings,
 and behavior); `patches/browser/privatebrowsing` adds one stylesheet that
-gives it the new tab page's design: the private icon in the same 56px tile,
-Firefox's heading and explanation in one centered column, and its "who can
-see my activity" link. Left out: the Firefox artwork and wordmark, the
-in-page search box (the address bar is the search), the search-engine
+gives it the new tab page's design: the same Aequera brand row (mark and
+wordmark from the branding) with the branding's private mark
+(`about-logo-private.svg`, the same geometry in violet), then Firefox's heading, explanation, and
+"who can see my activity" link, all one block centered like the new tab
+page. The brand row is decorative; the heading says the window is private.
+Left out: the Firefox artwork, the in-page search box (the address bar is the search), the search-engine
 banner, and product promos. The canvas is tinted violet just enough to tell
 a private window apart at a glance; light and dark follow the system, forced
 colors are supported.

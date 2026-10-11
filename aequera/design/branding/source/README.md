@@ -19,5 +19,6 @@ Rules:
    `#4ED5FF` → `#8C5ADC` `(140, 90, 220)`,
    `#4EFFFF` → `#C4A8FF` `(196, 168, 255)`.
 4. `content/about-logo.svg` and `content/document_pdf.svg` are scaled
-   copies of this file (512px, `viewBox 0 0 200 200`); wordmarks are
-   unchanged text.
+   copies of this file (512px, `viewBox 0 0 200 200`);
+   `content/about-logo-private.svg` is the same copy with the private fills
+   (rule 3). Wordmarks are text.

@@ -6,9 +6,10 @@
  * markup, localized strings, and behavior) in the new tab page's design.
  * Loaded last by patches/browser/privatebrowsing, so rules here win at
  * equal specificity. Both Firefox layouts (Nova and legacy) resolve to the
- * same calm column: private icon, heading, explanation, one link.
+ * same calm column, centered like the new tab page: the Aequera private
+ * mark and the wordmark, heading, explanation, one link.
  *
- * Left out: the Firefox artwork and wordmark, the in-page search box (the
+ * Left out: the Firefox artwork, the in-page search box (the
  * address bar is the search, as on the new tab page), the search-engine
  * banner, and product promos (also off by pref, aequera-prefs.js). */
 
@@ -25,7 +26,6 @@
     --ae-private: light-dark(#6e3fd1, #b59cff);
   }
 
-  .wordmark,
   .search-inner-wrapper,
   #search-banner,
   .promo,
@@ -48,13 +48,17 @@
 
   html.private body,
   html.private body.showBanner {
-    justify-content: flex-start;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     align-items: center;
     min-height: 100vh;
     box-sizing: border-box;
     margin: 0;
-    /* The same upper-third placement as the new tab page. */
-    padding: max(24px, 16vh) 16px 32px;
+    /* The new tab page's placement: one block at the optical center, a
+     * little above the true one. A long translation grows past the
+     * viewport and scrolls from the top. */
+    padding: 32px 16px max(48px, 12vh);
   }
 
   html.private .container {
@@ -68,19 +72,31 @@
     text-align: center;
   }
 
+  /* The new tab page's brand row (mark 48px, wordmark 104x32) with the
+   * branding's private mark, the same geometry in violet: the private
+   * window's badge. */
   html.private .logo-and-wordmark {
-    margin: 0 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 32px;
   }
 
-  /* The new tab page's 56px tile, holding the browser's own private icon. */
   html.private .logo {
-    width: 56px;
-    height: 56px;
+    width: 48px;
+    height: 48px;
     margin: 0;
-    border-radius: 14px;
-    background: var(--ae-surface) url("chrome://browser/skin/privateBrowsing.svg") center / 28px no-repeat;
+    background: url("chrome://branding/content/about-logo-private.svg") center / contain no-repeat;
+  }
+
+  html.private .logo-and-wordmark .wordmark {
+    display: block;
+    width: 104px;
+    height: 32px;
+    margin: 0;
+    background: url("chrome://branding/content/firefox-wordmark.svg") center / contain no-repeat;
     -moz-context-properties: fill;
-    fill: var(--ae-private);
+    fill: var(--ae-text);
   }
 
   html.private :is(.nova-tagline, #info-title) {
@@ -135,8 +151,7 @@
   }
 
   @media (forced-colors: active) {
-    html.private .logo {
-      border: 1px solid CanvasText;
+    html.private .logo-and-wordmark .wordmark {
       fill: CanvasText;
     }
   }

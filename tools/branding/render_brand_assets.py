@@ -165,7 +165,7 @@ def tile(size, background, private=False):
     return image
 
 
-def svg_mark(size=512, source=None):
+def svg_mark(size=512, source=None, private=False):
     path = Path(source) if source else _source_path()
     text = path.read_text(encoding="utf-8")
     # Find the real <svg> open tag, not the `>` of a `<?xml ...?>` prolog.
@@ -175,6 +175,11 @@ def svg_mark(size=512, source=None):
     start = m.end()
     end = text.rindex("</svg>")
     inner = text[start:end].strip() + "\n"
+    if private:
+        for fill_hex, (normal, priv) in COLOR_MAP.items():
+            hex_out = "#{:02X}{:02X}{:02X}".format(*priv[:3])
+            inner = re.sub(re.escape(fill_hex), hex_out, inner, flags=re.IGNORECASE)
+        inner = inner.replace("Aequera icon", "Aequera private browsing icon", 1)
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
         f'viewBox="0 0 200 200" role="img">\n{inner}</svg>\n'
@@ -276,6 +281,9 @@ def main(out):
     mark(300).save(content / "about.png", optimize=True)
     (content / "about-logo.svg").write_text(svg_mark(), encoding="utf-8", newline="\n")
     (content / "document_pdf.svg").write_text(svg_mark(), encoding="utf-8", newline="\n")
+    (content / "about-logo-private.svg").write_text(
+        svg_mark(private=True), encoding="utf-8", newline="\n"
+    )
     return 0
 
 
