@@ -230,6 +230,10 @@ function startPage(tabId, url, incognito) {
     adFrames: new Set(),
     recentAds: [],
     timer: 0,
+    // Elements to hide by what they load (hideElementOf), batched per frame.
+    elementUrls: 0,
+    elementQueue: null,
+    elementTimer: 0,
   });
   scheduleAction(tabId);
 }
@@ -355,16 +359,75 @@ function decide(details) {
     return {};
   }
   const source = details.documentUrl || details.originUrl || details.url;
-  if (engines.all.check(details.url, source, details.type) != 1) {
+  // An ad network tracking protection would have blocked, let through by
+  // veil mode (experiments/veil.js): what block mode does not show.
+  const liftedAd = mode == "veil" && (details.urlClassification?.thirdParty || []).includes("tracking_ad");
+  if (!liftedAd && engines.all.check(details.url, source, details.type) != 1) {
     return {};
   }
+  // The element that loads it is hidden either way: in block mode it would
+  // stay as an empty box (a broken image, a blank frame), in veil mode it
+  // shows the ad no cosmetic rule may name.
+  if (ELEMENT_TYPES.has(details.type)) {
+    hideElementOf(details, mode);
+  }
   if (mode == "veil" && !NON_VISUAL.has(details.type)) {
-    // Loads; ads are hidden in place by the cosmetic rules. EasyPrivacy is
-    // not kept here: it lists whole ad networks and bidders as trackers,
-    // and with it no real ad slot fills (measured, docs/design/ADS.md).
+    // Loads; ads are hidden by the cosmetic rules and, above, by the element
+    // that loads them. EasyPrivacy is not kept here: it lists whole ad
+    // networks and bidders as trackers, and with it no real ad slot fills
+    // (measured, docs/design/ADS.md).
     return {};
   }
   return cancel(details, site);
+}
+
+// Request types whose element shows what it loads.
+const ELEMENT_TYPES = new Set(["image", "imageset", "sub_frame", "object", "media"]);
+const ELEMENT_FLUSH_MS = 50;
+const MAX_ELEMENT_URLS = 500;
+
+// Sends content.js the URLs whose elements to hide, per frame, batched. A
+// frame's element lives in its parent; an image's in its own document. A
+// document without content.js (a script-written about:blank frame, as ad
+// slots use) is reached through the top frame, which looks into same-origin
+// frames.
+function hideElementOf(details, mode) {
+  const state = tabs.get(details.tabId);
+  if (!state || state.elementUrls >= MAX_ELEMENT_URLS) {
+    return;
+  }
+  state.elementUrls++;
+  const frameId = details.type == "sub_frame" ? details.parentFrameId : details.frameId;
+  if (details.type == "sub_frame" && mode == "veil") {
+    // The ad's own frame describes its ad for the vault (content.js).
+    const key = frameKey(details.url);
+    if (key && state.adFrames.size < MAX_AD_FRAMES) {
+      state.adFrames.add(key);
+    }
+  }
+  const queue = (state.elementQueue ||= new Map());
+  if (!queue.has(frameId)) {
+    queue.set(frameId, []);
+  }
+  queue.get(frameId).push(details.url);
+  state.elementTimer ||= setTimeout(() => flushElements(details.tabId), ELEMENT_FLUSH_MS);
+}
+
+function flushElements(tabId) {
+  const state = tabs.get(tabId);
+  if (!state?.elementQueue) {
+    return;
+  }
+  state.elementTimer = 0;
+  const queue = state.elementQueue;
+  state.elementQueue = null;
+  for (const [frameId, urls] of queue) {
+    const message = { type: "elements", urls };
+    browser.tabs
+      .sendMessage(tabId, message, { frameId })
+      .catch(() => (frameId ? browser.tabs.sendMessage(tabId, message, { frameId: 0 }) : null))
+      .catch(() => {});
+  }
 }
 
 browser.webRequest.onBeforeRequest.addListener(
@@ -434,6 +497,10 @@ const STYLES = {
     },
     { empty: true, declarations: { height: "1px", "max-height": "1px" } },
   ],
+  // Veil mode, an element hidden by what it loads (an ad image or frame no
+  // cosmetic rule names): out of the flow, so the page closes up, but at its
+  // own size, so what it draws draws as it would.
+  veilOut: [{ declarations: { position: "absolute", opacity: "0", "pointer-events": "none" } }],
 };
 
 // Selectors are list data, and lists will be updated over the network
@@ -574,6 +641,20 @@ function frameKey(url) {
   return parsed.href;
 }
 
+// Frames the page just found in hidden slots, already loaded: told at once
+// to describe their ad (a frame also asks for a while after it loads).
+async function tellAdFrames(tabId, keys) {
+  if (!keys.size) {
+    return;
+  }
+  const frames = await browser.webNavigation.getAllFrames({ tabId }).catch(() => []);
+  for (const frame of frames || []) {
+    if (frame.frameId && keys.has(frameKey(frame.url))) {
+      browser.tabs.sendMessage(tabId, { type: "adframe" }, { frameId: frame.frameId }).catch(() => {});
+    }
+  }
+}
+
 function isAdFrame(sender) {
   if (!sender.frameId) {
     return false;
@@ -609,20 +690,29 @@ function contentMessage(message, sender) {
       // What content.js hides itself (procedural filters, wrappers an ad
       // left empty) it marks with this frame's attribute; the mark's rule is
       // a user-origin rule like the others, hidden the mode's way.
+      // Two values: "" hides the mode's way; "o" is an element hidden by what
+      // it loads, taken out of the flow in veil mode (it keeps its own size,
+      // so the ad in it still draws as it would).
       const mark = markName();
-      hide(sender.tab.id, sender.frameId, validRules([`[${mark}]`], status.mode));
-      return Promise.resolve({ active: true, selectors, adFrame: isAdFrame(sender), mark, procedural: cosmetic.procedural });
+      hide(sender.tab.id, sender.frameId, [
+        ...validRules([`[${mark}=""]`], status.mode),
+        ...validRules([`[${mark}="o"]`], status.mode == "veil" ? "veilOut" : status.mode),
+      ]);
+      return Promise.resolve({ active: true, mode: status.mode, selectors, adFrame: isAdFrame(sender), mark, procedural: cosmetic.procedural });
     }
     // Cross-origin frames the page found in hidden ad slots.
     case "adframes": {
       const state = tabs.get(sender.tab?.id);
       if (status && state && Array.isArray(message.urls)) {
+        const added = new Set();
         for (const url of message.urls.slice(0, MAX_AD_FRAMES_PER_MESSAGE)) {
           const key = typeof url == "string" && url.length <= 2048 ? frameKey(url) : null;
           if (key && state.adFrames.size < MAX_AD_FRAMES) {
             state.adFrames.add(key);
+            added.add(key);
           }
         }
+        tellAdFrames(sender.tab.id, added);
       }
       return undefined;
     }

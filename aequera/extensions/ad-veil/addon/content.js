@@ -26,8 +26,9 @@
   // Smaller images are tracking pixels and spacers, not ads.
   const MIN_IMAGE_AREA = 32 * 32;
   const FRAME_DEPTH = 3;
-  // When to look again at a slot whose ad has not been drawn yet (ms).
-  const RETRIES = [1000, 3000, 8000, 15000];
+  // When to look again at a slot whose ad has not been drawn yet (ms); it is
+  // also looked at whenever the page changes, until the last of these.
+  const RETRIES = [1000, 3000, 8000, 15000, 30000, 60000];
 
   const sent = new Set();
   let classes = [];
@@ -121,14 +122,39 @@
     return docs;
   }
 
+  // The documents an ad element shows: its own (a frame's, same-origin) and
+  // its frames'. A cross-origin frame is reported (it describes itself).
+  function adDocuments(root) {
+    if (!root.matches?.("iframe, frame")) {
+      return frameDocuments(root);
+    }
+    let doc = null;
+    try {
+      doc = root.contentDocument;
+    } catch {
+      // Cross-origin.
+    }
+    if (doc?.body) {
+      return [doc, ...frameDocuments(doc, 1)];
+    }
+    if (!doc && isWeb(root.src) && !adFrameUrls.has(root.src)) {
+      adFrameUrls.add(root.src);
+      browser.runtime.sendMessage({ type: "adframes", urls: [root.src] }).catch(() => {});
+    }
+    return [];
+  }
+
+  // The images in `scope`, the scope itself when it is one.
+  const imagesIn = scope => [...(scope.matches?.("img") ? [scope] : []), ...scope.querySelectorAll("img")];
+
   // An ad's largest real image, its link, and its words; null when it shows
   // nothing yet. `loaded` says the page already fetched the image (only
   // those are saved to the vault).
   function describe(root) {
-    const scopes = [root, ...frameDocuments(root)];
+    const scopes = [root, ...adDocuments(root)];
     let best = null;
     for (const scope of scopes) {
-      for (const img of scope.querySelectorAll("img")) {
+      for (const img of imagesIn(scope)) {
         const src = img.currentSrc || img.src;
         // The size it is shown at (its attributes in a hidden slot), else
         // its own: a 1×1 pixel stays a pixel whatever file it shows.
@@ -201,12 +227,14 @@
   // attribute, which a user-origin rule hides the mode's way.
   let mark = null;
   let procedural = [];
-  const marked = new WeakSet();
+  // Marked elements and their mark's value: "" hidden the mode's way, "o"
+  // hidden by what it loads (out of the flow in veil mode).
+  const marked = new WeakMap();
 
-  function markHidden(element) {
-    marked.add(element);
-    if (!element.hasAttribute(mark)) {
-      element.setAttribute(mark, "");
+  function markHidden(element, value = "") {
+    marked.set(element, value);
+    if (element.getAttribute(mark) !== value) {
+      element.setAttribute(mark, value);
     }
   }
 
@@ -280,6 +308,96 @@
     }
   }
 
+  // Elements hidden by what they load: the background sends the URLs block
+  // mode cancels (or, in veil mode, would have) that this frame, or a
+  // same-origin frame in it, loads into an image, frame, object, or media
+  // element. Their element is hidden (mark "o"): in block mode it would stay
+  // an empty box, in veil mode it shows an ad no cosmetic rule names. In
+  // veil mode it is described for the vault like any hidden ad.
+  const URL_ELEMENTS = "img, iframe, frame, embed, object, video, audio, source";
+  const PENDING_MS = 15000;
+  const pendingUrls = new Map();
+  let mode = null;
+
+  function elementUrl(element) {
+    switch (element.localName) {
+      case "img":
+      case "video":
+      case "audio":
+        return element.currentSrc || element.src;
+      case "object":
+        return element.data;
+      default:
+        return element.src;
+    }
+  }
+
+  // Same-origin frame documents, without reporting cross-origin frames.
+  function sameOriginDocuments(root, depth = 0) {
+    const docs = [];
+    if (depth >= FRAME_DEPTH) {
+      return docs;
+    }
+    for (const frame of root.querySelectorAll("iframe, frame")) {
+      let doc = null;
+      try {
+        doc = frame.contentDocument;
+      } catch {
+        // Cross-origin.
+      }
+      if (doc?.body) {
+        docs.push(doc, ...sameOriginDocuments(doc, depth + 1));
+      }
+    }
+    return docs;
+  }
+
+  // The element of this document that shows `element`: itself, or the frame
+  // its document is in.
+  function inThisDocument(element) {
+    let node = element;
+    while (node && node.ownerDocument != document) {
+      node = node.ownerDocument.defaultView?.frameElement || null;
+    }
+    return node;
+  }
+
+  function hideLoaders(ads) {
+    let count = 0;
+    const now = Date.now();
+    for (const scope of [document, ...sameOriginDocuments(document)]) {
+      for (const element of scope.querySelectorAll(URL_ELEMENTS)) {
+        if (!pendingUrls.has(elementUrl(element))) {
+          continue;
+        }
+        const target = inThisDocument(element.localName == "source" ? element.parentElement : element);
+        if (!target || found.has(target) || marked.has(target) || target == document.body || target == document.documentElement) {
+          continue;
+        }
+        // Its size before it is hidden: tracking pixels are hidden quietly.
+        const box = target.getBoundingClientRect();
+        const area = Math.max(box.width, target.width || 0) * Math.max(box.height, target.height || 0);
+        markHidden(target, "o");
+        found.add(target);
+        if (area < MIN_IMAGE_AREA) {
+          continue;
+        }
+        count++;
+        if (mode == "veil") {
+          hidden(target, ads);
+        } else if (mark) {
+          fold(target);
+        }
+      }
+    }
+    for (const [url, until] of pendingUrls) {
+      if (until < now) {
+        pendingUrls.delete(url);
+      }
+    }
+    return count;
+  }
+
   function scan() {
     idle = 0;
     if (!active) {
@@ -287,6 +405,17 @@
     }
     let count = 0;
     const ads = [];
+    if (pendingUrls.size && mark) {
+      count += hideLoaders(ads);
+    }
+    // Slots still waiting for their ad: the page changed, so look again.
+    for (const element of waiting.keys()) {
+      const ad = element.isConnected ? describe(element) : null;
+      if (ad) {
+        waiting.delete(element);
+        ads.push(ad);
+      }
+    }
     for (let i = 0; i < selectors.length; i += CHUNK) {
       for (const element of matching(selectors.slice(i, i + CHUNK))) {
         if (!found.has(element)) {
@@ -360,7 +489,12 @@
   }
 
   // This frame is an ad server's: describe its own ad once drawn.
+  let describingOwn = false;
   function describeOwnFrame() {
+    if (describingOwn) {
+      return;
+    }
+    describingOwn = true;
     let tries = 0;
     const look = () => {
       const ad = active && document.body ? describe(document.body) : null;
@@ -379,7 +513,7 @@
   }
 
   function schedule() {
-    if (active && started && (selectors.length || procedural.length) && !idle) {
+    if (active && started && (selectors.length || procedural.length || pendingUrls.size || waiting.size) && !idle) {
       idle = requestIdleCallback(scan, { timeout: 1000 });
     }
   }
@@ -391,8 +525,8 @@
       if (record.type == "attributes") {
         if (record.attributeName == mark) {
           // A page removing the mark from what it hides: put back.
-          if (marked.has(record.target) && !record.target.hasAttribute(mark)) {
-            record.target.setAttribute(mark, "");
+          if (marked.has(record.target) && record.target.getAttribute(mark) !== marked.get(record.target)) {
+            record.target.setAttribute(mark, marked.get(record.target));
           }
           continue;
         }
@@ -420,6 +554,26 @@
   });
   observer.observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "id"] });
 
+  // From the background: URLs whose elements to hide (hideLoaders), and,
+  // for a frame the page found in a hidden slot, that it is an ad.
+  const MAX_URLS_PER_MESSAGE = 200;
+  browser.runtime.onMessage.addListener(message => {
+    if (!active) {
+      return;
+    }
+    if (message?.type == "elements" && Array.isArray(message.urls)) {
+      const until = Date.now() + PENDING_MS;
+      for (const url of message.urls.slice(0, MAX_URLS_PER_MESSAGE)) {
+        if (typeof url == "string" && url.length <= 4096) {
+          pendingUrls.set(url, until);
+        }
+      }
+      schedule();
+    } else if (message?.type == "adframe" && window != window.top) {
+      describeOwnFrame();
+    }
+  });
+
   browser.runtime
     .sendMessage({ type: "applied" })
     .then(reply => {
@@ -429,6 +583,7 @@
         return;
       }
       started = true;
+      mode = reply.mode == "veil" ? "veil" : "block";
       if (typeof reply.mark == "string" && /^v[0-9a-f]{12}$/.test(reply.mark)) {
         mark = reply.mark;
         procedural = Array.isArray(reply.procedural) ? reply.procedural : [];

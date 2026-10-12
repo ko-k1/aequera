@@ -141,6 +141,32 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   inserts (the page cannot name it in advance or override it; a mark the
   page removes is put back). What they remove is described for the vault
   first.
+- Elements hidden by what they load: a request block mode cancels (or,
+  in veil mode, would have: Ad Veil's lists, and an ad network tracking
+  protection classifies `tracking_ad` that `aequeraVeil` let through) that
+  loads into an image, frame, object, or media element has its element
+  hidden, whatever the cosmetic rules say. The background sends the URLs,
+  batched per frame (a frame's element is in its parent; a document without
+  the content script, such as an ad's script-written `about:blank` frame,
+  through the top frame, which looks into same-origin frames), and
+  content.js marks the element `o`. In block mode that removes the empty
+  box a cancel leaves (a broken image, a blank frame; uBlock Origin calls it
+  collapsing); in veil mode the element is taken out of the flow at its own
+  size, invisible and unclickable, so veil mode hides everything block mode
+  removes, and the ad still draws and is described for the vault like any
+  hidden ad. Elements under 32×32 (tracking pixels) are hidden without
+  being counted. Measured (2026-10-12, 12 live sites, Strict): before,
+  veil mode showed ad media block mode did not (accuweather.com 15
+  Connatix images, merriam-webster.com an adsrvr.org video: networks
+  tracking protection blocks and no cosmetic rule names); after, neither
+  mode showed any, and the veil vault recorded 96 entries with 66 saved
+  images (before: 80, 43; accuweather.com 0 → 15).
+- Vault coverage: a hidden slot whose ad has not drawn yet is looked at
+  again on every page change and at 1, 3, 8, 15, 30, and 60 s (lazy slots
+  fill when scrolled to); a cross-origin frame the page finds in a hidden
+  slot is told at once that it is an ad (it also asks for 60 s after it
+  loads), and a frame veil mode let load from a blocked URL is known as an
+  ad before it loads.
 - Emptied wrappers: once an ad is hidden, a box around it holding only
   hidden ads, an "Advertisement"-style label (a short list of words, in
   several languages), or nothing rendered would stay as an empty frame
@@ -160,6 +186,9 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   intersects the viewport, as lazy-loading scripts check. An empty element
   (`:is(selector):empty`: an anti-adblock bait, or a slot not yet filled)
   keeps 1px of height, so a bait check of `offsetHeight` sees it laid out.
+  An element hidden by what it loads (above) is instead `position:
+  absolute; opacity: 0; pointer-events: none`: out of the flow, at its own
+  size.
 - Why collapse (measured, 2026-10-12, 10 live sites, Strict, fresh
   profiles): the kept box left 1.9 to 13.2 million px² of blank space per
   page (foxnews.com 80 boxes); collapsing ad slots with ad content only,

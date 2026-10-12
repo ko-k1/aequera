@@ -174,6 +174,16 @@ Hiding (`docs/design/ADS.md`, Hiding; slice 2c):
   `browser_aequera_adveil.js` 115 checks (each procedural operator in a
   real page; slot folding; veil collapse and bait; the silent ad server),
   mutation-checked. Live numbers in ADS.md.
+- Veil hides what block removes: a request block mode cancels (or veil
+  mode would have) that loads into an image, frame, object, or media
+  element has its element hidden (block: no broken box left; veil: out of
+  the flow, still drawn, recorded in the vault). Slots waiting for their ad
+  are looked at on every page change for 60 s; reported ad frames are told
+  at once. `browser_aequera_adveil.js` 123 checks (an ad image only its
+  request names: hidden in block mode with its wrapper, loaded, hidden, and
+  in the vault in veil mode; mutation-checked). Live: no ad media shown in
+  either mode on 12 sites (veil showed 16 before); veil vault 96 entries
+  (80 before).
 
 ## Known gaps (later slices)
 

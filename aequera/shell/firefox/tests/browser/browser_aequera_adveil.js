@@ -621,6 +621,7 @@ function veilState(browser) {
     const page = content.wrappedJSObject;
     const banner = content.document.getElementById("banner");
     const bait = content.document.getElementById("bait");
+    const promo = content.document.getElementById("promo");
     const style = content.getComputedStyle(banner);
     return {
       ad: !!page.adLoaded,
@@ -634,8 +635,25 @@ function veilState(browser) {
       baitHeight: bait.offsetHeight,
       baitLaidOut: !!bait.offsetParent,
       baitOpacity: content.getComputedStyle(bait).opacity,
+      // The ad only its request names (#promo).
+      promoDisplay: content.getComputedStyle(promo).display,
+      promoPosition: content.getComputedStyle(promo).position,
+      promoOpacity: content.getComputedStyle(promo).opacity,
+      promoLoaded: promo.complete && promo.naturalWidth > 0,
+      promoBoxHeight: content.document.getElementById("promo-box").offsetHeight,
     };
   });
+}
+
+// Waits for the promo image to be hidden (block: not rendered; veil: out of
+// the flow and invisible).
+function waitForPromo(browser, want) {
+  return SpecialPowers.spawn(browser, [want], expected =>
+    ContentTaskUtils.waitForCondition(() => {
+      const style = content.getComputedStyle(content.document.getElementById("promo"));
+      return expected == "collapsed" ? style.display == "none" : style.position == "absolute" && style.opacity == "0";
+    }, `promo ${expected}`)
+  );
 }
 
 // "collapsed" (block mode) or "veiled" (veil mode).
@@ -674,10 +692,23 @@ add_task(async function test_veil_mode() {
     { ad: false, network: false, tracker: false, social: false, display: "none" },
     "block mode: ads, the ad network, and trackers are blocked; the ad element collapses"
   );
+  // An ad only its request names: cancelled, and its image hidden instead
+  // of left as a broken box, its emptied wrapper with it.
+  await waitForPromo(tab.linkedBrowser, "collapsed");
+  const blockedPromo = await veilState(tab.linkedBrowser);
+  ok(!blockedPromo.promoLoaded, "block mode: the ad image a network rule names is not loaded");
+  is(blockedPromo.promoDisplay, "none", "and its element is hidden, not left as a broken box");
+  is(blockedPromo.promoBoxHeight, 0, "its emptied wrapper with it");
 
   await pickMode(tab, "veil");
   await waitForBanner(tab.linkedBrowser, "veiled");
+  await waitForPromo(tab.linkedBrowser, "veiled");
   const veiled = await veilState(tab.linkedBrowser);
+  // Veil mode hides what block mode would cancel, at its element.
+  ok(veiled.promoLoaded, "veil: the ad image a network rule names loads");
+  is(veiled.promoPosition, "absolute", "its element is taken out of the flow, at its own size");
+  is(veiled.promoOpacity, "0", "invisible");
+  is(veiled.promoBoxHeight, 0, "the page closes up around it");
   ok(veiled.ad, "veil: the ad EasyList matches loads");
   ok(veiled.network, "veil: the ad network tracking protection blocks loads");
   // EasyPrivacy lists whole ad networks and bidders, so veil mode lets its
@@ -706,6 +737,18 @@ add_task(async function test_veil_mode() {
   ok(!ContentBlockingAllowList.includes(tab.linkedBrowser), "tracking protection stays on for the site");
   await TestUtils.waitForCondition(() => /veil mode/.test(buttonTitle()), "the button shows veil mode");
   await TestUtils.waitForCondition(() => /icons\/veil-veiled\.svg/.test(buttonIcon()), "with the veil icon");
+
+  // The vault has it, as any hidden ad: its image and where it leads.
+  const PROMO = "https://example.net/browser/browser/aequera/tests/browser/adbanners/veil_promo.svg";
+  const vault = await openVault();
+  let promo;
+  await TestUtils.waitForCondition(async () => {
+    promo = (await readVault(vault)).ads.find(ad => ad.creative == PROMO);
+    return promo;
+  }, "the ad only its request names reaches the vault");
+  is(promo.link, "https://example.org/promo?ref=veil", "with where it leads");
+  BrowserTestUtils.removeTab(vault);
+  await BrowserTestUtils.switchTab(gBrowser, tab);
 
   await pickMode(tab, "block");
   await waitForBanner(tab.linkedBrowser, "collapsed");

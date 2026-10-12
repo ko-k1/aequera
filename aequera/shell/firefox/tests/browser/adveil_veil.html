@@ -21,6 +21,11 @@
 <div class="ad_banner" id="banner" style="width: 300px; height: 50px">ad</div>
 <!-- The same rule on an empty element, as an anti-adblock bait. -->
 <div class="ad_banner" id="bait" style="width: 300px; height: 10px"></div>
+<!-- EasyList "/adbanners/*$image" and no cosmetic rule: an ad only its
+     request names. Block mode cancels it and hides the image that would
+     stay a broken box; veil mode lets it load and hides it as block mode's
+     cancel would (out of the flow), and the vault records it. -->
+<div id="promo-box"><a href="https://example.org/promo?ref=veil"><img id="promo" src="adbanners/veil_promo.svg" width="300" height="100" alt=""></a></div>
 <div class="article" id="article">text</div>
 <script>
   addEventListener("load", () => (window.pageLoaded = true));
