@@ -24,6 +24,14 @@ finally {
 
 Push-Location $Root
 try {
+    # Pure JS models (shell, extensions): node's built-in runner, no packages.
+    # Tracked files only, listed explicitly: a glob that matches nothing makes
+    # `node --test` pass with zero tests, so an empty list fails instead.
+    $NodeTests = @(git ls-files ':(glob)aequera/**/*.test.js' ':(glob)aequera/**/*.test.mjs')
+    if ($LASTEXITCODE -ne 0) { throw "git ls-files failed" }
+    if ($NodeTests.Count -eq 0) { throw "no node tests found under aequera/" }
+    node --test @NodeTests
+    if ($LASTEXITCODE -ne 0) { throw "node --test failed" }
     & $Bin doctor
     if ($LASTEXITCODE -ne 0) { throw "aequera doctor failed" }
     & $Bin upstream status

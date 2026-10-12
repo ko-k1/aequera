@@ -28,6 +28,12 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # Node runs the pure JS model tests (node:test, no npm packages).
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       # PR CI proves reproducibility without a multi-hour Firefox build.
       # No fetch/checkout/apply here: those need GBs of upstream objects and
       # belong to the nightly full-build pipeline (see tools/ci/README.md).

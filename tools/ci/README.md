@@ -9,7 +9,11 @@
 2. `cargo clippy --all-targets -- -D warnings` — zero-warning lint gate.
 3. `cargo test` — unit layer (`tools/cli` fixture suites: upstream
    acquisition, patch pipeline, config validation/recovery).
-4. Built-binary surface checks, all offline-safe:
+4. `node --test` — the pure JS models (tab-rail drag, workspaces, command
+   surface, Ad Veil, palette): every tracked `aequera/**/*.test.{js,mjs}`,
+   node's built-in runner, no npm packages. No test files found is a
+   failure, not a pass. Node 24 (`actions/setup-node`).
+5. Built-binary surface checks, all offline-safe:
    - `aequera doctor` (no `fail` entries)
    - `aequera upstream status` (lock readable)
    - `aequera patch status` (manifest valid, base matches lock)
@@ -25,7 +29,7 @@ and timed, not speculative YAML written blind.
 
 | Layer | Current home |
 |---|---|
-| unit | `cargo test` in `tools/cli` |
+| unit | `cargo test` (Rust workspace); `node --test` (JS models in `aequera/`) |
 | integration | binary surface checks in `smoke.*` |
 | UI / accessibility | future (needs a built browser) |
 | extension compatibility | future (needs a built browser) |
@@ -34,6 +38,8 @@ and timed, not speculative YAML written blind.
 | upstream regression | patch-manifest + lock fixtures (partial) |
 
 ## Run locally
+
+Needs `cargo` and `node` (any current LTS) on `PATH`.
 
 Windows:
 
