@@ -19,6 +19,7 @@ for (const name of [
   "bookmarks/aequera-bookmarks.js",
   "layout/aequera-layout.js",
   "narrow/aequera-narrow.js",
+  "fullscreen/aequera-fullscreen.js",
   "privacy/aequera-privacy.js",
   "adveil/aequera-adveil.js",
 ]) {

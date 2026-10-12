@@ -14,6 +14,8 @@
 // revealed by the widening and fades in (aequera-tabs.css). Firefox's tab
 // elements stay the source of truth (gBrowser); the rows are a view of them:
 //   - click selects; middle-click and the close button close;
+//   - the selected row is scrolled into view, however the tab was selected
+//     (keyboard, command surface, a new tab, a restored session);
 //   - right-click opens Firefox's own tab context menu for that tab (rows
 //     carry `.tab`, which TabContextMenu resolves its target from);
 //   - drag reorders with a live slide and a settle glide (native tab-strip
@@ -80,6 +82,7 @@ var AequeraTabs = (() => {
     _foreign: null,
     _ghost: null,
     _settleTimer: 0,
+    _revealPending: false,
 
     /** Tabs shown as rows, in tab order. */
     tabs() {
@@ -116,19 +119,65 @@ var AequeraTabs = (() => {
       if (!row) {
         return;
       }
+      // TabAttrModified fires often (busy, icon, label): write only what
+      // changed, so an unchanged row costs no restyle or relayout.
       const label = tab.label || "";
       row.setAttribute("aria-selected", String(tab.selected));
-      row.setAttribute("aria-label", label);
-      row.title = label;
+      if (row.title != label) {
+        row.setAttribute("aria-label", label);
+        row.title = label;
+        row.querySelector(".aequera-tab-title").textContent = label;
+      }
       row.toggleAttribute("busy", tab.hasAttribute("busy"));
       row.toggleAttribute("soundplaying", tab.hasAttribute("soundplaying"));
       row.toggleAttribute("muted", tab.hasAttribute("muted"));
-      row.querySelector(".aequera-tab-title").textContent = label;
       const image = sanitizeIcon(tab.getAttribute("image"));
       const icon = row.querySelector(".aequera-tab-icon");
       if (icon.getAttribute("src") != image) {
         icon.setAttribute("src", image);
       }
+    },
+
+    /**
+     * Scroll the list so the selected row is fully shown (native tab-strip
+     * parity: ensureElementIsVisible). Measures after the next natural flush
+     * instead of forcing a reflow on the switch, then scrolls only the list
+     * (never the rail, which must not move). Several switches in one frame
+     * collapse into one scroll to the last selection.
+     */
+    revealSelected() {
+      if (!this.element || this._revealPending) {
+        return;
+      }
+      this._revealPending = true;
+      window
+        .promiseDocumentFlushed(() => {
+          const row = this.rows.get(gBrowser.selectedTab);
+          if (!row?.isConnected || this._drag) {
+            return null;
+          }
+          const list = this.element.getBoundingClientRect();
+          const box = row.getBoundingClientRect();
+          // Keep the list's own inset clear above and below the row.
+          const inset = parseFloat(getComputedStyle(this.element).paddingTop) || 0;
+          if (box.top < list.top + inset) {
+            return box.top - list.top - inset;
+          }
+          if (box.bottom > list.bottom - inset) {
+            return box.bottom - list.bottom + inset;
+          }
+          return null;
+        })
+        .then(delta => {
+          this._revealPending = false;
+          if (delta) {
+            this.element.scrollBy({ top: delta, behavior: this.reduceMotion() ? "instant" : "smooth" });
+          }
+        })
+        .catch(() => {
+          // The window closed before the flush.
+          this._revealPending = false;
+        });
     },
 
     /** Put exactly the listed tabs' rows in tab order (nodes are reused). */
@@ -156,10 +205,14 @@ var AequeraTabs = (() => {
       const tab = event.target.tab ?? event.target;
       switch (event.type) {
         case "TabSelect":
+          // Only the outgoing and incoming rows change: a switch must not
+          // touch every row (O(tabs) restyles on an input path).
           this.clearForeign();
-          for (const t of this.tabs()) {
-            this.updateRow(t);
+          if (event.detail?.previousTab) {
+            this.updateRow(event.detail.previousTab);
           }
+          this.updateRow(tab);
+          this.revealSelected();
           break;
         case "TabAttrModified":
           this.updateRow(tab);
@@ -1106,6 +1159,8 @@ var AequeraTabs = (() => {
       // Last: Firefox's own rows are hidden only once this list is live
       // (aequera-tabs.css), so a failed init never leaves the window tabless.
       document.documentElement.setAttribute("aequera-tabs", "true");
+      // A restored session can select a tab far down the list.
+      this.revealSelected();
     },
   };
 

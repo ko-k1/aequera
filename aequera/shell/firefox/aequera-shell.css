@@ -48,6 +48,32 @@
   }
 }
 
+/* Frame material "glass" (aequera-frame.js sets :root[aequera-material]).
+ * body paints the one frame behind all chrome; on Linux the root paints
+ * nothing, so the window already has an alpha channel (browser.css) and a
+ * translucent body lets the compositor blur the desktop behind the chrome.
+ * The page card (.browserContainer) and popups stay opaque (no stacked blur,
+ * MATERIAL.md); themes with their own colors or images (lwtheme) keep the
+ * solid frame, and so does a desktop that cannot show transparency. */
+@media (-moz-platform: linux) and (-moz-gtk-csd-transparency-available) {
+  :root[aequera-material="glass"]:not([lwtheme]) body {
+    background-color: color-mix(
+      in srgb, var(--toolbox-background-color) var(--aequera-material-opacity, 80%), transparent
+    );
+
+    &:-moz-window-inactive {
+      background-color: color-mix(
+        in srgb, var(--toolbox-background-color-inactive) var(--aequera-material-opacity, 80%), transparent
+      );
+    }
+  }
+
+  /* The rail sits on the same frame instead of its opaque fallback. */
+  :root[aequera-material="glass"]:not([lwtheme])[aequera-rail] #sidebar-container {
+    background-color: transparent;
+  }
+}
+
 /* The fixed 40px titlebar shim (#vertical-spacer) has no purpose in the
  * Aequera navbar: window dragging lives on the titlebar/tab strip, so it
  * lands as a dead gap between placed widgets (e.g. after downloads). */

@@ -10,7 +10,15 @@
 //   --aequera-motion-duration / --aequera-motion-easing on :root, from
 //     aequera.motion.durationMs / aequera.motion.easing (an easing that does
 //     not parse falls back instead of breaking every transition);
-//   --aequera-page-top on #tabbrowser-tabbox, set by the bookmarks drawer.
+//   --aequera-page-top on #tabbrowser-tabbox, set by the bookmarks drawer;
+//   the frame material (docs/design/MATERIAL.md): aequera.material.frame
+//     resolved to :root[aequera-material="solid"|"glass"], and
+//     aequera.material.opacity to --aequera-material-opacity (aequera-shell.css
+//     paints it). "auto" picks glass only where the desktop is known to blur
+//     what shows through a translucent window (Hyprland, which blurs windows
+//     by default); elsewhere a translucent frame would put chrome text on a
+//     sharp wallpaper, so it stays solid. Read from the local environment
+//     once per window; nothing leaves the machine.
 
 // Locked shell prefs (aequera-prefs.js) unlock only for the test gate, which
 // must be able to turn the revamp on to run Firefox's own tests. An
@@ -39,6 +47,13 @@ var AequeraFrame = (() => {
   const DURATION_PREF = "aequera.motion.durationMs";
   const EASING_PREF = "aequera.motion.easing";
   const FALLBACK_EASING = "ease-in-out";
+  const MATERIAL_PREF = "aequera.material.frame";
+  const OPACITY_PREF = "aequera.material.opacity";
+  const MATERIALS = new Set(["auto", "solid", "glass"]);
+  // Readability floor: below this a bright wallpaper can wash out chrome
+  // text even through the blur (MATERIAL.md: material settings must not
+  // silently break readability).
+  const MIN_OPACITY = 60;
   const ROOT = document.documentElement;
 
   const frame = {
@@ -73,6 +88,30 @@ var AequeraFrame = (() => {
       ROOT.style.setProperty("--aequera-motion-easing", this.easing());
     },
 
+    /** The desktop blurs what shows through a translucent window. */
+    desktopBlurs() {
+      return AppConstants.platform == "linux" && !!Services.env.get("HYPRLAND_INSTANCE_SIGNATURE");
+    },
+
+    /** Configured frame material, resolved to "solid" or "glass". */
+    material() {
+      let material = Services.prefs.getCharPref(MATERIAL_PREF, "auto");
+      if (!MATERIALS.has(material)) {
+        console.error(`aequera: invalid ${MATERIAL_PREF} "${material}", using auto`);
+        material = "auto";
+      }
+      if (material == "auto") {
+        material = this.desktopBlurs() ? "glass" : "solid";
+      }
+      return material;
+    },
+
+    publishMaterial() {
+      ROOT.setAttribute("aequera-material", this.material());
+      const opacity = Math.min(100, Math.max(MIN_OPACITY, Services.prefs.getIntPref(OPACITY_PREF, 80)));
+      ROOT.style.setProperty("--aequera-material-opacity", `${opacity}%`);
+    },
+
     /** Move the page card's top edge to `top` px (CSS transitions the way). */
     setTop(top) {
       if (!this.tabbox || top === this.top) {
@@ -82,8 +121,12 @@ var AequeraFrame = (() => {
       this.tabbox.style.setProperty("--aequera-page-top", `${top}px`);
     },
 
-    observe() {
-      this.publishMotion();
+    observe(_subject, _topic, pref) {
+      if (pref == MATERIAL_PREF || pref == OPACITY_PREF) {
+        this.publishMaterial();
+      } else {
+        this.publishMotion();
+      }
     },
 
     init() {
@@ -92,13 +135,17 @@ var AequeraFrame = (() => {
         console.error("aequera-frame: #tabbrowser-tabbox missing; page clip disabled");
       }
       this.publishMotion();
-      Services.prefs.addObserver(DURATION_PREF, this);
-      Services.prefs.addObserver(EASING_PREF, this);
+      this.publishMaterial();
+      const prefs = [DURATION_PREF, EASING_PREF, MATERIAL_PREF, OPACITY_PREF];
+      for (const pref of prefs) {
+        Services.prefs.addObserver(pref, this);
+      }
       window.addEventListener(
         "unload",
         () => {
-          Services.prefs.removeObserver(DURATION_PREF, this);
-          Services.prefs.removeObserver(EASING_PREF, this);
+          for (const pref of prefs) {
+            Services.prefs.removeObserver(pref, this);
+          }
         },
         { once: true }
       );

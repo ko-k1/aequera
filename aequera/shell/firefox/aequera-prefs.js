@@ -153,6 +153,13 @@ pref("browser.startup.page", 3);
 // same paint as the top bar, so chrome stays seamless without depending on
 // a backdrop that may not exist. Solid chrome there, never floating text.
 pref("widget.windows.mica", true);
+// Linux frame material (aequera-frame.js, aequera-shell.css): "glass" makes
+// the frame translucent so the compositor blurs the desktop behind the
+// chrome; "solid" keeps the opaque frame; "auto" picks glass only on a
+// desktop that blurs translucent windows by default (Hyprland). Opacity is
+// the frame tint in percent, clamped to 60-100 for readability.
+pref("aequera.material.frame", "auto");
+pref("aequera.material.opacity", 80);
 
 // Ad Veil (docs/design/ADS.md): Aequera's built-in ad and tracker blocker
 // (EasyList, EasyPrivacy). Requests the lists match are cancelled and ads
