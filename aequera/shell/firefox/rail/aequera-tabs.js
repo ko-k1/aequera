@@ -160,18 +160,21 @@ var AequeraTabs = (() => {
           const box = row.getBoundingClientRect();
           // Keep the list's own inset clear above and below the row.
           const inset = parseFloat(getComputedStyle(this.element).paddingTop) || 0;
+          // An absolute target, so a reveal during a running smooth scroll
+          // lands on the row instead of offsetting a moving position.
+          const scrollTop = this.element.scrollTop;
           if (box.top < list.top + inset) {
-            return box.top - list.top - inset;
+            return scrollTop + box.top - list.top - inset;
           }
           if (box.bottom > list.bottom - inset) {
-            return box.bottom - list.bottom + inset;
+            return scrollTop + box.bottom - list.bottom + inset;
           }
           return null;
         })
-        .then(delta => {
+        .then(top => {
           this._revealPending = false;
-          if (delta) {
-            this.element.scrollBy({ top: delta, behavior: this.reduceMotion() ? "instant" : "smooth" });
+          if (top !== null) {
+            this.element.scrollTo({ top, behavior: this.reduceMotion() ? "instant" : "smooth" });
           }
         })
         .catch(() => {

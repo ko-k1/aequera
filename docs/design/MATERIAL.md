@@ -37,6 +37,22 @@ material.sidebar.border = true
 material.sidebar.shadow = "soft"
 ```
 
+## Frame Material Backends
+
+The frame (the one surface behind all chrome) is blurred by the OS, never by
+an in-page `backdrop-filter`, so the blur costs the browser nothing per frame:
+
+- Windows 11: Mica (`widget.windows.mica`).
+- Linux: `aequera.material.frame` = `auto` | `glass` | `solid`. Glass tints
+  the frame with the theme color at `aequera.material.opacity` (60-100%) and
+  the compositor blurs the desktop behind it; `auto` picks glass only where
+  the desktop blurs translucent windows by default (Hyprland). A desktop that
+  does not blur gets the solid frame, never chrome text over a sharp
+  wallpaper.
+- macOS: no vibrancy wiring yet; solid.
+
+Implementation: `aequera/shell/README.md` (Frame material).
+
 ## Material Performance
 
 - expensive effects must degrade gracefully;

@@ -12,11 +12,12 @@ pref-gated browser patches. No telemetry, no network.
 
 | File | Role |
 |---|---|
-| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (Mica on Windows, opaque toolbar fallback elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on |
-| `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome |
+| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (Mica on Windows; Linux glass on blurring desktops, opaque elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on |
+| `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome; the glass frame material |
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
-| `aequera-frame.js` | `AequeraFrame`: publishes motion tokens from prefs, owns the page's top inset |
+| `aequera-frame.js` | `AequeraFrame`: publishes motion tokens and the frame material from prefs, owns the page's top inset |
+| `fullscreen/` | `AequeraFullscreen`: popups open whole in Wayland fullscreen |
 | `rail/` | The tab rail |
 | `workspaces/` | Workspaces + dock |
 | `command/` | Command surface: Aequera rows in the address bar |
@@ -63,8 +64,10 @@ pinned mode (`aequera.rail.pinned`, takes layout space); and
 card clips back on the same timing. Turning `sidebar.revamp` on hands the
 rail back to Firefox's launcher.
 
-The rail paints nothing of its own (Firefox's legacy sidebar color is
-removed), so collapsed, widened, and the top bar are one material. Its state
+The rail is on the frame material with the top bar (Firefox's legacy sidebar
+color is removed): it paints nothing on Windows (Mica) and under the glass
+material, and the top bar's opaque toolbar color elsewhere, so collapsed,
+widened, and the top bar are one material (see Frame material). Its state
 is split: the target (`aequera-rail-expanded`) drives width, page clip, and
 drawer edge at once; the content (`aequera-rail-content-expanded` +
 `tabbrowser-tabs[expanded]`: tab rows, essentials, dock) widens at once but
@@ -89,7 +92,13 @@ revealed by the widening and fade in (clipped away, then faded out, on
  window preview a gap and are adopted at the drop position
  (`gBrowser.adoptTab`, carrying the native tab-drop type so vanilla Firefox
  windows interoperate both ways). Hidden tabs (other workspaces, extensions)
- are not listed. New Tab is the same row with a dim "+" centered in both
+ are not listed. The selected row is kept in view: however a tab gets
+ selected (Ctrl+Tab, the command surface, a new tab, a restored session), the
+ list scrolls to show it, measured after the next natural layout flush
+ (`promiseDocumentFlushed`) so a switch never forces a reflow, and only the
+ list scrolls, never the rail. A switch rewrites only the outgoing and
+ incoming rows, and a row update writes only what changed, so switching costs
+ the same with 5 or 500 tabs. New Tab is the same row with a dim "+" centered in both
  states: a 30px square collapsed, a full-width row widened. Pinned tabs stay
  Firefox's (the essentials grid). Not yet: keyboard focus and arrow-key
  navigation of the rows (tabs switch with Ctrl+Tab / Ctrl+Page Down
@@ -157,8 +166,45 @@ to `false` (Firefox's macOS default), so no patch. The page stays a card,
 clipped by the widened rail as in a window. Page-requested (DOM) fullscreen,
 e.g. video, still hides all chrome and shows the page unclipped, and so does
 F11 once the user turns "Hide Toolbars" back on in the toolbar context menu.
-The bookmarks drawer is a toolbar Firefox collapses in fullscreen; it stays
-hidden there. Test: `browser_aequera_fullscreen.js`.
+The bookmarks drawer peeks in F11 exactly as in a window (its peek rule
+outranks Firefox's fullscreen toolbar collapse); it is gone with the rest of
+the chrome in DOM fullscreen and while "Hide Toolbars" hides the top bar.
+
+Popups on Wayland (`fullscreen/aequera-fullscreen.js`): the compositor places
+popups, and some confine them to the output minus bars and docks even while
+a fullscreen window covers those (Hyprland: `logicalBoxMinusReserved`). With
+the top bar kept up, every panel opened from it starts inside that strip, and
+Firefox lets the compositor flip or resize a popup anchored below its button,
+not slide it. So the compositor trimmed the overlap: extension popups and
+small panels opened short, their bottom cut off, and Firefox kept that size
+for the popup. While the window is fullscreen on Wayland, `AequeraFullscreen`
+gives chrome popups `flip="slide"` (Firefox then allows the vertical slide),
+including popups added later, before they open; `flip="none"` is left alone
+and the original value returns on exit. X11, Windows, and macOS place popups
+in layout and are untouched. Test: `browser_aequera_fullscreen.js`.
+
+### Frame material
+
+The prototype's one glass layer behind all chrome (`#frame`: blur 24,
+saturate 1.5) maps to an OS backdrop, never to an in-page blur: Windows 11
+Mica (`widget.windows.mica`); on Linux, the compositor's own blur behind a
+translucent window. `aequera.material.frame`:
+
+| Value | Linux frame |
+|---|---|
+| `auto` (default) | `glass` on a desktop that blurs translucent windows by default (Hyprland, seen as `HYPRLAND_INSTANCE_SIGNATURE` in the local environment), else `solid` |
+| `glass` | `body`, the frame behind every chrome surface, paints the theme's own toolbox color at `aequera.material.opacity` percent (default 80, clamped to 60-100 so a bright wallpaper cannot wash out chrome text); the rail paints nothing |
+| `solid` | The opaque frame |
+
+The root paints nothing on Linux, so Gecko already gives the window an alpha
+channel there; glass is paint only (no patch, no backdrop-filter). It needs
+`-moz-gtk-csd-transparency-available` (a compositing desktop), skips themes
+with their own colors or images (lwtheme), and keeps the page card and popups
+opaque (no stacked blur, `docs/design/MATERIAL.md`). On a desktop that does
+not blur (GNOME, KDE without the blur protocol, sway) an explicit `glass` is
+translucent but unblurred, which is why `auto` does not pick it there.
+Resolved in `aequera-frame.js` to `:root[aequera-material]`; an invalid value
+falls back to `auto`. Test: `browser_aequera_material.js`.
 
 ## Workspaces (`workspaces/`)
 

@@ -147,11 +147,13 @@ pref("browser.startup.page", 3);
 
 // Frame material: one OS backdrop behind all chrome. On Windows 11 that is
 // Mica (widget.windows.mica below), the native counterpart of the
-// prototype's single #frame glass layer. macOS (vibrancy) and Linux
-// (compositor transparency) have no counterpart pref yet: on those platforms
-// the rail falls back to the opaque toolbar color (aequera-rail.css), the
-// same paint as the top bar, so chrome stays seamless without depending on
-// a backdrop that may not exist. Solid chrome there, never floating text.
+// prototype's single #frame glass layer. On Linux it is the compositor's
+// blur behind a translucent frame (aequera.material.frame below), chosen
+// only where the desktop is known to blur. macOS (vibrancy) has no
+// counterpart yet. Without a backdrop the rail falls back to the opaque
+// toolbar color (aequera-rail.css), the same paint as the top bar, so chrome
+// stays seamless without depending on a backdrop that may not exist. Solid
+// chrome there, never floating text.
 pref("widget.windows.mica", true);
 // Linux frame material (aequera-frame.js, aequera-shell.css): "glass" makes
 // the frame translucent so the compositor blurs the desktop behind the

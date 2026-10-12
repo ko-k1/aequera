@@ -5,7 +5,8 @@
 
 // Window fullscreen (F11) keeps the top bar and the tab rail on screen
 // (aequera-prefs.js: browser.fullscreen.autohide = false), and the page card
-// is clipped only while the chrome is hidden (aequera-shell.css).
+// is clipped only while the chrome is hidden (aequera-shell.css). On Wayland
+// popups opened from that top bar must open whole (aequera-fullscreen.js).
 
 const AUTOHIDE = "browser.fullscreen.autohide";
 const tabbox = () => document.getElementById("tabbrowser-tabbox");
@@ -70,4 +71,55 @@ add_task(async function test_autohide_on_still_hides_and_unclips() {
 
   await setFullscreen(false);
   await SpecialPowers.popPrefEnv();
+});
+
+// Wayland: chrome popups slide instead of being trimmed while fullscreen
+// (fullscreen/aequera-fullscreen.js). Headless reports no window protocol,
+// so the tests set the module's cached answer.
+function addPanel(flip) {
+  const panel = document.createXULElement("panel");
+  panel.setAttribute("type", "arrow");
+  if (flip) {
+    panel.setAttribute("flip", flip);
+  }
+  document.getElementById("mainPopupSet").appendChild(panel);
+  return panel;
+}
+
+add_task(async function test_wayland_fullscreen_popups_slide() {
+  const fs = window.AequeraFullscreen;
+  fs._wayland = true;
+  const before = addPanel(); // panel.js defaults an arrow panel to flip="both"
+  const optOut = addPanel("none");
+  is(before.getAttribute("flip"), "both", "arrow panels default to flip=both");
+
+  await setFullscreen(true);
+  is(before.getAttribute("flip"), "slide", "an existing popup slides while fullscreen");
+  is(optOut.getAttribute("flip"), "none", "a popup that opts out of constraining is left alone");
+  const later = addPanel();
+  await TestUtils.waitForCondition(
+    () => later.getAttribute("flip") == "slide",
+    "a popup added while fullscreen slides too"
+  );
+
+  await setFullscreen(false);
+  is(before.getAttribute("flip"), "both", "leaving fullscreen restores the original flip");
+  is(later.getAttribute("flip"), "both", "also for popups added meanwhile");
+  ok(!document.querySelector("[aequera-fullscreen-flip]"), "no marks are left behind");
+
+  for (const panel of [before, optOut, later]) {
+    panel.remove();
+  }
+  fs._wayland = null;
+});
+
+add_task(async function test_other_protocols_leave_popups_alone() {
+  const fs = window.AequeraFullscreen;
+  fs._wayland = false;
+  const panel = addPanel();
+  await setFullscreen(true);
+  is(panel.getAttribute("flip"), "both", "layout-placed popups (X11, Windows, macOS) keep their flip");
+  await setFullscreen(false);
+  panel.remove();
+  fs._wayland = null;
 });

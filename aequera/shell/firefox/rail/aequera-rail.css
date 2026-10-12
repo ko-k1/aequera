@@ -40,11 +40,12 @@
   overflow: visible;
   /* sidebar.css paints the container with the opaque legacy sidebar color;
    * the rail is chrome on the one window backdrop like the top bar, so where
-   * such a backdrop exists (Windows 11 Mica, see aequera-prefs.js) it paints
-   * nothing and collapsed and widened read as the same material. Everywhere
-   * else it wears the opaque toolbar color — the top bar's own paint — so
-   * chrome stays seamless without depending on a backdrop that may not exist
-   * (no compositor on Linux, no vibrancy wiring on macOS yet). */
+   * such a backdrop exists (Windows 11 Mica, see aequera-prefs.js; the
+   * Linux glass material, aequera-shell.css) it paints nothing and collapsed
+   * and widened read as the same material. Everywhere else it wears the
+   * opaque toolbar color — the top bar's own paint — so chrome stays
+   * seamless without depending on a backdrop that may not exist (a solid
+   * Linux frame, no vibrancy wiring on macOS yet). */
   background-color: var(--toolbar-bgcolor);
   width: var(--aequera-rail-collapsed-width);
   z-index: var(--browser-area-z-index-sidebar-expand-on-hover, 3);

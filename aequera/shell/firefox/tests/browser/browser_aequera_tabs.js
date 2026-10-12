@@ -129,6 +129,57 @@ add_task(async function test_selection_follows_both_ways() {
   is(rowFor(b).getAttribute("aria-selected"), "false", "the old row is unmarked");
 });
 
+add_task(async function test_selected_row_scrolls_into_view() {
+  // Enough rows to overflow the list, however tall the test window is.
+  const rowsThatFit = Math.ceil(list().clientHeight / 36);
+  const tabs = [];
+  for (let i = 0; i < rowsThatFit + 10; i++) {
+    tabs.push(BrowserTestUtils.addTab(gBrowser, "about:blank", { skipAnimation: true }));
+  }
+  opened.push(...tabs);
+  await TestUtils.waitForCondition(() => list().scrollHeight > list().clientHeight, "the list overflows");
+  const shown = tab => {
+    const box = list().getBoundingClientRect();
+    const row = rowFor(tab).getBoundingClientRect();
+    return row.top >= box.top && row.bottom <= box.bottom;
+  };
+
+  const last = tabs.at(-1);
+  ok(!shown(last), "the last row starts out of view");
+  // Selected from outside the rail (keyboard, command surface).
+  gBrowser.selectedTab = last;
+  await TestUtils.waitForCondition(() => shown(last), "selecting a tab scrolls its row into view");
+  Assert.greater(list().scrollTop, 0, "by scrolling the list");
+  is(Math.round(railBox().getBoundingClientRect().top), Math.round(container().getBoundingClientRect().top), "the rail itself did not move");
+
+  const first = gBrowser.tabs.find(t => !t.pinned && !t.hidden);
+  gBrowser.selectedTab = first;
+  await TestUtils.waitForCondition(() => shown(first), "and back up for a row above");
+
+  for (const tab of tabs) {
+    gBrowser.removeTab(tab, { animate: false });
+  }
+});
+
+add_task(async function test_a_switch_touches_only_two_rows() {
+  const [a, b] = opened.filter(t => t.isConnected && !t.hidden);
+  gBrowser.selectedTab = a;
+  await TestUtils.waitForCondition(() => rowFor(a).getAttribute("aria-selected") == "true", "a selected");
+  const touched = new Set();
+  const observer = new MutationObserver(records => {
+    for (const record of records) {
+      touched.add(record.target.closest(".aequera-tab"));
+    }
+  });
+  observer.observe(list(), { attributes: true, childList: true, characterData: true, subtree: true });
+  gBrowser.selectedTab = b;
+  await TestUtils.waitForCondition(() => rowFor(b).getAttribute("aria-selected") == "true", "b selected");
+  await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+  observer.disconnect();
+  ok(touched.has(rowFor(a)) && touched.has(rowFor(b)), "the outgoing and incoming rows change");
+  is(touched.size, 2, "and no other row is touched");
+});
+
 add_task(async function test_closing_from_the_rows() {
   const [tab] = await openTabs(1);
   // A real middle-click: press + release of button 1 (Gecko derives auxclick).
