@@ -196,6 +196,90 @@
     }
   }
 
+  // Procedural filters (`:has-text()`, `:upward()`, `:remove()`, ...), run
+  // by procedural.js. What they hide is marked with the frame's mark
+  // attribute, which a user-origin rule hides the mode's way.
+  let mark = null;
+  let procedural = [];
+  const marked = new WeakSet();
+
+  function markHidden(element) {
+    marked.add(element);
+    if (!element.hasAttribute(mark)) {
+      element.setAttribute(mark, "");
+    }
+  }
+
+  // Wrappers an ad leaves empty: once their ad is hidden, a box holding only
+  // an "Advertisement" label, nothing, or other hidden ads would stay as an
+  // empty frame. Such a wrapper is hidden too (marked), up to FOLD_LEVELS up,
+  // and shown again if it gains content.
+  const FOLD_LEVELS = 3;
+  const FOLD_MAX_CHILDREN = 6;
+  const FOLD_NEVER = /^(HTML|BODY|MAIN|ARTICLE|HEADER|FOOTER|NAV|FORM|UL|OL|TABLE|TBODY|TR)$/;
+  const LABEL =
+    /^(advertisement|advertisements|advertising|ad|ads|sponsored|sponsored content|paid content|story continues below advertisement|anzeige|werbung|publicité|publicidad|pubblicità|reklame|広告|スポンサー|广告|광고)$/i;
+  const MEDIA = "img, iframe, video, canvas, svg, picture, object, embed";
+  const folded = new Set();
+
+  const hiddenByUs = element => found.has(element) || marked.has(element);
+
+  function onlyDebris(wrapper) {
+    if (FOLD_NEVER.test(wrapper.tagName) || wrapper.childElementCount > FOLD_MAX_CHILDREN) {
+      return false;
+    }
+    for (const node of wrapper.childNodes) {
+      if (node.nodeType == Node.TEXT_NODE) {
+        const text = node.nodeValue.trim();
+        if (text && !LABEL.test(text)) {
+          return false;
+        }
+      } else if (node.nodeType == Node.ELEMENT_NODE && !hiddenByUs(node) && node.getClientRects().length) {
+        const text = (node.textContent || "").trim();
+        if ((text && !LABEL.test(text)) || node.matches(MEDIA) || node.querySelector(MEDIA)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function fold(element) {
+    let wrapper = element.parentElement;
+    for (let level = 0; level < FOLD_LEVELS && wrapper && onlyDebris(wrapper); level++) {
+      markHidden(wrapper);
+      folded.add(wrapper);
+      wrapper = wrapper.parentElement;
+    }
+  }
+
+  function unfoldFilled() {
+    for (const wrapper of folded) {
+      if (!wrapper.isConnected) {
+        folded.delete(wrapper);
+      } else if (!onlyDebris(wrapper)) {
+        folded.delete(wrapper);
+        marked.delete(wrapper);
+        wrapper.removeAttribute(mark);
+      }
+    }
+  }
+
+  // A newly hidden element: counted, described for the vault, its wrapper
+  // folded.
+  function hidden(element, ads) {
+    found.add(element);
+    const ad = describe(element);
+    if (ad) {
+      ads.push(ad);
+    } else {
+      wait(element);
+    }
+    if (mark) {
+      fold(element);
+    }
+  }
+
   function scan() {
     idle = 0;
     if (!active) {
@@ -205,18 +289,40 @@
     const ads = [];
     for (let i = 0; i < selectors.length; i += CHUNK) {
       for (const element of matching(selectors.slice(i, i + CHUNK))) {
-        if (found.has(element)) {
-          continue;
-        }
-        found.add(element);
-        count++;
-        const ad = describe(element);
-        if (ad) {
-          ads.push(ad);
-        } else {
-          wait(element);
+        if (!found.has(element)) {
+          count++;
+          hidden(element, ads);
         }
       }
+    }
+    for (const filter of procedural) {
+      for (const element of VeilProcedural.run(filter, document)) {
+        if (found.has(element) || folded.has(element)) {
+          continue;
+        }
+        const action = filter.action;
+        if (!action) {
+          count++;
+          markHidden(element);
+          hidden(element, ads);
+        } else if (action.type == "remove") {
+          // Described before it goes, for the vault.
+          count++;
+          found.add(element);
+          const ad = describe(element);
+          if (ad) {
+            ads.push(ad);
+          }
+          element.remove();
+        } else if (action.type == "remove-attr") {
+          element.removeAttribute(action.arg);
+        } else if (action.type == "remove-class") {
+          element.classList.remove(action.arg);
+        }
+      }
+    }
+    if (mark) {
+      unfoldFilled();
     }
     send(count, ads);
   }
@@ -273,17 +379,28 @@
   }
 
   function schedule() {
-    if (active && started && selectors.length && !idle) {
+    if (active && started && (selectors.length || procedural.length) && !idle) {
       idle = requestIdleCallback(scan, { timeout: 1000 });
     }
   }
 
   const observer = new MutationObserver(records => {
+    // Only marks changed (ours, or a page removing one): no new scan.
+    let changed = false;
     for (const record of records) {
       if (record.type == "attributes") {
+        if (record.attributeName == mark) {
+          // A page removing the mark from what it hides: put back.
+          if (marked.has(record.target) && !record.target.hasAttribute(mark)) {
+            record.target.setAttribute(mark, "");
+          }
+          continue;
+        }
+        changed = true;
         note(record.target);
         continue;
       }
+      changed = true;
       for (const node of record.addedNodes) {
         if (node.nodeType != Node.ELEMENT_NODE) {
           continue;
@@ -293,6 +410,9 @@
           note(element);
         }
       }
+    }
+    if (!changed) {
+      return;
     }
     // The first batch of names goes out at once; later ones are coalesced.
     nameTimer ||= setTimeout(flushNames, sent.size > classes.length + ids.length ? 100 : 0);
@@ -309,6 +429,11 @@
         return;
       }
       started = true;
+      if (typeof reply.mark == "string" && /^v[0-9a-f]{12}$/.test(reply.mark)) {
+        mark = reply.mark;
+        procedural = Array.isArray(reply.procedural) ? reply.procedural : [];
+        observer.observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "id", mark] });
+      }
       applied(reply.selectors);
       schedule();
       if (reply.adFrame) {

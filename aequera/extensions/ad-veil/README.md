@@ -32,7 +32,8 @@ Design, decisions, and measurements: `docs/design/ADS.md` and
 | `addon/experiments/` | `aequeraVeil`: lifts tracking protection's ad blocks on veiled sites (parent process) |
 | `addon/vault.js` | The vault store (IndexedDB): hidden ads, daily blocked totals, saved ad images, prune, export, clear |
 | `addon/engine.js` | `engine.wasm` wrapper |
-| `addon/content.js` | Reports class and id names for generic rules; finds and describes hidden ads (inside ad frames too) for the popup and vault |
+| `addon/content.js` | Reports class and id names for generic rules; runs procedural filters and folds emptied ad wrappers (the frame's mark); finds and describes hidden ads (inside ad frames too) for the popup and vault |
+| `addon/procedural.js` | Procedural filter runner (`:has-text()`, `:upward()`, `:xpath()`, ...), loaded before `content.js`; no extension API |
 | `addon/pages/` | `popup.html` (toolbar button), `dashboard.html` (vault, blocking, sites, settings), the vault's canvas `canvas.js`, shared `common.js` and `ui.css` |
 | `addon/icons/` | Theme-colored button icons (on, off for this site) |
 | `addon/lists/` | Filter list snapshots, versions, license |
@@ -56,7 +57,7 @@ bash tools/build/test-shell.sh aequera
 `engine.wasm` is committed so the browser build needs no Rust or wasm
 toolchain. `build-engine.sh` is deterministic for a given rustc (checked:
 two clean builds with rustc 1.98.1 are byte-identical, sha256
-`970937a316dc50849e76deecf855c0327f03b59e1e81e83d8ef616ef2a4e7fef`).
+`5bc8f33b28b69dd91c5c23b87fcc1f8395f605edded97bd3103c916b37e3c22b`).
 
 ## Acceptance
 
@@ -159,6 +160,21 @@ AdNauseam-style vault (`docs/design/ADS.md`, Vault):
   canvas (the redrawn chart detached the event's target, so the canvas did
   not see the press was the timeline's; fixed by checking the event path).
 
+Hiding (`docs/design/ADS.md`, Hiding; slice 2c):
+
+- Procedural filters run (adblock-rust's `css-validation`: 219 rules of the
+  shipped lists that were dropped as invalid CSS), what they hide marked
+  with a per-frame random attribute a user-origin rule hides; wrappers an
+  ad leaves with only a label or nothing are hidden too; veil mode
+  collapses what it hides (rendered, height 0; an empty bait keeps 1px);
+  veil mode cancels an ad server it let through that has not answered in
+  10 s.
+- `cargo test -p aequera-adveil-engine`: 11 tests (adds procedural chains);
+  `model.test.mjs`: 20 (adds procedural validation);
+  `browser_aequera_adveil.js` 115 checks (each procedural operator in a
+  real page; slot folding; veil collapse and bait; the silent ad server),
+  mutation-checked. Live numbers in ADS.md.
+
 ## Known gaps (later slices)
 
 - Startup cost: instantiate + compile (about 270 ms) runs on every start;
@@ -177,4 +193,9 @@ AdNauseam-style vault (`docs/design/ADS.md`, Vault):
   its 90-day limit do).
 - Strings are English literals (as the rest of the shell, for now).
 - `about:blank` and `srcdoc` frames get no cosmetic rules.
-- Scriptlet (`##+js`) rules do nothing: no resources are loaded.
+- Scriptlet (`##+js`) rules do nothing: no resources are loaded. Ad
+  recovery services that serve ads from rotating domains still load
+  (weather.com: their sections are hidden, but the requests go out;
+  EasyPrivacy's fix is a scriptlet).
+- Veil mode's 1px for empty elements answers bait checks of `offsetHeight`;
+  a wall that checks a bait's exact size would still see it.

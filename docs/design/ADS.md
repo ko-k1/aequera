@@ -72,8 +72,11 @@ lists/ snapshots (EasyList, EasyPrivacy)      background
 engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each start, update)
                                                 webRequest.onBeforeRequest (blocking) -> check
                                                 cosmetic lookup per frame -> insertCSS (user)
+                                                  selectors + the frame's mark rule
                                               content script (all frames, document_start)
                                                 class/id scan -> generic selectors
+                                                procedural filters, emptied wrappers -> mark
+                                                hidden ads -> vault
                                               vault store, visit queue (later slices)
 ```
 
@@ -108,8 +111,17 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   is the planned startup improvement, with the snapshots as fallback.
 - Until the engine is ready, `onBeforeRequest` waits for it (as uBlock
   Origin does on Firefox) instead of letting requests through.
-- Unsupported syntax is skipped by adblock-rust; scriptlets are not loaded
-  (no resources), so `##+js` rules do nothing.
+- adblock-rust is built with `css-validation`, so procedural operators
+  (`:has-text()`, `:-abp-contains()`, `:upward()`, `:xpath()`, `:remove()`,
+  …) parse into operator chains instead of passing as plain selectors no
+  browser accepts. Measured on the shipped lists: 24,459 plain cosmetic
+  rules, 219 procedural (before: 0; they were dropped as invalid CSS), 7
+  rejected (1 before). Cost in SpiderMonkey: engine.wasm 2.56 → 2.71 MB,
+  instantiate 155 → 177 ms, list compile 101–111 → 112–134 ms; request
+  checks unchanged (9.2–10.2 µs, p99 40 µs, same decisions on 30,368 corpus
+  requests); cosmetic lookup unchanged (0.21 ms per page).
+- Other unsupported syntax is skipped by adblock-rust; scriptlets are not
+  loaded (no resources), so `##+js` rules do nothing.
 
 ### Hiding
 
@@ -119,13 +131,49 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
 - Generic selectors: the content script collects class and id names and
   asks for matches (`hidden_class_id_selectors`), so no page carries the
   full generic list.
-- Every selector is parsed by Gecko as one rule and kept only if it is a
-  single style rule whose only declaration is the hiding one, so list data
-  cannot add declarations (a `url()` that leaks page state) or rules.
-- `display: none !important` (collapse) in block mode; veil mode uses
-  `opacity: 0 !important; pointer-events: none !important`, which keeps the
-  element's box so size-based bait checks pass. Each style is validated as
-  its own rule (only its declarations).
+- Procedural filters (host-specific only, as adblock-rust allows): the
+  background validates them (`VeilModel.proceduralFrom`: known operators,
+  string arguments, actions hide, `remove`, `remove-attr`,
+  `remove-class`; `:style()` is never applied, so list data sets no styles)
+  and `procedural.js` runs them in the content script when the page is
+  idle. What they hide is marked with the frame's **mark**: an attribute
+  with a random name per frame, hidden by a user-origin rule the background
+  inserts (the page cannot name it in advance or override it; a mark the
+  page removes is put back). What they remove is described for the vault
+  first.
+- Emptied wrappers: once an ad is hidden, a box around it holding only
+  hidden ads, an "Advertisement"-style label (a short list of words, in
+  several languages), or nothing rendered would stay as an empty frame
+  with a label; it is marked too, up to three levels up, never a page
+  landmark (body, main, article, header, footer, nav, form, lists, tables)
+  or a box with more than six children, and unmarked if it gains content.
+- Every selector is parsed by Gecko into each of the mode's rules and kept
+  only if each is a single style rule whose declarations are exactly the
+  mode's (compared with the same declarations parsed on a plain selector),
+  so list data cannot add declarations (a `url()` that leaks page state) or
+  rules.
+- Block mode: `display: none !important`. Veil mode keeps the element
+  rendered, so its ad loads and is recorded, but `opacity: 0;
+  pointer-events: none` and collapsed (`height`, `min-height`,
+  `max-height`, `margin`, `padding`, `border-width` 0), so the page closes
+  up around it. Its overflow is not clipped: a lazy ad inside still
+  intersects the viewport, as lazy-loading scripts check. An empty element
+  (`:is(selector):empty`: an anti-adblock bait, or a slot not yet filled)
+  keeps 1px of height, so a bait check of `offsetHeight` sees it laid out.
+- Why collapse (measured, 2026-10-12, 10 live sites, Strict, fresh
+  profiles): the kept box left 1.9 to 13.2 million px² of blank space per
+  page (foxnews.com 80 boxes); collapsing ad slots with ad content only,
+  0.4 to 9.9 million; collapsing every non-empty element, 0.4 to 2.1
+  million; collapsing everything, none (page heights as in block mode),
+  with as many ads recorded in each variant (58 to 61 found, 49 to 58
+  different).
+- End to end, same 10 sites (2026-10-12): block mode showed no ad and left
+  no empty box (before: weather.com showed 10 ads in sections labeled
+  "Advertisement"); veil mode left 0 px² of blank space except one 29,000
+  px² box on merriam-webster.com (before: 1.6 to 11.6 million px² per page,
+  and merriam-webster.com and cnn.com never finished loading), and the
+  vault recorded 62 ads found, 58 different, 41 with saved images (before:
+  49, 41, 25).
 
 ### Toolbar button and popup
 
@@ -266,6 +314,14 @@ between a page and its ads; veil mode lifts each.
   protection's cookie and storage rules. An allowed channel is still a
   tracking channel to Firefox, so its tracker cookie rules keep applying;
   Ad Veil therefore strips no headers itself.
+- A request `aequeraVeil` let through that has no response headers 10
+  seconds later is cancelled (`NS_ERROR_NET_TIMEOUT`): tracking protection
+  would have blocked it, and an ad server that never answers holds the
+  page's load event forever. Measured (2026-10-12): veiled cnn.com stayed
+  `interactive` for over 60 s on `ads.stickyadstv.com` scripts that never
+  answered (curl: no response in 40 s), and merriam-webster.com and
+  cnn.com timed out a 90 s navigation; with the timeout, cnn.com is
+  `complete` at about 20 s and both load.
 - Modes resolve the same way on both sides (`model.js`, `resolveMode`,
   loaded into the parent API).
 - Cost: one check per request in every mode (8.7 µs mean, p99 40 µs in
@@ -275,9 +331,14 @@ between a page and its ads; veil mode lifts each.
   veiled): ad slots 1/2 and 2/2 filled over two runs; the vault recorded
   the Google ads with their destinations and saved images.
 - Not covered: walls that check something other than ad requests and bait
-  sizes (scriptlet-level defusing is not loaded), and ads served from
-  hosts EasyList does not list whole that Firefox blocks as fingerprinters.
-  Slice 5 measures what remains.
+  sizes (scriptlet-level defusing is not loaded), ads served from hosts
+  EasyList does not list whole that Firefox blocks as fingerprinters, and
+  ad recovery services that serve ads from rotating domains no list names
+  (weather.com: before this slice its block mode showed 10 such ads; now
+  their sections are hidden, but the domains still serve, 55 requests on
+  one load; EasyPrivacy's answer at the source is a scriptlet,
+  `weather.com##+js(acs, document.getElementsByTagName, .pubads)`). Slice 5
+  measures what remains.
 
 ### Visit (slice 4)
 
@@ -353,6 +414,7 @@ whether ETP's `ads-track-digest256` blocked a request before Ad Veil saw it.
 | 1 Block + hide | engine crate + wasm, list snapshots, built-in add-on, webRequest blocking, cosmetic hiding, `aequera.adveil.enabled` | engine tests; fixture page: ad request blocked and ad element hidden, pref off restores both; manifest permission test; real launch installs the add-on; SpiderMonkey per-request numbers recorded |
 | 2 Vault + controls | vault store and page, address bar button and popup, per-site off | done: vault records the fixture's ad (link, site, text, image) and blocked host; private windows record nothing (mutation-checked); popup switch turns blocking and hiding off and on for the site; no request of the add-on's own with the vault open |
 | 2b Veil mode | per-site veil: list split, veil style, `aequeraVeil` classifier listener | done: on a veiled page the EasyList ad and an ad network tracking protection blocks load, an EasyPrivacy tracker and a social tracker stay blocked, the ad element keeps its box (invisible, unclickable), tracking protection stays on for the site, and Block restores it all (Firefox's test trackers; mutation-checked: fails without `allow()`) |
+| 2c Hiding | procedural filters, the frame mark, emptied wrappers, veil collapse, veil stall timeout | done: each procedural operator in a real page; a slot left with only a label folds and the box around it stays; veiled ad rendered at height 0, an empty bait at 1px; a silent ad server is cancelled and the page loads (mutation-checked: without the fold or the timeout the tests fail); live numbers in Hiding and Veil mode |
 | 3 Updates | automatic list updates with fallback | update shows in the panel; a corrupt download keeps the previous set |
 | 4 First run + Visit | first-run screen, visit queue | every visit logged; limits enforced; private windows never visit |
 | 5 Tune | corpus run, ETP ads-list decision | numbers recorded here |

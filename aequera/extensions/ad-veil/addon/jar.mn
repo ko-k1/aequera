@@ -9,6 +9,7 @@ browser.jar:
     builtin-addons/adveil/vault.js              (vault.js)
     builtin-addons/adveil/background.js         (background.js)
     builtin-addons/adveil/content.js            (content.js)
+    builtin-addons/adveil/procedural.js         (procedural.js)
     builtin-addons/adveil/engine.wasm           (engine.wasm)
     builtin-addons/adveil/icons/veil.svg        (icons/veil.svg)
     builtin-addons/adveil/icons/veil-off.svg    (icons/veil-off.svg)

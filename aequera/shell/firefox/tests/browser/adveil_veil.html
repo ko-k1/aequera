@@ -12,10 +12,18 @@
 <script src="https://tracking.example.com/browser/browser/aequera/tests/browser/adveil_network_ad.js"></script>
 <!-- Firefox's test social tracker: never lifted. -->
 <script src="https://social-tracking.example.org/browser/browser/aequera/tests/browser/adveil_social.js"></script>
+<!-- The same ad network, a server that does not answer (for 30 s): veil
+     mode lets it through, then cancels it so the page still loads. -->
+<script async src="https://tracking.example.com/browser/browser/aequera/tests/browser/adveil_stall.sjs" onerror="window.stallFailed = true"></script>
 </head>
 <body>
 <!-- EasyList "##.ad_banner": collapsed in block mode, veiled in veil mode. -->
 <div class="ad_banner" id="banner" style="width: 300px; height: 50px">ad</div>
+<!-- The same rule on an empty element, as an anti-adblock bait. -->
+<div class="ad_banner" id="bait" style="width: 300px; height: 10px"></div>
 <div class="article" id="article">text</div>
+<script>
+  addEventListener("load", () => (window.pageLoaded = true));
+</script>
 </body>
 </html>

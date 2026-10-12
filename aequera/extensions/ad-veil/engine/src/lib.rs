@@ -31,6 +31,11 @@ pub struct Cosmetic {
     pub exceptions: Vec<String>,
     /// The page opted out of generic rules (`$generichide`).
     pub generichide: bool,
+    /// Host-specific filters CSS cannot express (`:has-text()`, `:upward()`,
+    /// `:remove()`, ...), as adblock-rust's operator chains:
+    /// `{"selector": [{"type": "css-selector", "arg": ".x"}, ...],
+    /// "action": {"type": "remove"}}` (no action: hide). Sorted by their JSON.
+    pub procedural: Vec<serde_json::Value>,
 }
 
 /// Class and id names seen in a document, for generic rules.
@@ -89,10 +94,16 @@ impl Veil {
         hide.sort();
         let mut exceptions: Vec<String> = resources.exceptions.into_iter().collect();
         exceptions.sort();
+        let mut procedural: Vec<String> = resources.procedural_actions.into_iter().collect();
+        procedural.sort();
         Cosmetic {
             hide,
             exceptions,
             generichide: resources.generichide,
+            procedural: procedural
+                .iter()
+                .filter_map(|json| serde_json::from_str(json).ok())
+                .collect(),
         }
     }
 
@@ -120,6 +131,10 @@ mod tests {
 example.com##.sponsored
 ##.ad-banner
 example.com#@#.ad-banner
+example.com#?#.card:has-text(Sponsored)
+example.com##.tile:has-text(Promoted)
+example.com#?#.row:-abp-contains(Partner)
+example.com##.promo-box:remove()
 ";
 
     fn veil() -> Veil {
@@ -208,6 +223,22 @@ example.com#@#.ad-banner
     }
 
     #[test]
+    fn procedural_filters_come_as_operator_chains() {
+        let v = veil();
+        let procedural = v.cosmetic("https://example.com/a").procedural;
+        assert_eq!(
+            procedural,
+            vec![
+                serde_json::json!({"selector": [{"type": "css-selector", "arg": ".card"}, {"type": "has-text", "arg": "Sponsored"}]}),
+                serde_json::json!({"selector": [{"type": "css-selector", "arg": ".promo-box"}], "action": {"type": "remove"}}),
+                serde_json::json!({"selector": [{"type": "css-selector", "arg": ".row"}, {"type": "has-text", "arg": "Partner"}]}),
+                serde_json::json!({"selector": [{"type": "css-selector", "arg": ".tile"}, {"type": "has-text", "arg": "Promoted"}]}),
+            ]
+        );
+        assert!(v.cosmetic("https://other.test/").procedural.is_empty());
+    }
+
+    #[test]
     fn generic_class_selectors_and_exceptions() {
         let v = veil();
         let seen = |url: &str| Seen {
@@ -234,6 +265,29 @@ example.com#@#.ad-banner
             loaded.cosmetic("https://example.com/a"),
             veil().cosmetic("https://example.com/a")
         );
+    }
+
+    /// Cosmetic rules of the shipped lists by parse result (run with
+    /// `--ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn shipped_list_cosmetic_stats() {
+        use adblock::filters::cosmetic::CosmeticFilter;
+        let (mut plain, mut procedural, mut rejected) = (0, 0, 0);
+        for name in ["easylist.txt", "easyprivacy.txt"] {
+            let path = format!("{}/../addon/lists/{name}", env!("CARGO_MANIFEST_DIR"));
+            for line in std::fs::read_to_string(path).unwrap().lines() {
+                if !(line.contains("##") || line.contains("#?#") || line.contains("#@#")) || line.starts_with('!') {
+                    continue;
+                }
+                match CosmeticFilter::parse(line, false, Default::default()) {
+                    Ok(filter) if filter.plain_css_selector().is_some() => plain += 1,
+                    Ok(_) => procedural += 1,
+                    Err(_) => rejected += 1,
+                }
+            }
+        }
+        println!("cosmetic: plain {plain}, procedural {procedural}, rejected {rejected}");
     }
 
     #[test]

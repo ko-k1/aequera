@@ -11,7 +11,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Pinned exactly: the serialized engine format is only stable within a
-# version (adblock::Engine::serialize).
-adblock = { version = "=0.13.3", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling", "single-thread"] }
+# version (adblock::Engine::serialize). css-validation parses procedural
+# operators (`:has-text()`, `:upward()`, ...) into operator chains; without
+# it they pass as plain selectors that no browser accepts.
+adblock = { version = "=0.13.3", default-features = false, features = ["css-validation", "embedded-domain-resolver", "full-regex-handling", "single-thread"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

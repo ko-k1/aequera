@@ -8,11 +8,19 @@
 <script src="adveil_app.js"></script>
 </head>
 <body>
-<!-- EasyList "##.ad_banner" (generic, class-based) matches this element;
-     the vault records its link, image, and text. -->
-<div class="ad_banner" id="banner">
-  <a href="https://example.org/landing?campaign=veil"><img src="adveil_ad.svg" alt="">Veil test ad</a>
-</div>
+<!-- EasyList "##.ad_banner" (generic, class-based) matches #banner; the
+     vault records its link, image, and text. Its slot, left holding only an
+     "Advertisement" label, is hidden with it; the story around the slot has
+     content of its own and stays. -->
+<section id="story">
+  <p id="story-text">A story next to an ad.</p>
+  <section id="slot">
+    <div class="slot-note">Advertisement</div>
+    <div class="ad_banner" id="banner">
+      <a href="https://example.org/landing?campaign=veil"><img src="adveil_ad.svg" alt="">Veil test ad</a>
+    </div>
+  </section>
+</section>
 <div class="article" id="article">text</div>
 </body>
 </html>

@@ -180,6 +180,55 @@ var VeilModel = (() => {
     return { link, creative, text, loaded: raw.loaded === true && !!creative };
   }
 
+  // Procedural filters (adblock-rust's operator chains, from list data that
+  // will be updated over the network) to the ones content.js runs: known
+  // operators with string arguments, and hide, remove, remove-attr, or
+  // remove-class. `:style()` is left out: list data never sets styles.
+  const PROCEDURAL_OPERATORS = new Set([
+    "css-selector",
+    "has-text",
+    "min-text-length",
+    "upward",
+    "matches-attr",
+    "matches-css",
+    "matches-css-before",
+    "matches-css-after",
+    "matches-path",
+    "xpath",
+  ]);
+  const PROCEDURAL_ACTIONS = new Set(["remove", "remove-attr", "remove-class"]);
+  const MAX_PROCEDURAL = 500;
+  const MAX_OPERATORS = 8;
+  const MAX_ARG = 1000;
+  function proceduralFrom(list) {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+    const out = [];
+    for (const filter of list) {
+      const ops = filter?.selector;
+      if (!Array.isArray(ops) || !ops.length || ops.length > MAX_OPERATORS) {
+        continue;
+      }
+      const valid = ops.every(op => PROCEDURAL_OPERATORS.has(op?.type) && typeof op.arg == "string" && op.arg.length <= MAX_ARG);
+      const action = filter.action;
+      const actionValid =
+        action == null ||
+        (PROCEDURAL_ACTIONS.has(action.type) &&
+          (action.type == "remove" || (typeof action.arg == "string" && action.arg.length > 0 && action.arg.length <= 100)));
+      if (valid && actionValid) {
+        out.push({
+          selector: ops.map(({ type, arg }) => ({ type, arg })),
+          action: action ? { type: action.type, ...(action.arg != null ? { arg: action.arg } : {}) } : null,
+        });
+      }
+      if (out.length >= MAX_PROCEDURAL) {
+        break;
+      }
+    }
+    return out;
+  }
+
   // Where an ad leads: ad click URLs (googleads.g.doubleclick.net/pcs/click
   // and the like) carry the advertiser's address in a parameter; else the
   // link itself. Null for anything that is not an http(s) URL.
@@ -498,6 +547,7 @@ var VeilModel = (() => {
     withMode,
     adHostsFrom,
     adFrom,
+    proceduralFrom,
     destinationOf,
     groupAds,
     filterGroups,

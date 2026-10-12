@@ -30,6 +30,11 @@ const AD_TABLES_PREF = "aequera.adveil.veil.adTables";
 const AD_TABLES_DEFAULT = "ads-track-digest256";
 // Where jar.mn packages the add-on (resource://builtin-addons/adveil/).
 const MODEL_BASE = "resource://builtin-addons/adveil/";
+// An ad server let through that has not answered (no response headers) by
+// then is cancelled: tracking protection would have blocked it, and a server
+// that never answers would hold the page's load event forever (measured:
+// cnn.com's ads.stickyadstv.com, veiled, never answered).
+const STALL_MS = 10000;
 
 this.aequeraVeil = class extends ExtensionAPI {
   constructor(extension) {
@@ -46,10 +51,16 @@ this.aequeraVeil = class extends ExtensionAPI {
     this.adHosts = new Set();
     this.modes = { off: new Set(), veil: new Set(), privateModes: new Map() };
     this.classifier = null;
+    // Pending stall timers (kept, so they are not collected before firing).
+    this.timers = new Set();
   }
 
   onShutdown() {
     this.stop();
+    for (const timer of this.timers) {
+      timer.cancel();
+    }
+    this.timers.clear();
   }
 
   adTables() {
@@ -83,11 +94,36 @@ this.aequeraVeil = class extends ExtensionAPI {
     try {
       if (this.allows(channel)) {
         channel.allow();
+        this.watch(channel.channel);
       }
     } catch (error) {
       // A malformed channel is left blocked.
       console.error("Ad Veil: veil decision failed", error);
     }
+  }
+
+  // Cancels `channel` if it has no response by STALL_MS.
+  watch(channel) {
+    if (!(channel instanceof Ci.nsIHttpChannel)) {
+      return;
+    }
+    const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+    this.timers.add(timer);
+    timer.initWithCallback(
+      () => {
+        this.timers.delete(timer);
+        try {
+          // Throws until the response headers arrive.
+          channel.responseStatus;
+        } catch {
+          if (channel.isPending()) {
+            channel.cancel(Cr.NS_ERROR_NET_TIMEOUT);
+          }
+        }
+      },
+      STALL_MS,
+      Ci.nsITimer.TYPE_ONE_SHOT
+    );
   }
 
   start() {

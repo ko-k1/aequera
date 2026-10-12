@@ -10,6 +10,9 @@
 // requests (never from private windows), and the address bar popup turns Ad
 // Veil off and on for a site.
 
+// Veil mode waits out a silent ad server (10 s) on top of the rest.
+requestLongerTimeout(2);
+
 const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
 const { AppUiTestDelegate } = ChromeUtils.importESModule("resource://testing-common/AppUiTestDelegate.sys.mjs");
 
@@ -60,12 +63,17 @@ async function loadFixture({ hidden }) {
       const display = id => content.getComputedStyle(content.document.getElementById(id)).display;
       if (expectHidden) {
         await ContentTaskUtils.waitForCondition(() => display("banner") == "none", "banner hidden");
+        // Its emptied slot follows when the page is next idle.
+        await ContentTaskUtils.waitForCondition(() => display("slot") == "none", "slot folded");
       }
       const page = content.wrappedJSObject;
       return {
         adLoaded: !!page.adLoaded,
         appLoaded: !!page.appLoaded,
         banner: display("banner"),
+        slot: display("slot"),
+        story: display("story"),
+        storyText: display("story-text"),
         article: display("article"),
       };
     })
@@ -298,7 +306,41 @@ add_task(async function test_blocks_and_hides() {
   ok(!result.adLoaded, "the request EasyList matches is blocked");
   ok(result.appLoaded, "the page's own script loads");
   is(result.banner, "none", "the element a generic rule matches is hidden");
+  is(result.slot, "none", "its slot, left with only an 'Advertisement' label, is hidden too");
+  isnot(result.story, "none", "the box around it, with content of its own, stays");
+  isnot(result.storyText, "none", "with its content");
   isnot(result.article, "none", "other elements are untouched");
+});
+
+// Procedural filters (procedural.js, the add-on's own file, run in a real
+// page): each operator adblock-rust produces, and a filter the browser
+// rejects matching nothing.
+add_task(async function test_procedural_filters() {
+  const url = "https://example.com/browser/browser/aequera/tests/browser/adveil_procedural.html?section=deals";
+  await BrowserTestUtils.withNewTab(url, browser =>
+    SpecialPowers.spawn(browser, [], () => {
+      const scope = {};
+      Services.scriptloader.loadSubScript("resource://builtin-addons/adveil/procedural.js", scope);
+      const run = (...ops) =>
+        scope.VeilProcedural.run({ selector: ops.map(([type, arg]) => ({ type, arg })) }, content.document).map(e => e.id);
+      Assert.deepEqual(run(["css-selector", ".card"], ["has-text", "Sponsored"]), ["card-sponsored"], "has-text");
+      Assert.deepEqual(run(["css-selector", ".card"], ["has-text", "/promot(ed|ion)/i"]), ["card-promo"], "has-text, a regex");
+      Assert.deepEqual(run(["css-selector", ".label"], ["has-text", "Ad"], ["upward", "2"]), ["outer"], "upward, levels");
+      Assert.deepEqual(run(["css-selector", ".label"], ["upward", ".wrap"]), ["wrap"], "upward, a selector");
+      Assert.deepEqual(run(["css-selector", ".note"], ["min-text-length", "20"]), ["long"], "min-text-length");
+      Assert.deepEqual(run(["css-selector", "div"], ["matches-attr", '"data-slot-name"="/leaderboard/"']), ["attr"], "matches-attr");
+      Assert.deepEqual(run(["css-selector", ".bar"], ["matches-css", "position: fixed"]), ["fixed"], "matches-css");
+      Assert.deepEqual(run(["css-selector", ".card"], ["matches-path", "/section=deals/"]), ["card-sponsored", "card-story", "card-promo"], "matches-path");
+      Assert.deepEqual(run(["css-selector", ".card"], ["matches-path", "/section=news/"]), [], "matches-path, elsewhere");
+      Assert.deepEqual(run(["xpath", "//div[contains(@class, 'card')][contains(., 'birds')]"]), ["card-story"], "xpath");
+      Assert.deepEqual(run(["css-selector", "#first"], ["css-selector", "+ .row"]), ["second"], "a sibling selector");
+      Assert.deepEqual(run(["css-selector", "#first"], ["css-selector", "~ .row"]), ["second", "third"], "following siblings");
+      Assert.deepEqual(run(["css-selector", "#outer"], ["css-selector", "> .wrap .label"]), ["label"], "a descendant selector");
+      Assert.deepEqual(run(["css-selector", "div:::bad"]), [], "a selector the browser rejects matches nothing");
+      Assert.deepEqual(run(["css-selector", ".card"], ["has-text", "/(/"]), [], "an invalid regex matches nothing");
+      Assert.deepEqual(run(["css-selector", ".card"], ["eval", "x"]), [], "an unknown operator matches nothing");
+    })
+  );
 });
 
 add_task(async function test_pref_turns_it_off_and_on() {
@@ -578,6 +620,7 @@ function veilState(browser) {
   return SpecialPowers.spawn(browser, [], () => {
     const page = content.wrappedJSObject;
     const banner = content.document.getElementById("banner");
+    const bait = content.document.getElementById("bait");
     const style = content.getComputedStyle(banner);
     return {
       ad: !!page.adLoaded,
@@ -588,6 +631,9 @@ function veilState(browser) {
       opacity: style.opacity,
       pointerEvents: style.pointerEvents,
       height: banner.offsetHeight,
+      baitHeight: bait.offsetHeight,
+      baitLaidOut: !!bait.offsetParent,
+      baitOpacity: content.getComputedStyle(bait).opacity,
     };
   });
 }
@@ -639,10 +685,24 @@ add_task(async function test_veil_mode() {
   // blocks (here the social tracker) stay.
   ok(veiled.tracker, "veil: what EasyPrivacy matches loads too");
   ok(!veiled.social, "veil: the social tracker stays blocked by tracking protection");
-  isnot(veiled.display, "none", "veil: the ad element keeps its box");
-  Assert.greater(veiled.height, 0, "laid out, as a bait-element check expects");
+  isnot(veiled.display, "none", "veil: the ad element stays rendered (its ad loads and is recorded)");
+  is(veiled.height, 0, "collapsed: the page closes up around it");
   is(veiled.opacity, "0", "invisible");
   is(veiled.pointerEvents, "none", "and unclickable");
+  is(veiled.baitHeight, 1, "an empty element (a bait) keeps 1px, as a bait check expects");
+  ok(veiled.baitLaidOut, "and stays laid out");
+  is(veiled.baitOpacity, "0", "invisible too");
+  // An ad server veil mode let through that never answers is cancelled, so
+  // the page still finishes loading.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
+    ContentTaskUtils.waitForCondition(
+      () => content.wrappedJSObject.pageLoaded && content.wrappedJSObject.stallFailed,
+      "the silent ad server is cancelled and the page loads",
+      500,
+      40
+    )
+  );
+  ok(true, "veil: a silent ad server does not hold the page's load");
   ok(!ContentBlockingAllowList.includes(tab.linkedBrowser), "tracking protection stays on for the site");
   await TestUtils.waitForCondition(() => /veil mode/.test(buttonTitle()), "the button shows veil mode");
   await TestUtils.waitForCondition(() => /icons\/veil-veiled\.svg/.test(buttonIcon()), "with the veil icon");

@@ -172,6 +172,27 @@ test("dayOf and cutoff", () => {
   assert.equal(now - cutoff(now), RETENTION_DAYS * 86400000);
 });
 
+test("proceduralFrom keeps known operators and actions, never styles", () => {
+  const { proceduralFrom } = model;
+  const hide = { selector: [{ type: "css-selector", arg: ".card" }, { type: "has-text", arg: "Sponsored" }] };
+  assert.deepEqual(proceduralFrom([hide]), [{ ...hide, action: null }]);
+  assert.deepEqual(proceduralFrom([{ selector: [{ type: "css-selector", arg: ".x" }], action: { type: "remove" } }]), [
+    { selector: [{ type: "css-selector", arg: ".x" }], action: { type: "remove" } },
+  ]);
+  assert.deepEqual(
+    proceduralFrom([{ selector: [{ type: "css-selector", arg: ".x" }], action: { type: "remove-attr", arg: "onclick" } }])[0].action,
+    { type: "remove-attr", arg: "onclick" }
+  );
+  // Styles, unknown operators, bad arguments, and bad shapes are dropped.
+  assert.deepEqual(proceduralFrom([{ selector: [{ type: "css-selector", arg: ".x" }], action: { type: "style", arg: "color: red" } }]), []);
+  assert.deepEqual(proceduralFrom([{ selector: [{ type: "eval", arg: "x" }] }]), []);
+  assert.deepEqual(proceduralFrom([{ selector: [{ type: "has-text", arg: 5 }] }]), []);
+  assert.deepEqual(proceduralFrom([{ selector: [] }, null, "x", { selector: [{ type: "has-text", arg: "a".repeat(2000) }] }]), []);
+  assert.deepEqual(proceduralFrom([{ selector: [{ type: "css-selector", arg: ".x" }], action: { type: "remove-class" } }]), []);
+  assert.deepEqual(proceduralFrom(null), []);
+  assert.equal(proceduralFrom(Array(600).fill(hide)).length, 500);
+});
+
 test("destinationOf follows ad click URLs to the advertiser", () => {
   const { destinationOf } = model;
   assert.equal(

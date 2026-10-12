@@ -13,7 +13,8 @@ third-party blocker extension (uBlock Origin, AdNauseam).
   the network layer; ads that still reach the page (first-party, inline,
   static) are hidden by cosmetic rules. Per site, the user can switch to
   **veil** mode: AdNauseam's model, where visual ads load and are hidden
-  instead of blocked, for sites that wall ad blockers and as the vault's
+  instead of blocked (rendered, invisible, and collapsed, so the page closes
+  up around them), for sites that wall ad blockers and as the vault's
   source of ads. Firefox's tracking protection stays on for the site and
   keeps blocking analytics, social, fingerprinting, and cryptomining
   trackers: veil mode lifts only its blocks of ad servers, through one
@@ -80,8 +81,11 @@ Design and measurements: `docs/design/ADS.md`.
   veiled site, a tracking-protection block from an advertising table or of
   an EasyList ad host, and a fingerprinting-protection block of an EasyList
   ad host. An allowed channel is still a tracking channel to Firefox, so its
-  tracker cookie rules keep applying. The API is parent-only, has two
-  functions (ad hosts, site modes), and listens only while a site is veiled.
+  tracker cookie rules keep applying. A channel it allowed that has no
+  response 10 seconds later it cancels, as Firefox would have (an ad server
+  that never answers holds the page's load event; measured on cnn.com). The
+  API is parent-only, has two functions (ad hosts, site modes), and listens
+  only while a site is veiled.
 
 ## Consequences
 
@@ -96,7 +100,8 @@ Design and measurements: `docs/design/ADS.md`.
 
 ### Costs
 
-- A third-party library (adblock-rust, MPL-2.0) and third-party data
+- A third-party library (adblock-rust, MPL-2.0, with its `css-validation`
+  feature: Servo's cssparser and selectors, MPL-2.0) and third-party data
   (EasyList, EasyPrivacy: GPLv3 / CC BY-SA 3.0, dual) become dependencies.
   Both are pinned, attributed, and updated deliberately.
 - A committed WebAssembly binary built from `aequera/extensions/ad-veil/engine`;

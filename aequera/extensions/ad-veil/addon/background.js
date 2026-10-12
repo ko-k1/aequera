@@ -13,7 +13,7 @@
 // - block (default): EasyList and EasyPrivacy matches are cancelled, what
 //   reaches the page is hidden (display: none);
 // - veil: for sites that refuse ad blockers (AdNauseam's model). Ads load
-//   and are hidden in place (their box kept): Ad Veil lets its lists'
+//   and stay rendered, invisible and collapsed (STYLES): Ad Veil lets its lists'
 //   matches through except beacons, pings, and CSP reports; Firefox's
 //   tracking protection lifts only its ad blocks (experiments/veil.js) and
 //   keeps blocking analytics, social, fingerprinting, and cryptomining
@@ -399,28 +399,73 @@ function cosmeticFor(url) {
   const rules = engines.all.cosmetic(url);
   return {
     hide: rules?.hide || [],
+    procedural: VeilModel.proceduralFrom(rules?.procedural),
     generic(classes, ids) {
       return rules && !rules.generichide ? engines.all.generic(classes, ids, rules.exceptions) : [];
     },
   };
 }
 
-// How a mode hides: block collapses the element; veil keeps its box (so a
-// script measuring a bait element sees it laid out) and makes it invisible
-// and unclickable.
+// How a mode hides (each entry one rule per selector; `empty` wraps the
+// selector as `:is(selector):empty`):
+// - block: the element is not rendered (display: none);
+// - veil: the element stays rendered, so its ad still loads and is
+//   recorded, but invisible, unclickable, and collapsed to no height, so the
+//   page closes up around it (measured, 10 live sites: the kept box left
+//   0.4 to 13 million px² of blank space per page; collapsed, none, with as
+//   many ads recorded). Its overflow is not clipped: a lazy ad inside still
+//   intersects the viewport, as lazy-loading scripts check. An empty element
+//   (an anti-adblock bait, or a slot not yet filled) keeps 1px of height, so
+//   a script checking its offsetHeight sees it laid out.
 const STYLES = {
-  block: { display: "none" },
-  veil: { opacity: "0", "pointer-events": "none" },
+  block: [{ declarations: { display: "none" } }],
+  veil: [
+    {
+      declarations: {
+        opacity: "0",
+        "pointer-events": "none",
+        height: "0",
+        "min-height": "0",
+        "max-height": "0",
+        margin: "0",
+        padding: "0",
+        "border-width": "0",
+      },
+    },
+    { empty: true, declarations: { height: "1px", "max-height": "1px" } },
+  ],
 };
 
 // Selectors are list data, and lists will be updated over the network
-// (slice 3). Each one becomes a single rule parsed by Gecko and is kept only
-// if it is one style rule whose only declarations are ours: a crafted
-// "selector" cannot add declarations (a url() that leaks page state), extra
-// rules, or nested rules. Results are cached per selector and style; the
-// normalized selector text is what content scripts query for the vault.
+// (slice 3). Each one becomes one rule per style entry, parsed by Gecko, and
+// is kept only if each is a single style rule whose declarations are exactly
+// ours (compared with the same declarations parsed on a plain selector): a
+// crafted "selector" cannot add declarations (a url() that leaks page
+// state), extra rules, or nested rules. Results are cached per selector and
+// mode; the normalized selector text is what content scripts query for the
+// vault.
 const sheet = new CSSStyleSheet();
 const ruleCache = new Map();
+
+function parseRule(text) {
+  sheet.insertRule(text, 0);
+  const parsed = sheet.cssRules[0];
+  sheet.deleteRule(0);
+  return parsed;
+}
+
+const declarationText = declarations =>
+  Object.entries(declarations)
+    .map(([property, value]) => `${property}:${value}!important`)
+    .join(";");
+
+// Each style entry's declarations as Gecko serializes them.
+const expected = Object.fromEntries(
+  Object.entries(STYLES).map(([mode, entries]) => [
+    mode,
+    entries.map(entry => parseRule(`a{${declarationText(entry.declarations)}}`).style.cssText),
+  ])
+);
 
 function hideRule(selector, mode) {
   const key = `${mode}\n${selector}`;
@@ -429,27 +474,32 @@ function hideRule(selector, mode) {
     return rule;
   }
   rule = null;
-  const style = STYLES[mode];
-  const declarations = Object.entries(style)
-    .map(([property, value]) => `${property}:${value}!important`)
-    .join(";");
   try {
-    sheet.insertRule(`${selector}{${declarations}}`, 0);
-    const parsed = sheet.cssRules[0];
-    sheet.deleteRule(0);
-    if (
-      parsed instanceof CSSStyleRule &&
-      parsed.cssRules.length === 0 &&
-      parsed.style.length === Object.keys(style).length &&
-      Object.entries(style).every(
-        ([property, value]) =>
-          parsed.style.getPropertyValue(property) === value && parsed.style.getPropertyPriority(property) === "important"
-      )
-    ) {
-      rule = { css: parsed.cssText, selector: parsed.selectorText };
-    }
+    const css = [];
+    let normalized = null;
+    STYLES[mode].forEach((entry, i) => {
+      const target = entry.empty ? `:is(${selector}):empty` : selector;
+      let parsed = null;
+      try {
+        parsed = parseRule(`${target}{${declarationText(entry.declarations)}}`);
+      } catch (error) {
+        // The empty-element rule is a refinement: a selector `:is()` cannot
+        // hold (a pseudo-element) keeps the others.
+        if (entry.empty) {
+          return;
+        }
+        throw error;
+      }
+      if (!(parsed instanceof CSSStyleRule) || parsed.cssRules.length !== 0 || parsed.style.cssText !== expected[mode][i]) {
+        throw new Error("not a plain hiding rule");
+      }
+      normalized ??= parsed.selectorText;
+      css.push(parsed.cssText);
+    });
+    rule = { css: css.join("\n"), selector: normalized };
   } catch {
-    // Not a selector Gecko accepts: skipped.
+    // Not a selector Gecko accepts (in every form), or not a plain rule:
+    // skipped.
   }
   ruleCache.set(key, rule);
   return rule;
@@ -457,6 +507,12 @@ function hideRule(selector, mode) {
 
 function validRules(selectors, mode) {
   return selectors.map(selector => hideRule(selector, mode)).filter(Boolean);
+}
+
+// A frame's mark attribute: random, so a page cannot name it in advance.
+function markName() {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return `v${[...bytes].map(b => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
 async function hide(tabId, frameId, rules) {
@@ -548,8 +604,14 @@ function contentMessage(message, sender) {
       if (!status) {
         return Promise.resolve({ active: false });
       }
-      const selectors = validRules(cosmeticFor(sender.url).hide, status.mode).map(rule => rule.selector);
-      return Promise.resolve({ active: true, selectors, adFrame: isAdFrame(sender) });
+      const cosmetic = cosmeticFor(sender.url);
+      const selectors = validRules(cosmetic.hide, status.mode).map(rule => rule.selector);
+      // What content.js hides itself (procedural filters, wrappers an ad
+      // left empty) it marks with this frame's attribute; the mark's rule is
+      // a user-origin rule like the others, hidden the mode's way.
+      const mark = markName();
+      hide(sender.tab.id, sender.frameId, validRules([`[${mark}]`], status.mode));
+      return Promise.resolve({ active: true, selectors, adFrame: isAdFrame(sender), mark, procedural: cosmetic.procedural });
     }
     // Cross-origin frames the page found in hidden ad slots.
     case "adframes": {
