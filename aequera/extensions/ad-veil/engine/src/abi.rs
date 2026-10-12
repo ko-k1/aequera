@@ -97,6 +97,27 @@ pub extern "C" fn veil_serialize() -> usize {
     put(&data)
 }
 
+/// Whether the popup rules block a new window opening `url` from a page at
+/// `opener`: a [`Decision`] as i32, or -2 without an engine.
+///
+/// # Safety
+/// See `bytes`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn veil_check_popup(
+    url: *const u8,
+    url_len: usize,
+    opener: *const u8,
+    opener_len: usize,
+) -> i32 {
+    let (Some(url), Some(opener)) = (unsafe { (text(url, url_len), text(opener, opener_len)) }) else {
+        return Decision::Unparsable as i32;
+    };
+    VEIL.with(|v| match v.borrow().as_ref() {
+        Some(veil) => veil.check_popup(url, opener) as i32,
+        None => NO_ENGINE,
+    })
+}
+
 /// A [`Decision`] as i32, or -2 without an engine.
 ///
 /// # Safety

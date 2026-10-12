@@ -90,6 +90,12 @@ class VeilEngine {
     return this.#x.veil_check(...this.#put(url, source, type));
   }
 
+  // 1 when the lists' popup rules block a new window opening `url` from a
+  // page at `opener`; 0 allowed, -1 unparsable, -2 no engine.
+  checkPopup(url, opener) {
+    return this.#x.veil_check_popup(...this.#put(url, opener));
+  }
+
   // { hide: [selector], exceptions: [selector], generichide: bool } or null.
   cosmetic(url) {
     const json = this.#out(this.#x.veil_cosmetic(...this.#put(url)));

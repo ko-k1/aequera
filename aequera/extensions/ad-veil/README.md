@@ -57,7 +57,7 @@ bash tools/build/test-shell.sh aequera
 `engine.wasm` is committed so the browser build needs no Rust or wasm
 toolchain. `build-engine.sh` is deterministic for a given rustc (checked:
 two clean builds with rustc 1.98.1 are byte-identical, sha256
-`5bc8f33b28b69dd91c5c23b87fcc1f8395f605edded97bd3103c916b37e3c22b`).
+`055641d0893fb63d345e3f2ea25f3ba5d8342a382523b10e4769c51eb2ac5e9c`).
 
 ## Acceptance
 
@@ -184,6 +184,19 @@ Hiding (`docs/design/ADS.md`, Hiding; slice 2c):
   in the vault in veil mode; mutation-checked). Live: no ad media shown in
   either mode on 12 sites (veil showed 16 before); veil vault 96 entries
   (80 before).
+
+Popups and redirects (`docs/design/ADS.md`):
+
+- EasyList's 2,969 `$popup` rules (dropped by adblock-rust) judge new
+  windows in a second engine; a window opened by a click on plain content
+  to another site, or by a link click to another page than the link, is
+  closed; a script redirect to another site on such a click is stopped.
+  Block and veil mode.
+- `cargo test`: 13 (popup rules); `model.test.mjs`: 22 (same site, popup
+  verdicts); `browser_aequera_adveil.js` 130 checks (click-anywhere popup
+  closed, link and button kept, a rule-named popup closed from a button,
+  a click-anywhere redirect stopped; with Ad Veil off, both happen). Live:
+  canyoublockit.com's pop-under closed in veil mode.
 
 ## Known gaps (later slices)
 

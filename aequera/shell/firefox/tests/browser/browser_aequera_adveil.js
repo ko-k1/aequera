@@ -343,6 +343,71 @@ add_task(async function test_procedural_filters() {
   );
 });
 
+// Popups and redirects: a "click anywhere" popup and one the popup rules
+// name are closed; a link and a control open theirs; a script redirect on
+// a click on plain content is stopped. With Ad Veil off, the page's popup
+// and redirect happen (so the checks see Ad Veil's doing).
+const POPUP_PAGE = "https://example.com/browser/browser/aequera/tests/browser/adveil_popup.html";
+
+// Selects `tab` (switchTab waits for a switch, which an already selected
+// tab never makes).
+async function select(tab) {
+  if (gBrowser.selectedTab != tab) {
+    await BrowserTestUtils.switchTab(gBrowser, tab);
+  }
+}
+
+// Clicks `selector` and reports the tab it opened and whether it was
+// closed within a moment.
+async function clickOpens(browser, selector) {
+  let opened = null;
+  const onOpen = event => (opened ||= event.target);
+  gBrowser.tabContainer.addEventListener("TabOpen", onOpen);
+  await BrowserTestUtils.synthesizeMouseAtCenter(selector, {}, browser);
+  await TestUtils.waitForCondition(() => opened, `${selector}: a tab opens`);
+  gBrowser.tabContainer.removeEventListener("TabOpen", onOpen);
+  const closed = await TestUtils.waitForCondition(() => !gBrowser.tabs.includes(opened), `${selector}: closed?`, 100, 20).then(
+    () => true,
+    () => false
+  );
+  if (!closed) {
+    BrowserTestUtils.removeTab(opened);
+  }
+  return closed;
+}
+
+add_task(async function test_popups_and_redirects() {
+  await waitForActive(true);
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, POPUP_PAGE);
+  const browser = tab.linkedBrowser;
+  ok(await clickOpens(browser, "#text"), "a click on plain text opening another site: the popup is closed");
+  ok(!(await clickOpens(browser, "#link")), "a link opening in a new tab: kept");
+  await select(tab);
+  ok(!(await clickOpens(browser, "#share")), "a button opening a window: kept");
+  await select(tab);
+  ok(await clickOpens(browser, "#ruled"), "a page the popup rules name: closed, even from a button");
+  await select(tab);
+
+  await BrowserTestUtils.synthesizeMouseAtCenter("#redirect", {}, browser);
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  is(browser.currentURI.spec, POPUP_PAGE, "a script redirect on a click on plain text: the page stays");
+  BrowserTestUtils.removeTab(tab);
+
+  // Without Ad Veil the page's popup and redirect happen.
+  Services.prefs.setBoolPref(PREF, false);
+  await waitForActive(false);
+  const off = await BrowserTestUtils.openNewForegroundTab(gBrowser, POPUP_PAGE);
+  ok(!(await clickOpens(off.linkedBrowser, "#text")), "Ad Veil off: the click-anywhere popup stays");
+  await select(off);
+  const redirected = BrowserTestUtils.browserLoaded(off.linkedBrowser, false, url => url.includes("?redirect"));
+  await BrowserTestUtils.synthesizeMouseAtCenter("#redirect", {}, off.linkedBrowser);
+  await redirected;
+  ok(true, "Ad Veil off: the redirect happens");
+  BrowserTestUtils.removeTab(off);
+  Services.prefs.setBoolPref(PREF, true);
+  await waitForActive(true);
+});
+
 add_task(async function test_pref_turns_it_off_and_on() {
   Services.prefs.setBoolPref(PREF, false);
   await waitForActive(false);
@@ -748,7 +813,7 @@ add_task(async function test_veil_mode() {
   }, "the ad only its request names reaches the vault");
   is(promo.link, "https://example.org/promo?ref=veil", "with where it leads");
   BrowserTestUtils.removeTab(vault);
-  await BrowserTestUtils.switchTab(gBrowser, tab);
+  await select(tab);
 
   await pickMode(tab, "block");
   await waitForBanner(tab.linkedBrowser, "collapsed");

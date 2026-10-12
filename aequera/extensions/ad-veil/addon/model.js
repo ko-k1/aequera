@@ -180,6 +180,53 @@ var VeilModel = (() => {
     return { link, creative, text, loaded: raw.loaded === true && !!creative };
   }
 
+  // A site's key for "same site": its last two host labels, or three when
+  // the last two look like a country's second level (example.co.uk). An
+  // approximation of the public suffix list, enough to tell a page's own
+  // pages from another site's.
+  function siteKey(url) {
+    const host = hostOf(url);
+    if (!host) {
+      return null;
+    }
+    if (/^[\d.]+$/.test(host) || host.includes(":")) {
+      return host;
+    }
+    const labels = host.split(".");
+    const n = labels.length >= 3 && labels.at(-1).length == 2 && labels.at(-2).length <= 3 ? 3 : 2;
+    return labels.slice(-n).join(".");
+  }
+
+  const sameSite = (a, b) => !!siteKey(a) && siteKey(a) == siteKey(b);
+
+  // How recent the click behind a new window must be to count (ms).
+  const CLICK_WINDOW_MS = 1000;
+
+  // Whether a new window a page opened is a popup to close, from the click
+  // behind it (content.js: { age, kind: "plain" | "link" | "control", href }):
+  // - a click on plain content (not a link, a control, or something drawn
+  //   as clickable) that opens another site or a blank window (to fill
+  //   later): the "click anywhere" popup;
+  // - a click on a link that opens another site's page other than that
+  //   link: a popup riding on a link.
+  // A click on a control (a button, a form field) may open anything (sign-in
+  // and share windows). Without a recent click, Firefox's popup blocker has
+  // already judged it.
+  function popupVerdict(click, url, openerUrl) {
+    if (!click || !(click.age >= 0) || click.age > CLICK_WINDOW_MS) {
+      return false;
+    }
+    const blank = !parse(url);
+    if (click.kind == "plain") {
+      return blank || !sameSite(url, openerUrl);
+    }
+    if (click.kind == "link") {
+      const strip = value => (parse(value) ? Object.assign(new URL(value), { hash: "" }).href : null);
+      return !blank && strip(url) != strip(click.href) && !sameSite(url, openerUrl) && !sameSite(url, click.href);
+    }
+    return false;
+  }
+
   // Procedural filters (adblock-rust's operator chains, from list data that
   // will be updated over the network) to the ones content.js runs: known
   // operators with string arguments, and hide, remove, remove-attr, or
@@ -547,6 +594,10 @@ var VeilModel = (() => {
     withMode,
     adHostsFrom,
     adFrom,
+    siteKey,
+    sameSite,
+    popupVerdict,
+    CLICK_WINDOW_MS,
     proceduralFrom,
     destinationOf,
     groupAds,

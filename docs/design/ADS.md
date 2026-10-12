@@ -369,6 +369,51 @@ between a page and its ads; veil mode lifts each.
   `weather.com##+js(acs, document.getElementsByTagName, .pubads)`). Slice 5
   measures what remains.
 
+### Popups and redirects
+
+In block and veil mode alike (never off). Veil mode lets ad scripts load,
+popup scripts among them (canyoublockit.com's pop-under test: a WordPress
+plugin EasyList names, `/plugins/ultimate-popunder/*$~stylesheet`), but
+never their popups.
+
+- **Popup rules.** adblock-rust rejects the `popup` option, so EasyList's
+  2,969 `$popup` rules were dropped. The engine rewrites them as `$document`
+  rules into a second, small engine (`popup_rules`, `check_popup`): a new
+  window's URL, judged with its opener page as the source, so
+  `$third-party` and `$domain=` keep their meaning; other type options of a
+  `$popup` rule are dropped. All 2,969 parse.
+- **The click behind it.** content.js records the last click in each frame
+  and what it was on: plain content, a link (its URL), or a control
+  (buttons, form fields, ARIA roles, anything with a pointer cursor). An
+  element covering half the viewport with nothing to see counts as plain:
+  an overlay laid over the page to catch clicks.
+- **A new window** (`webNavigation.onCreatedNavigationTarget`) is closed
+  (`tabs.remove`) when the popup rules name its URL, or when the click
+  behind it, within the last second, was on plain content and it opens
+  another site or a blank window, or was on a link and it opens another
+  site's page than that link (`VeilModel.popupVerdict`). A control may
+  open anything (sign-in and share windows); a link opens itself. Its page
+  request waits for the verdict (at most 0.8 s) and is cancelled when it
+  is closed; a popup kept that goes on, within 3 s, to a page the popup
+  rules name is closed then. Without a recent click, Firefox's own popup
+  blocker has decided.
+- **Redirects.** In the top frame, a navigation a script starts (not the
+  user's own: `NavigateEvent.userInitiated`), to another site, within a
+  second of a click on plain content, or on a link it does not follow, is
+  cancelled (`preventDefault`); the page stays.
+- Closed popups and stopped redirects count as blocked requests on the
+  opener's page (badge, popup, vault).
+- "Same site" is the last two host labels (three under a two-letter
+  country's short second level): an approximation of the public suffix
+  list, enough to tell a page's own pages from another site's.
+- Measured (2026-10-12, live, fresh profile): canyoublockit.com's pop-under
+  test with a real click opened a window to google.com with Ad Veil off;
+  in block mode its script was cancelled; in veil mode the window opened
+  and was closed, the page alone left.
+- Not covered: a popup opened from a control (a fake "Download" button
+  that is a `<button>`), and a redirect from a link the page rewrote
+  before the click.
+
 ### Visit (slice 4)
 
 - Background `fetch(target, { credentials: "omit", referrerPolicy:

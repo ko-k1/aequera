@@ -413,6 +413,85 @@ function hideElementOf(details, mode) {
   state.elementTimer ||= setTimeout(() => flushElements(details.tabId), ELEMENT_FLUSH_MS);
 }
 
+// Popups (docs/design/ADS.md, Popups and redirects): a new window or tab a
+// page opens is closed, before its page loads where possible, when the
+// lists' popup rules name its URL (EasyList `$popup`), or when the click
+// behind it makes it a popup (VeilModel.popupVerdict: a click on plain
+// content opening another site, or a link click opening another site's
+// page than the link). In block and veil mode alike: veil mode lets ad
+// scripts load, popup scripts among them, but never their popups.
+const POPUP_WATCH_MS = 3000;
+const POPUP_DECIDE_MS = 800;
+// tabId → { openerTabId, opener (URL), incognito, created, decision }
+const popups = new Map();
+
+function judgeAndClose(details, opener) {
+  const popup = { openerTabId: details.sourceTabId, opener: opener.url, incognito: opener.incognito, created: Date.now() };
+  popup.decision = (async () => {
+    let reason = null;
+    if (VeilModel.hostOf(details.url) && engines.all.checkPopup(details.url, opener.url) == 1) {
+      reason = "rule";
+    } else {
+      const click = await lastClick(details.sourceTabId, details.sourceFrameId);
+      if (VeilModel.popupVerdict(click, details.url, opener.url)) {
+        reason = "click";
+      }
+    }
+    if (reason) {
+      closePopup(details.tabId, popup, details.url);
+    }
+    return !!reason;
+  })().catch(() => false);
+  popups.set(details.tabId, popup);
+  setTimeout(() => popups.delete(details.tabId), POPUP_WATCH_MS);
+}
+
+// The click behind a popup, from the frame that opened it (else the top
+// frame: an opener can be a script-written frame without content.js).
+async function lastClick(tabId, frameId) {
+  const ask = id => browser.tabs.sendMessage(tabId, { type: "lastClick" }, { frameId: id });
+  const reply = await ask(frameId).catch(() => (frameId ? ask(0) : null));
+  return reply && typeof reply == "object" ? reply : null;
+}
+
+// Closes a popup and counts it as blocked on the opener's page.
+function closePopup(tabId, popup, url) {
+  if (popup.closed) {
+    return;
+  }
+  popup.closed = true;
+  browser.tabs.remove(tabId).catch(() => {});
+  const site = VeilModel.siteOf(tabs.get(popup.openerTabId)?.url || popup.opener);
+  cancel({ tabId: popup.openerTabId, url: VeilModel.hostOf(url) ? url : popup.opener, incognito: popup.incognito }, site);
+}
+
+browser.webNavigation.onCreatedNavigationTarget.addListener(async details => {
+  // At once when the opener is known, so the popup's own request finds it.
+  let opener = tabs.get(details.sourceTabId);
+  if (!engines || !opener) {
+    await ready.catch(() => {});
+    opener = await tabState(details.sourceTabId);
+  }
+  if (engines && opener && modeOf(VeilModel.siteOf(opener.url), opener.incognito) != "off") {
+    judgeAndClose(details, opener);
+  }
+});
+
+// A popup's page request waits for its verdict (at most POPUP_DECIDE_MS);
+// a popup let open that goes on to a page the popup rules name is closed.
+async function popupRequest(details, popup) {
+  const timeout = new Promise(resolve => setTimeout(() => resolve(false), POPUP_DECIDE_MS));
+  if (await Promise.race([popup.decision, timeout])) {
+    return { cancel: true };
+  }
+  if (engines.all.checkPopup(details.url, popup.opener) == 1) {
+    closePopup(details.tabId, popup, details.url);
+    return { cancel: true };
+  }
+  startPage(details.tabId, details.url, details.incognito);
+  return {};
+}
+
 function flushElements(tabId) {
   const state = tabs.get(tabId);
   if (!state?.elementQueue) {
@@ -439,6 +518,10 @@ browser.webRequest.onBeforeRequest.addListener(
       return {};
     }
     if (details.type == "main_frame") {
+      const popup = popups.get(details.tabId);
+      if (popup && engines) {
+        return popupRequest(details, popup);
+      }
       startPage(details.tabId, details.url, details.incognito);
       return {};
     }
@@ -717,6 +800,14 @@ function contentMessage(message, sender) {
       return undefined;
     }
     // A frame asking, after it loaded, whether the page found it in a slot.
+    // A "click anywhere" redirect content.js stopped: counted as blocked.
+    case "redirect": {
+      const url = typeof message.url == "string" && message.url.length <= 4096 ? message.url : null;
+      if (status && sender.frameId == 0 && VeilModel.hostOf(url)) {
+        cancel({ tabId: sender.tab.id, url, incognito: sender.tab.incognito }, VeilModel.siteOf(sender.tab.url));
+      }
+      return undefined;
+    }
     case "adframe?": {
       return Promise.resolve({ adFrame: !!status && isAdFrame(sender) });
     }

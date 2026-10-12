@@ -51,28 +51,119 @@ pub struct Seen {
 
 pub struct Veil {
     engine: Engine,
+    /// The lists' `$popup` rules, judging the pages new windows open.
+    popups: Engine,
+}
+
+/// Type options a `$popup` rule may carry besides `popup` (`$popup,script`):
+/// the popup engine keeps only the popup part.
+const TYPE_OPTIONS: &[&str] = &[
+    "script",
+    "image",
+    "stylesheet",
+    "css",
+    "object",
+    "object-subrequest",
+    "subdocument",
+    "frame",
+    "xmlhttprequest",
+    "xhr",
+    "websocket",
+    "font",
+    "media",
+    "other",
+    "ping",
+    "beacon",
+    "document",
+    "doc",
+    "all",
+    "popup",
+];
+
+/// The `$popup` (and `$all`) rules of filter list text, rewritten as
+/// `$document` rules: adblock-rust rejects the `popup` option, and a page a
+/// popup opens is a document, judged with its opener as the source (so
+/// `$third-party` and `$domain=` keep their meaning). Other type options are
+/// dropped.
+pub fn popup_rules(lists: &str) -> String {
+    let mut out = String::new();
+    for line in lists.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('!') || line.starts_with('[') || line.contains('#') {
+            continue;
+        }
+        let Some(dollar) = line.rfind('$') else {
+            continue;
+        };
+        let (pattern, options) = (&line[..dollar], &line[dollar + 1..]);
+        let options: Vec<&str> = options.split(',').map(str::trim).collect();
+        if !options.iter().any(|o| *o == "popup" || *o == "all") {
+            continue;
+        }
+        let kept: Vec<&str> = options
+            .iter()
+            .copied()
+            .filter(|o| !TYPE_OPTIONS.contains(&o.trim_start_matches('~')))
+            .chain(std::iter::once("document"))
+            .collect();
+        out.push_str(pattern);
+        out.push('$');
+        out.push_str(&kept.join(","));
+        out.push('\n');
+    }
+    out
+}
+
+fn engine_of(lists: &str) -> Engine {
+    let mut set = FilterSet::new(false);
+    set.add_filter_list(lists.to_string(), ParseOptions::default());
+    Engine::new_with_filter_set(set)
 }
 
 impl Veil {
     /// Compiles filter list text (several lists may be concatenated).
     pub fn compile(lists: &str) -> Self {
-        let mut set = FilterSet::new(false);
-        set.add_filter_list(lists.to_string(), ParseOptions::default());
         Self {
-            engine: Engine::new_with_filter_set(set),
+            engine: engine_of(lists),
+            popups: engine_of(&popup_rules(lists)),
         }
     }
 
-    /// Loads an engine produced by [`Veil::serialize`] with the same
+    /// Loads engines produced by [`Veil::serialize`] with the same
     /// adblock-rust version. `None` when the bytes do not load.
     pub fn deserialize(bytes: &[u8]) -> Option<Self> {
+        // [length of the first, little-endian u32][first][second]
+        let length = u32::from_le_bytes(bytes.get(..4)?.try_into().ok()?) as usize;
+        let first = bytes.get(4..4usize.checked_add(length)?)?;
+        let second = bytes.get(4 + length..)?;
         let mut engine = Engine::default();
-        engine.deserialize(bytes).ok()?;
-        Some(Self { engine })
+        engine.deserialize(first).ok()?;
+        let mut popups = Engine::default();
+        popups.deserialize(second).ok()?;
+        Some(Self { engine, popups })
     }
 
     pub fn serialize(&self) -> Vec<u8> {
-        self.engine.serialize()
+        let first = self.engine.serialize();
+        let second = self.popups.serialize();
+        let mut out = Vec::with_capacity(4 + first.len() + second.len());
+        out.extend_from_slice(&(first.len() as u32).to_le_bytes());
+        out.extend_from_slice(&first);
+        out.extend_from_slice(&second);
+        out
+    }
+
+    /// Whether the lists' popup rules block a new window opening `url` from
+    /// a page at `opener`.
+    pub fn check_popup(&self, url: &str, opener: &str) -> Decision {
+        let Ok(request) = Request::new(url, opener, "main_frame", "get") else {
+            return Decision::Unparsable;
+        };
+        if self.popups.check_network_request(&request).should_block() {
+            Decision::Block
+        } else {
+            Decision::Allow
+        }
     }
 
     /// `kind` is a WebExtension `webRequest` resource type (`main_frame`,
@@ -135,6 +226,10 @@ example.com#?#.card:has-text(Sponsored)
 example.com##.tile:has-text(Promoted)
 example.com#?#.row:-abp-contains(Partner)
 example.com##.promo-box:remove()
+||pops.example^$popup
+&zoneid=*&ad_$popup,third-party
+||both.example^$popup,script
+@@||pops.example/allowed$popup
 ";
 
     fn veil() -> Veil {
@@ -223,6 +318,38 @@ example.com##.promo-box:remove()
     }
 
     #[test]
+    fn popup_rules_judge_new_windows() {
+        let v = veil();
+        let opener = "https://news.test/story";
+        assert_eq!(v.check_popup("https://pops.example/landing", opener), Decision::Block);
+        assert_eq!(v.check_popup("https://pops.example/allowed", opener), Decision::Allow, "exception");
+        assert_eq!(
+            v.check_popup("https://track.test/go?s=1&zoneid=7&ad_id=2", opener),
+            Decision::Block,
+            "a path rule, third-party"
+        );
+        assert_eq!(
+            v.check_popup("https://news.test/go?s=1&zoneid=7&ad_id=2", opener),
+            Decision::Allow,
+            "the same rule, first-party"
+        );
+        assert_eq!(v.check_popup("https://both.example/", opener), Decision::Block, "$popup,script");
+        assert_eq!(v.check_popup("https://cdn.test/page", opener), Decision::Allow);
+        // Network rules do not judge popups, and popup rules not requests.
+        assert_eq!(v.check_popup("https://ads.example/", opener), Decision::Allow);
+        assert_eq!(v.check("https://pops.example/x.js", opener, "script"), Decision::Allow);
+        assert_eq!(v.check("https://both.example/x.js", opener, "script"), Decision::Allow);
+    }
+
+    #[test]
+    fn popup_rules_rewrite() {
+        assert_eq!(
+            popup_rules("||a.test^$popup\n||b.test^$script\n&z=$popup,~third-party,subdocument\n##.x\n! c$popup\n"),
+            "||a.test^$document\n&z=$~third-party,document\n"
+        );
+    }
+
+    #[test]
     fn procedural_filters_come_as_operator_chains() {
         let v = veil();
         let procedural = v.cosmetic("https://example.com/a").procedural;
@@ -265,6 +392,12 @@ example.com##.promo-box:remove()
             loaded.cosmetic("https://example.com/a"),
             veil().cosmetic("https://example.com/a")
         );
+        assert_eq!(
+            loaded.check_popup("https://pops.example/landing", "https://news.test/"),
+            Decision::Block,
+            "popup rules too"
+        );
+        assert!(Veil::deserialize(&bytes[..bytes.len() / 2]).is_none(), "truncated");
     }
 
     /// Cosmetic rules of the shipped lists by parse result (run with
@@ -274,9 +407,17 @@ example.com##.promo-box:remove()
     fn shipped_list_cosmetic_stats() {
         use adblock::filters::cosmetic::CosmeticFilter;
         let (mut plain, mut procedural, mut rejected) = (0, 0, 0);
+        let (mut popups, mut popups_parsed) = (0, 0);
         for name in ["easylist.txt", "easyprivacy.txt"] {
             let path = format!("{}/../addon/lists/{name}", env!("CARGO_MANIFEST_DIR"));
-            for line in std::fs::read_to_string(path).unwrap().lines() {
+            let text = std::fs::read_to_string(path).unwrap();
+            for line in popup_rules(&text).lines() {
+                popups += 1;
+                if adblock::filters::network::NetworkFilter::parse(line, false, Default::default()).is_ok() {
+                    popups_parsed += 1;
+                }
+            }
+            for line in text.lines() {
                 if !(line.contains("##") || line.contains("#?#") || line.contains("#@#")) || line.starts_with('!') {
                     continue;
                 }
@@ -288,6 +429,7 @@ example.com##.promo-box:remove()
             }
         }
         println!("cosmetic: plain {plain}, procedural {procedural}, rejected {rejected}");
+        println!("popup rules: {popups}, parsed {popups_parsed}");
     }
 
     #[test]

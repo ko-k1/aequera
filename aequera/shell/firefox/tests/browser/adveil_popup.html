@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ad Veil popup fixture</title>
+<style>
+  body { font: 16px sans-serif; }
+  p, div, a, button { display: block; margin: 12px; padding: 8px; }
+</style>
+</head>
+<body>
+<p id="text">Plain text: a click here opens another site (a "click anywhere" popup).</p>
+<a id="link" href="https://example.org/browser/browser/aequera/tests/browser/adveil_popup_target.html?link" target="_blank">A link that opens in a new tab</a>
+<button id="share">Share (a control: may open a window)</button>
+<button id="ruled">A button opening a page EasyList's popup rules name</button>
+<div id="redirect">Plain text: a click here takes the page to another site</div>
+<script>
+  const TARGET = "https://example.org/browser/browser/aequera/tests/browser/adveil_popup_target.html";
+  // As canyoublockit.com's pop-under test does: one listener for the page.
+  document.addEventListener("click", event => {
+    switch (event.target.id) {
+      case "text":
+        window.open(`${TARGET}?anywhere`);
+        break;
+      case "share":
+        window.open(`${TARGET}?share`);
+        break;
+      case "ruled":
+        // EasyList "&popunder=$popup".
+        window.open(`${TARGET}?s=1&popunder=1`);
+        break;
+      case "redirect":
+        location.href = `${TARGET}?redirect`;
+        break;
+    }
+  });
+</script>
+</body>
+</html>

@@ -554,12 +554,101 @@
   });
   observer.observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "id"] });
 
+  // Popups and redirects (docs/design/ADS.md): the last click in this frame
+  // and what it was on, which the background asks for when the page opens a
+  // window (VeilModel.popupVerdict), and which, in the top frame, stops a
+  // script taking the page to another site on a click on plain content.
+  const CLICK_WINDOW_MS = 1000;
+  const CONTROLS =
+    "button, input, select, textarea, label, summary, option, video, audio, [contenteditable=''], [contenteditable='true'], [role='button'], [role='link'], [role='menuitem'], [role='tab'], [role='checkbox'], [role='switch'], [role='option']";
+  // An element covering at least this share of the viewport with nothing to
+  // see is an overlay laid over the page to catch clicks.
+  const OVERLAY_SHARE = 0.5;
+  let lastClick = null;
+
+  function isOverlay(element) {
+    const box = element.getBoundingClientRect();
+    if (box.width * box.height < OVERLAY_SHARE * innerWidth * innerHeight) {
+      return false;
+    }
+    return !(element.textContent || "").trim() && !element.querySelector("img, svg, video, canvas, picture, iframe");
+  }
+
+  function noteClick(event) {
+    if (!event.isTrusted) {
+      return;
+    }
+    const target = event.composedPath()[0];
+    const element = target?.nodeType == Node.ELEMENT_NODE ? target : target?.parentElement;
+    if (!element) {
+      return;
+    }
+    const link = element.closest("a[href], area[href]");
+    let kind = "plain";
+    if (isOverlay(link || element)) {
+      kind = "plain";
+    } else if (link) {
+      kind = "link";
+    } else if (element.closest(CONTROLS) || getComputedStyle(element).cursor == "pointer") {
+      kind = "control";
+    }
+    lastClick = { time: Date.now(), kind, href: kind == "link" ? link.href : null };
+  }
+
+  addEventListener("pointerdown", noteClick, { capture: true, passive: true });
+  addEventListener("click", noteClick, { capture: true, passive: true });
+
+  // As VeilModel.siteKey (the background's), for the redirect guard.
+  function siteKey(url) {
+    let host = "";
+    try {
+      host = new URL(url).hostname;
+    } catch {
+      return null;
+    }
+    if (!host || /^[\d.]+$/.test(host) || host.includes(":")) {
+      return host || null;
+    }
+    const labels = host.split(".");
+    const n = labels.length >= 3 && labels.at(-1).length == 2 && labels.at(-2).length <= 3 ? 3 : 2;
+    return labels.slice(-n).join(".");
+  }
+
+  const withoutHash = url => url?.split("#")[0];
+
+  // A script navigation (not the user's own, as following a link is) during
+  // a click on plain content, or on a link it does not follow, to another
+  // site: a "click anywhere" redirect. Cancelled; the page stays.
+  if (window == window.top && window.navigation) {
+    window.navigation.addEventListener("navigate", event => {
+      if (!active || event.userInitiated || !event.cancelable || event.hashChange || event.downloadRequest != null) {
+        return;
+      }
+      if (event.navigationType != "push" && event.navigationType != "replace") {
+        return;
+      }
+      const click = lastClick && Date.now() - lastClick.time <= CLICK_WINDOW_MS ? lastClick : null;
+      const to = event.destination.url;
+      if (!click || click.kind == "control" || !siteKey(to) || siteKey(to) == siteKey(location.href)) {
+        return;
+      }
+      if (click.kind == "link" && (withoutHash(to) == withoutHash(click.href) || siteKey(to) == siteKey(click.href))) {
+        return;
+      }
+      event.preventDefault();
+      browser.runtime.sendMessage({ type: "redirect", url: to }).catch(() => {});
+    });
+  }
+
   // From the background: URLs whose elements to hide (hideLoaders), and,
   // for a frame the page found in a hidden slot, that it is an ad.
   const MAX_URLS_PER_MESSAGE = 200;
   browser.runtime.onMessage.addListener(message => {
     if (!active) {
       return;
+    }
+    if (message?.type == "lastClick") {
+      return Promise.resolve(lastClick ? { age: Date.now() - lastClick.time, kind: lastClick.kind, href: lastClick.href } : null);
     }
     if (message?.type == "elements" && Array.isArray(message.urls)) {
       const until = Date.now() + PENDING_MS;

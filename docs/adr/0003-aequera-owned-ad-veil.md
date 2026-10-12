@@ -22,6 +22,11 @@ third-party blocker extension (uBlock Origin, AdNauseam).
   shims are off while Ad Veil is on (they would stub out those ads). Ad
   Veil's own lists let their matches through on a veiled site (EasyPrivacy
   lists whole ad networks as trackers; measured in `docs/design/ADS.md`).
+- **Popups and redirects.** In every mode but off, a window a page opens
+  is closed when the lists' popup rules name it or the click behind it was
+  on plain content (a "click anywhere" popup), and a script redirect to
+  another site on such a click is stopped (`webNavigation`, `tabs`, the
+  content script; no further privilege).
 - **Vault and Visit.** What was blocked or hidden is kept in a local vault;
   hidden ads can be *visited* in the background (AdNauseam's simulated
   click). All on by default, shown and changeable at first run.

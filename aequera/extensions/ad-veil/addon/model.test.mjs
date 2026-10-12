@@ -172,6 +172,37 @@ test("dayOf and cutoff", () => {
   assert.equal(now - cutoff(now), RETENTION_DAYS * 86400000);
 });
 
+test("siteKey and sameSite: a page's own subdomains, not another site", () => {
+  const { siteKey, sameSite } = model;
+  assert.equal(siteKey("https://news.example.com/a"), "example.com");
+  assert.equal(siteKey("https://www.bbc.co.uk/"), "bbc.co.uk");
+  assert.equal(siteKey("https://127.0.0.1:8080/"), "127.0.0.1");
+  assert.equal(siteKey("about:blank"), null);
+  assert.ok(sameSite("https://shop.example.com/", "https://www.example.com/x"));
+  assert.ok(!sameSite("https://example.org/", "https://example.com/"));
+  assert.ok(!sameSite("about:blank", "about:blank"));
+});
+
+test("popupVerdict: click-anywhere and link-riding popups close, controls and links open", () => {
+  const { popupVerdict } = model;
+  const page = "https://news.test/story";
+  const click = (kind, href = null, age = 50) => ({ kind, href, age });
+  // A click on plain content: another site, or a blank window, closes.
+  assert.equal(popupVerdict(click("plain"), "https://ads.test/land", page), true);
+  assert.equal(popupVerdict(click("plain"), "about:blank", page), true);
+  assert.equal(popupVerdict(click("plain"), "https://news.test/gallery", page), false, "the page's own site");
+  // A link opens itself; a popup riding on it closes.
+  assert.equal(popupVerdict(click("link", "https://other.test/a"), "https://other.test/a#top", page), false);
+  assert.equal(popupVerdict(click("link", "https://other.test/a"), "https://ads.test/land", page), true);
+  assert.equal(popupVerdict(click("link", "https://other.test/a"), "https://www.other.test/b", page), false, "the link's site");
+  assert.equal(popupVerdict(click("link", "https://other.test/a"), "about:blank", page), false);
+  // A control (sign-in, share) opens anything.
+  assert.equal(popupVerdict(click("control"), "https://accounts.test/oauth", page), false);
+  // No recent click: Firefox's popup blocker decided.
+  assert.equal(popupVerdict(null, "https://ads.test/", page), false);
+  assert.equal(popupVerdict(click("plain", null, 5000), "https://ads.test/", page), false);
+});
+
 test("proceduralFrom keeps known operators and actions, never styles", () => {
   const { proceduralFrom } = model;
   const hide = { selector: [{ type: "css-selector", arg: ".card" }, { type: "has-text", arg: "Sponsored" }] };
