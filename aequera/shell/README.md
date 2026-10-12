@@ -101,6 +101,15 @@ Wayland compositor, and is covered headless by `browser_aequera_tabs.js`):
 | A row onto another window's rail or Firefox tab strip | Adopted there at the drop position (`gBrowser.adoptTab`); never between a private and a normal window, or across process models (Firefox's own rules) |
 | A link (page, address bar, bookmark) onto the rows | Opens as a new tab at the gap, with the drop's principal and policy container (`gBrowser.loadTabs`, Firefox's tab-strip link drop) |
 
+Every drag decision is the pure `rail/drag-model.js` (`AequeraDragModel`):
+the live slide (where the dragged row is drawn, the target slot, the visible
+gap chasing it one slot per frame, the autoscroll zone), the landing slot
+and tab index of a drop, the settle glide's start offsets, the foreign gap,
+and the tear-off rule. `aequera-tabs.js` only measures, writes transforms,
+and calls gBrowser. A classic script (loaded before `aequera-tabs.js`) that
+also exports itself as CommonJS; node tests:
+`node --test aequera/shell/firefox/rail/drag-model.test.mjs`.
+
 How it fits Firefox: the drag source is the row (`addElement`), so
 `dragend` comes back to the list; the native tab type comes first and
 `tab._dragData` has the shape of a drag from Firefox's all-tabs menu

@@ -30,7 +30,26 @@
 // from one measured anchor. getBoundingClientRect on a transformed row would
 // report its mid-transition position and corrupt the gap math, so transformed
 // rows are never measured.
+//
+// Drag decisions (slide, landing slot, settle, foreign gap, tear-off) are the
+// pure AequeraDragModel (drag-model.js, node-tested); this file measures,
+// writes transforms, and calls gBrowser.
 var AequeraTabs = (() => {
+  const {
+    EDGE_SCROLL_STEP,
+    slideShift,
+    slideFrame,
+    slotTarget,
+    moveIndex,
+    parseTranslateY,
+    settleOffsets,
+    gapIndex,
+    gapShifts,
+    gapRef,
+    shouldTearOff,
+    releasedOutside,
+    settleMs,
+  } = AequeraDragModel;
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const DEFAULT_ICON = "chrome://global/skin/icons/defaultFavicon.svg";
   // Favicons come from web content (tab `image` attribute). An <img> does not
@@ -63,16 +82,6 @@ var AequeraTabs = (() => {
   const ROW_EVENTS = ["TabSelect", "TabAttrModified"];
   const DRAG_TYPE = "text/x-moz-aequera-tab";
   const NATIVE_TAB_TYPE = "application/x-moz-tabbrowser-tab";
-  const EDGE_SCROLL_ZONE = 32;
-  const EDGE_SCROLL_STEP = 12;
-  const EDGE_PAD = 4;
-  const DETACH_MARGIN = 15;
-  const SETTLE_MS = 250;
-  // Mirror of the CSS glide cap (aequera-tabs.css min(..., 150ms)): the JS
-  // retire timer must cover the capped transition plus a frame buffer, never
-  // the raw pref alone.
-  const SETTLE_GLIDE_CAP_MS = 150;
-  const SETTLE_BUFFER_MS = 100;
 
   const list = {
     element: null,
@@ -605,9 +614,9 @@ var AequeraTabs = (() => {
         }
         const still = this.foreignGap(event.clientY);
         const pairs = still?.pairs ?? [];
-        if (pairs.length) {
-          const k = Math.min(still.k, pairs.length);
-          this.showDropIndicator(pairs[Math.min(k, pairs.length - 1)][1], k >= pairs.length);
+        const ref = gapRef(pairs.length, still?.k ?? pairs.length);
+        if (ref) {
+          this.showDropIndicator(pairs[ref.index][1], ref.after);
         }
         return;
       }
@@ -626,9 +635,10 @@ var AequeraTabs = (() => {
       }
       f.drop = gap.k;
       f.rows.clear();
+      const shifts = gapShifts(gap.pairs.length, gap.k, gap.step);
       for (let i = 0; i < gap.pairs.length; i++) {
         const row = gap.pairs[i][1];
-        const s = i >= gap.k ? gap.step : 0;
+        const s = shifts[i];
         if (s) {
           f.shifts.set(row, s);
           f.rows.add(row);
@@ -735,107 +745,44 @@ var AequeraTabs = (() => {
           break;
         }
       }
-      const layoutTop = i => listRect.top + drag.layout.padTop + i * step - scrollTop;
-      if (clientY != drag.lastY) {
-        drag.forward = clientY > drag.lastY;
-        drag.lastY = clientY;
-      }
-      const origin = rows.get(drag.tab);
-      const originTop = layoutTop(from);
-      const startBound = listRect.top + EDGE_PAD - originTop;
-      const endBound = listRect.bottom - EDGE_PAD - rowH - originTop;
-      // Pointer travel plus how far the list scrolled under it since the
-      // start; without the scroll term an autoscrolling list carries the
-      // row away from the pointer and the gap follows the stray row.
-      let translate = Math.min(
-        Math.max(clientY - drag.startY + (scrollTop - drag.scrollStart), startBound),
-        endBound
-      );
-      let top = originTop + translate;
-      if (
-        (clientY < top || clientY > top + rowH) &&
-        top > listRect.top + EDGE_PAD &&
-        top + rowH < listRect.bottom - EDGE_PAD
-      ) {
-        translate = clientY - originTop - rowH / 2;
-        translate = Math.min(Math.max(translate, startBound), endBound);
-        top = originTop + translate;
-      }
-      drag.translate = translate;
-      origin.style.transform = translate ? `translateY(${Math.round(translate)}px)` : "";
       const old = drag.drop;
-      const shiftOf = (i, drop) => {
-        if (i < from && i >= drop) {
-          return step;
-        }
-        if (i > from && i < drop) {
-          return -step;
-        }
-        return 0;
-      };
-      let candidate = -1;
-      const point = drag.forward ? top + rowH : top;
-      let firstBg = -1;
-      let lastBottom = 0;
-      for (let i = 0; i < order.length; i++) {
-        if (i == from) {
-          continue;
-        }
-        const vis = layoutTop(i) + (drag.shifts.get(rowEls[i]) ?? 0);
-        if (firstBg < 0) {
-          firstBg = i;
-        }
-        lastBottom = vis + rowH;
-        // A row owns its whole step (the row and the gap below it), so a
-        // point between two rows still finds one.
-        if (point >= vis && point < vis + step) {
-          candidate = i;
-          break;
-        }
-      }
-      // True gap from this frame's geometry; the visible gap chases it one
-      // slot per frame, and the drop commits the true gap, never the chase.
-      let target = drag.target;
-      if (candidate < 0 && firstBg >= 0) {
-        const firstTop = layoutTop(firstBg) + (drag.shifts.get(rowEls[firstBg]) ?? 0);
-        if (point >= lastBottom) {
-          target = order.length;
-        } else if (point < firstTop) {
-          target = 0;
-        } else {
-          // Inside the open landing slot: land in it. Keeping the previous
-          // frame's target here landed quick drags a slot short.
-          target = old;
-        }
-      } else if (candidate >= 0) {
-        target = candidate;
-        const candTop = layoutTop(candidate) + shiftOf(candidate, old);
-        const overlap = this.overlap(top, rowH, candTop, rowH);
-        if (drag.forward && overlap > 0.5) {
-          target = candidate + 1;
-        } else if (!drag.forward && !(overlap > 0.5)) {
-          target = candidate + 1;
-          if (target > old) {
-            target = old;
-          }
-        }
-        target = Math.min(Math.max(target, 0), order.length);
-      }
-      drag.target = target;
-      let next = old;
-      if (target > old) {
-        next = old + 1;
-      } else if (target < old) {
-        next = old - 1;
-      }
-      if (next != old) {
-        drag.drop = next;
+      const frame = slideFrame({
+        count: order.length,
+        from,
+        rowH,
+        step,
+        listTop: listRect.top,
+        listBottom: listRect.bottom,
+        padTop: drag.layout.padTop,
+        scrollTop,
+        startY: drag.startY,
+        scrollStart: drag.scrollStart,
+        clientY,
+        lastY: drag.lastY,
+        forward: drag.forward,
+        drop: old,
+        target: drag.target,
+        shifts: rowEls.map(row => drag.shifts.get(row) ?? 0),
+        final,
+        canScrollUp: scrollTop > 0,
+        canScrollDown: scrollTop + this.element.clientHeight < this.element.scrollHeight,
+      });
+      drag.forward = frame.forward;
+      drag.lastY = frame.lastY;
+      drag.translate = frame.translate;
+      drag.target = frame.target;
+      drag.drop = frame.drop;
+      drag.zone = frame.zone;
+      rows.get(drag.tab).style.transform = frame.translate
+        ? `translateY(${Math.round(frame.translate)}px)`
+        : "";
+      if (frame.drop != old) {
         for (let i = 0; i < order.length; i++) {
           const row = rowEls[i];
           if (i == from || !row) {
             continue;
           }
-          const s = shiftOf(i, next);
+          const s = slideShift(i, from, frame.drop, step);
           if (s) {
             drag.shifts.set(row, s);
             drag.pristine.delete(row);
@@ -845,30 +792,9 @@ var AequeraTabs = (() => {
           row.style.transform = s ? `translateY(${s}px)` : "";
         }
       }
-      drag.zone = 0;
-      if (final) {
-        // The drop's own frame only settles the target; it never scrolls.
-        return;
-      }
-      if (clientY < listRect.top + EDGE_SCROLL_ZONE && this.element.scrollTop > 0) {
-        drag.zone = -1;
-      } else if (
-        clientY > listRect.bottom - EDGE_SCROLL_ZONE &&
-        this.element.scrollTop + this.element.clientHeight < this.element.scrollHeight
-      ) {
-        drag.zone = 1;
-      }
       if (drag.zone) {
         this.element.scrollBy(0, drag.zone * EDGE_SCROLL_STEP);
       }
-    },
-
-    overlap(p1, s1, p2, s2) {
-      const size = p1 < p2 ? p1 + s1 - p2 : p2 + s2 - p1;
-      if (size <= 0) {
-        return 0;
-      }
-      return Math.min(Math.max(size / s1, size / s2), 1);
     },
 
     /** True when the pointer left the list (relatedTarget is unreliable
@@ -947,15 +873,10 @@ var AequeraTabs = (() => {
       let after = false;
       if (!drag.rm) {
         const order = this.tabs();
-        const from = order.indexOf(drag.tab);
-        const to = drag.target;
-        if (from >= 0 && to != from) {
-          if (to <= from) {
-            target = order[to];
-          } else {
-            target = order[to - 1];
-            after = true;
-          }
+        const slot = slotTarget(order.indexOf(drag.tab), drag.target);
+        if (slot) {
+          target = order[slot.index];
+          after = slot.after;
         }
       }
       if (!target || target == drag.tab) {
@@ -975,10 +896,7 @@ var AequeraTabs = (() => {
         this.render();
         return;
       }
-      let tabIndex = after ? targetIndex + 1 : targetIndex;
-      if (gFrom < tabIndex) {
-        tabIndex -= 1; // the dragged tab leaves its old slot first
-      }
+      const tabIndex = moveIndex(gFrom, targetIndex, after);
       // Snapshot live offsets first: the render inside moveTabTo sweeps
       // row styles, so the settle below must work from this snapshot, and
       // must write after the move (anything written before is swept too).
@@ -1003,7 +921,7 @@ var AequeraTabs = (() => {
         if (this.element) {
           void this.element.offsetHeight;
         }
-        this._settleTimer = setTimeout(() => this.endSettle(), this.settleMs());
+        this._settleTimer = setTimeout(() => this.endSettle(), this.settleDelay());
         requestAnimationFrame(() => {
           if (this._settleTimer) {
             this.clearDragVisuals();
@@ -1026,30 +944,25 @@ var AequeraTabs = (() => {
       return live;
     },
 
-    parseTranslateY(style) {
-      const m = /translateY\((-?\d+)/.exec(style || "");
-      return m ? parseInt(m[1], 10) : 0;
-    },
-
     settleRebase(drag, target, after, live) {
-      const layout = drag.layout;
+      if (!drag.layout) {
+        return false;
+      }
       const order = [...live.keys()];
-      if (!layout || order.indexOf(drag.tab) < 0) {
-        return false;
-      }
-      const rest = order.filter(t => t !== drag.tab);
-      const ridx = rest.indexOf(target);
-      if (ridx < 0) {
-        return false;
-      }
-      rest.splice(after ? ridx + 1 : ridx, 0, drag.tab);
       // Commit only onto the order the move actually produced; a clamped
       // no-op move leaves the DOM untouched and has nothing to settle.
-      const now = this.tabs();
-      if (now.length != rest.length || !rest.every((t, i) => now[i] === t)) {
+      const offsets = settleOffsets({
+        order,
+        offsets: order.map(tab => parseTranslateY(live.get(tab))),
+        dragged: drag.tab,
+        target,
+        after,
+        now: this.tabs(),
+        step: drag.layout.step,
+      });
+      if (!offsets) {
         return false;
       }
-      const step = layout.step;
       let moved = false;
       for (let i = 0; i < order.length; i++) {
         const row = this.rows.get(order[i]);
@@ -1057,11 +970,7 @@ var AequeraTabs = (() => {
           continue;
         }
         row.removeAttribute("dragging");
-        const nidx = rest.indexOf(order[i]);
-        if (nidx < 0) {
-          continue;
-        }
-        const v = this.parseTranslateY(live.get(order[i])) - (nidx - i) * step;
+        const v = offsets[i];
         if (v) {
           moved = true;
         }
@@ -1080,17 +989,14 @@ var AequeraTabs = (() => {
     },
 
     /** Retire timer matching the CSS glide (min(pref, cap) + buffer). */
-    settleMs() {
+    settleDelay() {
+      let duration = "";
       try {
-        const raw = getComputedStyle(document.documentElement).getPropertyValue(
+        duration = getComputedStyle(document.documentElement).getPropertyValue(
           "--aequera-motion-duration"
         );
-        const pref = parseInt(raw, 10);
-        if (Number.isFinite(pref)) {
-          return Math.min(Math.max(pref, 0), SETTLE_GLIDE_CAP_MS) + SETTLE_BUFFER_MS;
-        }
       } catch (e) {}
-      return SETTLE_MS;
+      return settleMs(duration);
     },
 
     /** Event-free drag teardown (supersede path); returns the drag. */
@@ -1197,13 +1103,7 @@ var AequeraTabs = (() => {
       // full slot too.
       const gap = parseFloat(getComputedStyle(this.element).rowGap) || 0;
       const step = Math.round(rowH + gap);
-      let k = pairs.length;
-      for (let i = 0; i < pairs.length; i++) {
-        if (clientY < this.layoutMid(pairs[i][1])) {
-          k = i;
-          break;
-        }
-      }
+      const k = gapIndex(pairs.map(([, row]) => this.layoutMid(row)), clientY);
       return { pairs, step, k };
     },
 
@@ -1259,26 +1159,16 @@ var AequeraTabs = (() => {
       event.preventDefault();
       this.clearForeign();
       const pairs = gap?.pairs ?? [];
-      const k = gap ? Math.min(Math.max(gap.k, 0), pairs.length) : pairs.length;
-      let ref = null;
-      let after = false;
-      if (k < pairs.length) {
-        ref = pairs[k][0];
-      } else if (pairs.length) {
-        ref = pairs[pairs.length - 1][0];
-        after = true;
-      }
+      const slot = gapRef(pairs.length, gap?.k ?? pairs.length);
+      const ref = slot ? pairs[slot.index][0] : null;
+      const after = !!slot?.after;
       // The tab index for the gap, computed after any unpinning (which moves
       // the tab and shifts the indexes).
-      const gapIndex = moving => {
+      const tabIndexAt = moving => {
         if (!ref || !ref.isConnected) {
           return gBrowser.tabs.length - (moving ? 1 : 0);
         }
-        let index = gBrowser.tabs.indexOf(ref) + (after ? 1 : 0);
-        if (moving && gBrowser.tabs.indexOf(moving) < index) {
-          index -= 1; // the moving tab leaves its old slot first
-        }
-        return index;
+        return moveIndex(moving ? gBrowser.tabs.indexOf(moving) : -1, gBrowser.tabs.indexOf(ref), after);
       };
       // The rows are the unpinned tabs: a pinned tab (an essential, or a
       // pinned tab from another window) dropped among them is unpinned, as
@@ -1287,7 +1177,7 @@ var AequeraTabs = (() => {
         if (ftab.pinned) {
           gBrowser.unpinTab(ftab);
         }
-        const tabIndex = gapIndex(ftab);
+        const tabIndex = tabIndexAt(ftab);
         if (tabIndex != gBrowser.tabs.indexOf(ftab)) {
           gBrowser.moveTabTo(ftab, { tabIndex });
         }
@@ -1296,12 +1186,12 @@ var AequeraTabs = (() => {
       }
       try {
         const adopted = gBrowser.adoptTab(ftab, {
-          tabIndex: Math.max(gapIndex(null), gBrowser.pinnedTabCount),
+          tabIndex: Math.max(tabIndexAt(null), gBrowser.pinnedTabCount),
           selectTab: true,
         });
         if (adopted?.pinned) {
           gBrowser.unpinTab(adopted);
-          gBrowser.moveTabTo(adopted, { tabIndex: gapIndex(adopted) });
+          gBrowser.moveTabTo(adopted, { tabIndex: tabIndexAt(adopted) });
         }
       } catch (e) {
         console.error("aequera-tabs: adopting a dropped tab failed", e);
@@ -1331,14 +1221,11 @@ var AequeraTabs = (() => {
       event.preventDefault();
       const gap = this.foreignGap(event.clientY);
       const pairs = gap?.pairs ?? [];
-      const k = gap ? Math.min(Math.max(gap.k, 0), pairs.length) : pairs.length;
+      const slot = gapRef(pairs.length, gap?.k ?? pairs.length);
       const elements = gBrowser.tabContainer.dragAndDropElements;
-      const elementIndex =
-        k < pairs.length
-          ? elements.indexOf(pairs[k][0])
-          : pairs.length
-            ? elements.indexOf(pairs.at(-1)[0]) + 1
-            : elements.length;
+      const elementIndex = slot
+        ? elements.indexOf(pairs[slot.index][0]) + (slot.after ? 1 : 0)
+        : elements.length;
       let inBackground = Services.prefs.getBoolPref("browser.tabs.loadInBackground");
       if (event.shiftKey) {
         inBackground = !inBackground;
@@ -1377,45 +1264,37 @@ var AequeraTabs = (() => {
       if (!event) {
         return;
       }
-      // Tear-off rules, Firefox's own (tabbrowser drag-and-drop on_dragend):
-      // never on Escape, never when something took the drop, and never when
-      // released by the rail.
+      // Tear-off rules: drag-model.js shouldTearOff.
       const dt = event.dataTransfer;
-      if (
-        !drag.dropped &&
-        drag.tab.isConnected &&
-        !dt?.mozUserCancelled &&
-        dt?.dropEffect === "none" &&
-        this.allowDetach() &&
-        this.isOutside(event)
-      ) {
+      const tearOff = shouldTearOff({
+        dropped: drag.dropped,
+        connected: drag.tab.isConnected,
+        userCancelled: !!dt?.mozUserCancelled,
+        dropEffect: dt?.dropEffect,
+        allowDetach: this.allowDetach(),
+        outside: this.isOutside(event),
+      });
+      if (tearOff) {
         this.detachTab(drag.tab, event, drag);
       }
     },
 
     /**
-     * A release tears the tab off unless it lands by the rail: inside the
-     * window and no further right than half a rail width past the rail
-     * (Firefox: 1.5 x the strip's width from the window edge). So letting go
-     * over the workspace dock, the essentials, the New Tab row, or just past
-     * the rail's edge is a cancelled drag, not a new window. A release
-     * outside the window (coordinates outside the client area) tears off.
+     * A release tears the tab off unless it lands by the rail
+     * (drag-model.js releasedOutside). So letting go over the workspace
+     * dock, the essentials, the New Tab row, or just past the rail's edge is
+     * a cancelled drag, not a new window.
      */
     isOutside(event) {
-      const x = event?.clientX;
-      const y = event?.clientY;
-      if (!Number.isFinite(x) || !Number.isFinite(y)) {
-        return true;
-      }
-      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
-        return true;
-      }
       const rail = document.querySelector("#sidebar-container > sidebar-main") ?? this.element;
-      const box = rail?.getBoundingClientRect();
-      if (!box || !(box.width > 0)) {
-        return !this.nearList(event);
-      }
-      return x > box.right + box.width / 2;
+      return releasedOutside({
+        x: event?.clientX,
+        y: event?.clientY,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        rail: rail?.getBoundingClientRect() ?? null,
+        list: this.element?.getBoundingClientRect() ?? null,
+      });
     },
 
     allowDetach() {
@@ -1424,19 +1303,6 @@ var AequeraTabs = (() => {
       } catch (e) {
         return true;
       }
-    },
-
-    nearList(event) {
-      if (!this.element || !Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) {
-        return false;
-      }
-      const rect = this.element.getBoundingClientRect();
-      return (
-        event.clientX >= rect.left - DETACH_MARGIN &&
-        event.clientX <= rect.right + DETACH_MARGIN &&
-        event.clientY >= rect.top - DETACH_MARGIN &&
-        event.clientY <= rect.bottom + DETACH_MARGIN
-      );
     },
 
     detachTab(tab, event, drag) {
