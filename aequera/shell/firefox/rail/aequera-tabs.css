@@ -171,6 +171,81 @@
   }
 }
 
+/* The dragged row passes over its siblings (and the New Tab row), never
+ * under them. */
+.aequera-tab[dragging] {
+  position: relative;
+  z-index: 1;
+}
+
+/* Reduced motion drop indicator (aequera-tabs.js showDropIndicator): a
+ * still, straight 2px accent line in the gap the drop lands in. Out of the
+ * flex flow, so it never moves a row. */
+#aequera-tabs {
+  position: relative;
+}
+
+.aequera-tab-dropline {
+  position: absolute;
+  top: 0;
+  inset-inline: var(--aequera-row-inset);
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--color-accent-primary, AccentColor);
+  pointer-events: none;
+}
+
+/* A row dragged out of the list stays in its slot, dimmed: releasing out
+ * there tears it off rather than reordering. */
+.aequera-tab[dragout] {
+  opacity: 0.45;
+}
+
+/* Linux drag image (aequera-tabs.js dragPanel): a drag panel follows the
+ * pointer, carrying the dragged row as a pill. Invisible inside the list,
+ * where the sliding row itself is the visual; shown once the pointer
+ * leaves it ([outside]) so a tear-off or a drop on another window has
+ * something under the pointer. */
+#aequera-tab-drag-panel {
+  appearance: none;
+  -moz-window-shadow: none;
+  --panel-background: transparent;
+  --panel-border-color: transparent;
+  --panel-shadow: none;
+  --panel-padding: 0;
+  --panel-shadow-margin: 0;
+  background: transparent;
+}
+
+/* Inside the list the pill takes no box at all: the drag popup cannot be
+ * made transparent on every platform (Wayland shows its window
+ * background), so an invisible-but-sized pill would leave an empty box
+ * under the pointer. */
+#aequera-tab-drag-panel:not([outside]) .aequera-tab-drag-item {
+  display: none !important;
+}
+
+.aequera-tab-drag-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 30px;
+  max-width: 220px;
+  padding-inline: 7px 12px;
+  border-radius: 9px;
+  background-color: var(--toolbar-bgcolor);
+  color: var(--toolbar-color);
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0.92;
+}
+
+.aequera-tab-drag-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .aequera-tab-title {
     transition: none !important;

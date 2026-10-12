@@ -83,6 +83,8 @@ var AequeraTabs = (() => {
     _ghost: null,
     _settleTimer: 0,
     _revealPending: false,
+    /** Drag sessions whose drop this list took (see onDragOver). */
+    _droppedSessions: new WeakSet(),
 
     /** Tabs shown as rows, in tab order. */
     tabs() {
@@ -200,6 +202,12 @@ var AequeraTabs = (() => {
         this.clearDragVisuals();
       }
       this._foreign = null;
+      // Nothing is moving any more unless a settle still glides: a stale
+      // movingtab (a dragover that arrived after its drop) would keep the
+      // slide transitions armed for unrelated changes.
+      if (!this._settleTimer && !this._committing) {
+        this.setMoving(false);
+      }
       const rows = this.tabs().map(tab => this.rows.get(tab) ?? this.createRow(tab));
       this.element.replaceChildren(...rows, this.newTabRow);
     },
@@ -334,6 +342,10 @@ var AequeraTabs = (() => {
         drop: from,
         target: from,
         startY: event.clientY,
+        // The list's scroll at the start: the dragged row lives in the
+        // scrolled content, so autoscroll must be added back to keep it
+        // under the pointer (dragFrame).
+        scrollStart: this.element.scrollTop,
         lastY: event.clientY,
         forward: true,
         translate: 0,
@@ -349,20 +361,53 @@ var AequeraTabs = (() => {
         dropped: false,
         rm,
       };
+      const dt = event.dataTransfer;
       try {
-        const dt = event.dataTransfer;
         dt.effectAllowed = "move";
-        dt.setData(DRAG_TYPE, row.tab.label || "#");
+        // The tab type must come first: Firefox takes a drag for a tab move
+        // only when it is the first type (getDropEffectForTabDrag);
+        // otherwise its strip reads the drag as a link and loads the tab's
+        // URL there.
         dt.mozSetDataAt(NATIVE_TAB_TYPE, row.tab, 0);
-        dt.addElement(row.tab);
-        if (rm) {
-          // No slide visuals in reduced motion: classic ghost follows.
-          dt.setDragImage(row, Math.round(event.clientX - box.left), Math.round(event.clientY - box.top));
-        } else {
-          // The sliding row itself is the visual inside the rail, so the
-          // ghost starts hidden; leaving the rail restores it for tear-off.
-          dt.setDragImage(this.ghostImage(), 0, 0);
+        dt.setData(DRAG_TYPE, row.tab.label || "#");
+        // The URL, for targets that take a dropped tab's address. Never
+        // text/x-moz-url or text/plain: a drop on the desktop would then
+        // make an internet shortcut instead of tearing the tab off
+        // (Firefox's own tab drag sets the same).
+        const url = row.tab.linkedBrowser?.currentURI?.spec;
+        if (url) {
+          dt.mozSetDataAt("text/x-moz-text-internal", url, 0);
         }
+        dt.mozCursor = "default";
+        // The row, not Firefox's hidden tab, is the drag source, so dragend
+        // comes back to this list. With the tab as source it went to
+        // Firefox's tab strip, which ran its own tear-off (and threw on the
+        // missing _dragData), and this drag never ended.
+        dt.addElement(row);
+      } catch (error) {
+        console.error("aequera-tabs: setting up the drag data failed", error);
+      }
+      // Firefox's own drop code (the essentials grid, another window's tab
+      // strip) reads tab._dragData. A drag from outside its strip is the
+      // shape its all-tabs menu uses (fromTabList), which those handlers
+      // already support: dropping on the essentials pins, dropping on a
+      // Firefox window adopts the tab there.
+      row.tab._dragData = {
+        offsetX: event.screenX - window.screenX,
+        offsetY: event.screenY - window.screenY,
+        scrollPos: 0,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        movingTabs: [row.tab],
+        movingTabsSet: new Set([row.tab]),
+        fromTabList: true,
+        expandGroupOnDrop: false,
+        get tabGroupCreationColor() {
+          return gBrowser.tabGroupMenu.nextUnusedColor;
+        },
+      };
+      try {
+        this.setDragImage(dt, row, event.clientX - box.left, event.clientY - box.top, rm);
       } catch {
         // Platform drag-image quirks must not break the drag itself.
       }
@@ -374,9 +419,135 @@ var AequeraTabs = (() => {
       }
     },
 
-    // Shared transparent 1x1 drag image: hides the OS ghost while the
-    // sliding row itself is the visual. updateDragImage swaps it back
-    // for the tear-off once the pointer leaves the rail.
+    /**
+     * The drag image. Inside the list the sliding row itself is the visual,
+     * so the image is hidden there and shows only once the pointer leaves
+     * (tear-off, another window). Windows and macOS swap the image mid-drag
+     * with updateDragImage; Linux cannot (Firefox's own tab drag notes the
+     * same), so there a drag panel follows the pointer: live DOM whose
+     * content shows or hides with [outside] (setGhostOutside). Reduced
+     * motion has no slide, so the image shows throughout.
+     */
+    setDragImage(dt, row, offsetX, offsetY, rm) {
+      const x = Math.round(offsetX);
+      const y = Math.round(offsetY);
+      if (AppConstants.platform == "linux") {
+        // The pill is narrower than the row: hold it by its icon, not by
+        // the grab point within the full-width row.
+        const panel = this.dragPanel(row);
+        panel.toggleAttribute("outside", rm);
+        dt.setDragImage(panel, Math.min(x, 15), Math.min(y, 15));
+      } else if (rm) {
+        dt.setDragImage(row, x, y);
+      } else {
+        dt.setDragImage(this.ghostImage(), 0, 0);
+      }
+    },
+
+    /** Show the drag image once the pointer is outside the list. */
+    setGhostOutside(drag, outside, dt) {
+      if (drag.ghostOutside == outside) {
+        return;
+      }
+      drag.ghostOutside = outside;
+      // Outside the list nothing will be reordered: the rows go back to
+      // the current order and the source row dims, so the list does not
+      // show a landing slot a release out there will never use. Coming
+      // back in rebuilds the slide from the pointer.
+      drag.row.toggleAttribute("dragout", outside);
+      if (outside) {
+        this.resetSlide(drag);
+        this.showDropIndicator(null);
+      }
+      if (drag.rm) {
+        return;
+      }
+      if (AppConstants.platform == "linux") {
+        this._dragPanel?.toggleAttribute("outside", outside);
+        return;
+      }
+      try {
+        if (outside) {
+          dt.updateDragImage(drag.row, Math.round(drag.offsetX), Math.round(drag.offsetY));
+        } else {
+          dt.updateDragImage(this.ghostImage(), 0, 0);
+        }
+      } catch {}
+    },
+
+    /** Reduced motion: a still line in the gap the drop lands in. */
+    showDropIndicator(row, after) {
+      let line = this._dropLine;
+      if (!row) {
+        line?.remove();
+        return;
+      }
+      if (!line) {
+        line = this._dropLine = document.createElementNS(HTML_NS, "div");
+        line.className = "aequera-tab-dropline";
+      }
+      if (line.parentNode != this.element) {
+        this.element.append(line);
+      }
+      // Centered in the 6px gap above or below the row (list coordinates:
+      // the list is the line's containing block and scrolls with it).
+      const gap = parseFloat(getComputedStyle(this.element).rowGap) || 0;
+      const y = row.offsetTop + (after ? row.offsetHeight + gap / 2 : -gap / 2) - 1;
+      line.style.transform = `translateY(${Math.round(y)}px)`;
+    },
+
+    /** Undo the live slide: every row back in its slot, no landing gap. */
+    resetSlide(drag) {
+      if (drag.frame) {
+        cancelAnimationFrame(drag.frame);
+        drag.frame = 0;
+      }
+      drag.zone = 0;
+      for (const row of drag.shifts.keys()) {
+        row.style.transform = "";
+        drag.pristine?.add(row);
+      }
+      drag.shifts.clear();
+      drag.row.style.transform = "";
+      drag.translate = 0;
+      const from = this.tabs().indexOf(drag.tab);
+      drag.drop = from;
+      drag.target = from;
+    },
+
+    /** The Linux drag panel: the dragged row's icon and title as a pill. */
+    dragPanel(row) {
+      let panel = this._dragPanel;
+      if (!panel) {
+        panel = document.createXULElement("panel");
+        panel.id = "aequera-tab-drag-panel";
+        panel.setAttribute("type", "drag");
+        const item = document.createElementNS(HTML_NS, "div");
+        item.className = "aequera-tab-drag-item";
+        const icon = document.createElementNS(HTML_NS, "img");
+        icon.className = "aequera-tab-icon";
+        icon.alt = "";
+        const title = document.createElementNS(HTML_NS, "span");
+        title.className = "aequera-tab-drag-title";
+        item.append(icon, title);
+        panel.append(item);
+        document.documentElement.append(panel);
+        this._dragPanel = panel;
+      }
+      panel.querySelector(".aequera-tab-icon").src = row.querySelector(".aequera-tab-icon").src;
+      panel.querySelector(".aequera-tab-drag-title").textContent = row.tab.label || "";
+      return panel;
+    },
+
+    /** Forget Firefox's per-drag state on the tab (see onDragStart). */
+    releaseDragData(tab) {
+      if (tab) {
+        delete tab._dragData;
+      }
+    },
+
+    // Shared transparent 1x1 drag image (Windows, macOS): hides the OS
+    // ghost while the sliding row itself is the visual.
     ghostImage() {
       if (!this._ghost) {
         const canvas = document.createElementNS(HTML_NS, "canvas");
@@ -392,16 +563,16 @@ var AequeraTabs = (() => {
       if (drag && drag.tab.isConnected) {
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
+        this.setGhostOutside(drag, false, event.dataTransfer);
         if (drag.rm) {
+          // No slide in reduced motion; a still line marks the landing spot
+          // instead (the same rule the drop uses), so there is feedback
+          // without motion.
+          const { target, after } = this.dropTargetFromEvent(event, drag.tab);
+          this.showDropIndicator(target && this.rows.get(target), after);
           return;
         }
         drag.pending = event.clientY;
-        if (drag.ghostOutside) {
-          drag.ghostOutside = false;
-          try {
-            event.dataTransfer.updateDragImage(this.ghostImage(), 0, 0);
-          } catch (e) {}
-        }
         if (Number.isFinite(event.clientY)) {
           this.dragFrame(event.clientY);
         }
@@ -411,13 +582,36 @@ var AequeraTabs = (() => {
       if (drag) {
         return;
       }
+      // A dragover can still arrive after this list took the drop (the
+      // compositor's last motion); it must not open a new preview that no
+      // drop or dragleave will ever close.
+      if (this.droppedSession()) {
+        return;
+      }
       const ftab = this.foreignTab(event);
-      if (!ftab) {
+      // Links (from a page, the address bar, a bookmark) open as a new tab
+      // at the gap, as on Firefox's tab strip.
+      const link = !ftab && this.canDropLink(event);
+      if (!ftab && !link) {
         return;
       }
       event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      const gap = this.reduceMotion() ? null : this.foreignGap(event.clientY);
+      event.dataTransfer.dropEffect = ftab ? "move" : "link";
+      if (this.reduceMotion()) {
+        // No sliding preview: the still line marks the gap instead.
+        if (!this._foreign || this._foreign.tab !== ftab) {
+          this.clearForeign();
+          this._foreign = { tab: ftab, drop: null, shifts: new Map(), rows: new Set() };
+        }
+        const still = this.foreignGap(event.clientY);
+        const pairs = still?.pairs ?? [];
+        if (pairs.length) {
+          const k = Math.min(still.k, pairs.length);
+          this.showDropIndicator(pairs[Math.min(k, pairs.length - 1)][1], k >= pairs.length);
+        }
+        return;
+      }
+      const gap = this.foreignGap(event.clientY);
       if (!gap) {
         this.clearForeign();
         this._foreign = { tab: ftab, drop: null, shifts: new Map(), rows: new Set() };
@@ -442,6 +636,13 @@ var AequeraTabs = (() => {
           f.shifts.delete(row);
         }
         row.style.transform = s ? `translateY(${s}px)` : "";
+      }
+      // The New Tab row closes the list: it makes room like any row below
+      // the gap, so the last row never slides over it.
+      if (this.newTabRow) {
+        f.shifts.set(this.newTabRow, gap.step);
+        f.rows.add(this.newTabRow);
+        this.newTabRow.style.transform = `translateY(${gap.step}px)`;
       }
       this.setMoving(true);
     },
@@ -488,7 +689,7 @@ var AequeraTabs = (() => {
       return { rowH, step: Math.round(step), padTop: top0.top - listTop + this.element.scrollTop };
     },
 
-    dragFrame(clientY) {
+    dragFrame(clientY, { final = false } = {}) {
       const drag = this._drag;
       if (!drag || !this.element) {
         return;
@@ -543,7 +744,13 @@ var AequeraTabs = (() => {
       const originTop = layoutTop(from);
       const startBound = listRect.top + EDGE_PAD - originTop;
       const endBound = listRect.bottom - EDGE_PAD - rowH - originTop;
-      let translate = Math.min(Math.max(clientY - drag.startY, startBound), endBound);
+      // Pointer travel plus how far the list scrolled under it since the
+      // start; without the scroll term an autoscrolling list carries the
+      // row away from the pointer and the gap follows the stray row.
+      let translate = Math.min(
+        Math.max(clientY - drag.startY + (scrollTop - drag.scrollStart), startBound),
+        endBound
+      );
       let top = originTop + translate;
       if (
         (clientY < top || clientY > top + rowH) &&
@@ -579,7 +786,9 @@ var AequeraTabs = (() => {
           firstBg = i;
         }
         lastBottom = vis + rowH;
-        if (point >= vis && point < vis + rowH) {
+        // A row owns its whole step (the row and the gap below it), so a
+        // point between two rows still finds one.
+        if (point >= vis && point < vis + step) {
           candidate = i;
           break;
         }
@@ -593,6 +802,10 @@ var AequeraTabs = (() => {
           target = order.length;
         } else if (point < firstTop) {
           target = 0;
+        } else {
+          // Inside the open landing slot: land in it. Keeping the previous
+          // frame's target here landed quick drags a slot short.
+          target = old;
         }
       } else if (candidate >= 0) {
         target = candidate;
@@ -633,6 +846,10 @@ var AequeraTabs = (() => {
         }
       }
       drag.zone = 0;
+      if (final) {
+        // The drop's own frame only settles the target; it never scrolls.
+        return;
+      }
       if (clientY < listRect.top + EDGE_SCROLL_ZONE && this.element.scrollTop > 0) {
         drag.zone = -1;
       } else if (
@@ -671,15 +888,8 @@ var AequeraTabs = (() => {
 
     onDragLeave(event) {
       const drag = this._drag;
-      if (drag && !drag.rm && !drag.ghostOutside && this.element && this.leftList(event)) {
-        drag.ghostOutside = true;
-        try {
-          event.dataTransfer.updateDragImage(
-            drag.row,
-            Math.round(drag.offsetX),
-            Math.round(drag.offsetY)
-          );
-        } catch (e) {}
+      if (drag && this.element && this.leftList(event)) {
+        this.setGhostOutside(drag, true, event.dataTransfer);
         return;
       }
       if (!drag && this._foreign && this.leftList(event)) {
@@ -687,7 +897,28 @@ var AequeraTabs = (() => {
       }
     },
 
+    /** The current drag session, or null. */
+    dragSession() {
+      try {
+        return Cc["@mozilla.org/widget/dragservice;1"]
+          .getService(Ci.nsIDragService)
+          .getCurrentSession(window);
+      } catch {
+        return null;
+      }
+    },
+
+    /** This list already took the current drag session's drop. */
+    droppedSession() {
+      const session = this.dragSession();
+      return !!session && this._droppedSessions.has(session);
+    },
+
     onDrop(event) {
+      const session = this.dragSession();
+      if (session) {
+        this._droppedSessions.add(session);
+      }
       const drag = this._drag;
       if (drag && drag.tab.isConnected) {
         this.dropLocal(event, drag);
@@ -706,6 +937,12 @@ var AequeraTabs = (() => {
         cancelAnimationFrame(drag.frame);
         drag.frame = 0;
       }
+      // The release point decides, not the last dragover: a quick drag can
+      // drop before a dragover reached the final position, which landed
+      // the tab a slot or more short of where it was let go.
+      if (!drag.rm && !drag.ghostOutside && Number.isFinite(event.clientY)) {
+        this.dragFrame(event.clientY, { final: true });
+      }
       let target = null;
       let after = false;
       if (!drag.rm) {
@@ -722,9 +959,10 @@ var AequeraTabs = (() => {
         }
       }
       if (!target || target == drag.tab) {
-        ({ target, after } = this.dropTargetFromEvent(event, drag.tab, drag));
+        ({ target, after } = this.dropTargetFromEvent(event, drag.tab));
       }
       this._drag = null;
+      this.releaseDragData(drag.tab);
       if (!target || target == drag.tab) {
         this.setMoving(false);
         this.render();
@@ -749,7 +987,13 @@ var AequeraTabs = (() => {
       // transition property down and back up orphans them (they keep
       // timelining without painting).
       const live = !drag.rm ? this.liveTransforms(this.tabs()) : null;
-      gBrowser.moveTabTo(drag.tab, { tabIndex });
+      // The render inside the move must keep movingtab armed for the glide.
+      this._committing = true;
+      try {
+        gBrowser.moveTabTo(drag.tab, { tabIndex });
+      } finally {
+        this._committing = false;
+      }
       // TabMove rendered the final order above. Rebase the snapshot onto
       // the committed slots (exact visuals), lock them in, then release
       // next frame to glide home (native tabdrop-samewindow parity).
@@ -861,18 +1105,16 @@ var AequeraTabs = (() => {
       }
       this.clearDragVisuals();
       this._drag = null;
+      this.releaseDragData(drag.tab);
       this.setMoving(false);
       this.render();
       return drag;
     },
 
-    dropTargetFromEvent(event, dragged, drag) {
-      // Halves are measured against layout tops: a row caught mid-slide
-      // reports its visual (shifted) rect, so subtract its applied shift.
-      const unshiftedTop = row => {
-        const box = row.getBoundingClientRect();
-        return box.top - (drag?.shifts.get(row) ?? 0) + box.height / 2;
-      };
+    dropTargetFromEvent(event, dragged) {
+      // Halves are measured against layout, never a row's (possibly
+      // sliding) rect: see layoutMid.
+      const unshiftedTop = row => this.layoutMid(row);
       const row = this.dragRowOf(event.target);
       if (row?.tab == dragged) {
         return { target: null, after: false };
@@ -917,6 +1159,19 @@ var AequeraTabs = (() => {
         // qualifies (content cannot fabricate a tab in gBrowser.tabs).
         return gBrowser.tabs.includes(tab) ? tab : null;
       }
+      // Another window: only what Firefox's own tab strip accepts
+      // (getDropEffectForTabDrag). adoptTab does not check these itself,
+      // and a private tab must never move into a normal window or back.
+      const other = tab.ownerGlobal;
+      if (
+        other?.document?.documentElement.getAttribute("windowtype") != "navigator:browser" ||
+        !other.gBrowser?.tabs.includes(tab) ||
+        PrivateBrowsingUtils.isWindowPrivate(window) != PrivateBrowsingUtils.isWindowPrivate(other) ||
+        window.gMultiProcessBrowser != other.gMultiProcessBrowser ||
+        window.gFissionBrowser != other.gFissionBrowser
+      ) {
+        return null;
+      }
       return tab;
     },
 
@@ -933,25 +1188,41 @@ var AequeraTabs = (() => {
       if (!pairs.length) {
         return { pairs, step: 0, k: 0 };
       }
-      const r0 = pairs[0][1].getBoundingClientRect();
-      if (!(r0.height > 0)) {
+      const rowH = pairs[0][1].offsetHeight;
+      if (!(rowH > 0)) {
         return null;
       }
-      const r1 = pairs.length > 1 ? pairs[1][1].getBoundingClientRect() : null;
-      const step = Math.round(Math.max(r0.height, r1 ? r1.top - r0.top : 0));
-      const f = this._foreign;
+      // One slot is a row plus the list's gap, measured from the CSS so a
+      // single-row list (nothing to measure the spacing against) opens a
+      // full slot too.
+      const gap = parseFloat(getComputedStyle(this.element).rowGap) || 0;
+      const step = Math.round(rowH + gap);
       let k = pairs.length;
       for (let i = 0; i < pairs.length; i++) {
-        const mid =
-          pairs[i][1].getBoundingClientRect().top -
-          (f?.shifts.get(pairs[i][1]) ?? 0) +
-          r0.height / 2;
-        if (clientY < mid) {
+        if (clientY < this.layoutMid(pairs[i][1])) {
           k = i;
           break;
         }
       }
       return { pairs, step, k };
+    },
+
+    /**
+     * A row's vertical middle in viewport coordinates, from layout alone.
+     * A row sliding into a preview gap is mid-transition, and its rect
+     * reports wherever the slide is: measuring that put a quick drop one
+     * slot off. offsetTop ignores transforms (the list is the rows'
+     * offsetParent, aequera-tabs.css).
+     */
+    layoutMid(row) {
+      const list = this.element;
+      return (
+        list.getBoundingClientRect().top +
+        list.clientTop -
+        list.scrollTop +
+        row.offsetTop +
+        row.offsetHeight / 2
+      );
     },
 
     clearForeign() {
@@ -960,6 +1231,7 @@ var AequeraTabs = (() => {
         return;
       }
       this._foreign = null;
+      this.showDropIndicator(null);
       for (const row of f.rows) {
         if (row.style.transform) {
           row.style.transform = "";
@@ -977,6 +1249,9 @@ var AequeraTabs = (() => {
       const prev = this._foreign;
       const ftab = prev?.tab?.isConnected ? prev.tab : this.foreignTab(event);
       if (!ftab) {
+        if (this.canDropLink(event)) {
+          this.dropLinks(event);
+        }
         this.clearForeign();
         return;
       }
@@ -993,34 +1268,103 @@ var AequeraTabs = (() => {
         ref = pairs[pairs.length - 1][0];
         after = true;
       }
-      let tabIndex;
-      if (!ref) {
-        tabIndex = gBrowser.tabs.length;
-      } else {
-        const gi = gBrowser.tabs.indexOf(ref);
-        if (gi < 0) {
-          this.render();
-          return;
+      // The tab index for the gap, computed after any unpinning (which moves
+      // the tab and shifts the indexes).
+      const gapIndex = moving => {
+        if (!ref || !ref.isConnected) {
+          return gBrowser.tabs.length - (moving ? 1 : 0);
         }
-        tabIndex = after ? gi + 1 : gi;
-      }
+        let index = gBrowser.tabs.indexOf(ref) + (after ? 1 : 0);
+        if (moving && gBrowser.tabs.indexOf(moving) < index) {
+          index -= 1; // the moving tab leaves its old slot first
+        }
+        return index;
+      };
+      // The rows are the unpinned tabs: a pinned tab (an essential, or a
+      // pinned tab from another window) dropped among them is unpinned, as
+      // on Firefox's own tab strip.
       if (gBrowser.tabs.includes(ftab)) {
-        const gFrom = gBrowser.tabs.indexOf(ftab);
-        if (gFrom < tabIndex) {
-          tabIndex -= 1;
+        if (ftab.pinned) {
+          gBrowser.unpinTab(ftab);
         }
-        if (tabIndex != gFrom) {
+        const tabIndex = gapIndex(ftab);
+        if (tabIndex != gBrowser.tabs.indexOf(ftab)) {
           gBrowser.moveTabTo(ftab, { tabIndex });
         }
         this.render();
         return;
       }
-      if (ftab.pinned) {
-        tabIndex = Math.min(tabIndex, gBrowser.pinnedTabCount);
-      }
       try {
-        gBrowser.adoptTab(ftab, { tabIndex, selectTab: true });
-      } catch (e) {}
+        const adopted = gBrowser.adoptTab(ftab, {
+          tabIndex: Math.max(gapIndex(null), gBrowser.pinnedTabCount),
+          selectTab: true,
+        });
+        if (adopted?.pinned) {
+          gBrowser.unpinTab(adopted);
+          gBrowser.moveTabTo(adopted, { tabIndex: gapIndex(adopted) });
+        }
+      } catch (e) {
+        console.error("aequera-tabs: adopting a dropped tab failed", e);
+      }
+    },
+
+    /** A droppable link: never javascript: or data: (disallowInherit). */
+    canDropLink(event) {
+      try {
+        return Services.droppedLinkHandler.canDropLink(event, true);
+      } catch {
+        return false;
+      }
+    },
+
+    /** Open dropped links as new tabs at the previewed gap (Firefox's tab
+     * strip link drop: same principal, policy container, container
+     * identity, background preference, and many-tabs confirmation). */
+    dropLinks(event) {
+      let links;
+      try {
+        links = Services.droppedLinkHandler.dropLinks(event, true);
+      } catch {}
+      if (!links?.length) {
+        return;
+      }
+      event.preventDefault();
+      const gap = this.foreignGap(event.clientY);
+      const pairs = gap?.pairs ?? [];
+      const k = gap ? Math.min(Math.max(gap.k, 0), pairs.length) : pairs.length;
+      const elements = gBrowser.tabContainer.dragAndDropElements;
+      const elementIndex =
+        k < pairs.length
+          ? elements.indexOf(pairs[k][0])
+          : pairs.length
+            ? elements.indexOf(pairs.at(-1)[0]) + 1
+            : elements.length;
+      let inBackground = Services.prefs.getBoolPref("browser.tabs.loadInBackground");
+      if (event.shiftKey) {
+        inBackground = !inBackground;
+      }
+      const urls = links.map(link => link.url);
+      const options = {
+        inBackground,
+        replace: false,
+        allowThirdPartyFixup: true,
+        elementIndex: elementIndex >= 0 ? elementIndex : undefined,
+        userContextId: gBrowser.selectedTab.getAttribute("usercontextid"),
+        triggeringPrincipal: Services.droppedLinkHandler.getTriggeringPrincipal(event),
+        policyContainer: Services.droppedLinkHandler.getPolicyContainer(event),
+      };
+      (async () => {
+        if (urls.length >= Services.prefs.getIntPref("browser.tabs.maxOpenBeforeWarn")) {
+          const { OpenInTabsUtils } = ChromeUtils.importESModule(
+            "moz-src:///browser/components/tabbrowser/OpenInTabsUtils.sys.mjs"
+          );
+          // A sync dialog cannot run inside the drop handler.
+          if (!(await OpenInTabsUtils.promiseConfirmOpenInTabs(urls.length, window))) {
+            return;
+          }
+        }
+        gBrowser.loadTabs(urls, options);
+      })().catch(error => console.error("aequera-tabs: opening dropped links failed", error));
     },
 
     onDragEnd(event) {
@@ -1033,27 +1377,45 @@ var AequeraTabs = (() => {
       if (!event) {
         return;
       }
-      const effect = event?.dataTransfer?.dropEffect;
+      // Tear-off rules, Firefox's own (tabbrowser drag-and-drop on_dragend):
+      // never on Escape, never when something took the drop, and never when
+      // released by the rail.
+      const dt = event.dataTransfer;
       if (
         !drag.dropped &&
         drag.tab.isConnected &&
-        effect === "none" &&
+        !dt?.mozUserCancelled &&
+        dt?.dropEffect === "none" &&
         this.allowDetach() &&
-        this.isOutside(event, drag)
+        this.isOutside(event)
       ) {
         this.detachTab(drag.tab, event, drag);
       }
     },
 
-    /** Outside judgment: dragend coordinates can be clamped to the window
-     * or report the last inside position on OS drops, so a drag that left
-     * the rail (ghostOutside, armed by dragleave) counts as outside even
-     * when the end coordinates read inside. */
-    isOutside(event, drag) {
-      if (drag?.ghostOutside) {
+    /**
+     * A release tears the tab off unless it lands by the rail: inside the
+     * window and no further right than half a rail width past the rail
+     * (Firefox: 1.5 x the strip's width from the window edge). So letting go
+     * over the workspace dock, the essentials, the New Tab row, or just past
+     * the rail's edge is a cancelled drag, not a new window. A release
+     * outside the window (coordinates outside the client area) tears off.
+     */
+    isOutside(event) {
+      const x = event?.clientX;
+      const y = event?.clientY;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
         return true;
       }
-      return !this.nearList(event);
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
+        return true;
+      }
+      const rail = document.querySelector("#sidebar-container > sidebar-main") ?? this.element;
+      const box = rail?.getBoundingClientRect();
+      if (!box || !(box.width > 0)) {
+        return !this.nearList(event);
+      }
+      return x > box.right + box.width / 2;
     },
 
     allowDetach() {
@@ -1113,7 +1475,9 @@ var AequeraTabs = (() => {
           row.style.transform = "";
         }
         row.removeAttribute("dragging");
+        row.removeAttribute("dragout");
       }
+      this._dropLine?.remove();
     },
 
     init() {

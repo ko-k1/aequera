@@ -492,8 +492,241 @@ add_task(async function test_drag_outside_detaches_to_new_window() {
   ok(true, "the detached window closes cleanly");
 });
 
+// Synthetic drag events at explicit coordinates (headless-safe).
+function dragAt(type, target, dataTransfer, clientX, clientY, extra = {}) {
+  target.dispatchEvent(
+    new DragEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+      clientX,
+      clientY,
+      ...extra,
+    })
+  );
+}
+const center = el => {
+  const box = el.getBoundingClientRect();
+  return [box.left + box.width / 2, box.top + box.height / 2];
+};
+const windowCount = () => [...Services.wm.getEnumerator("navigator:browser")].length;
+// Tests that open tabs at the end of a long list: scroll them into view, as
+// a person would before pointing at them.
+async function showLastRows() {
+  list().scrollTop = list().scrollHeight;
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+add_task(async function test_drag_hands_firefox_a_tab_drag() {
+  // Firefox's own drop code (essentials grid, other windows) only treats a
+  // drag as a tab move when the tab type comes first and tab._dragData
+  // describes it; the rows hand it the all-tabs-menu shape.
+  const [tab] = await openTabs(1);
+  const dataTransfer = new DataTransfer();
+  dragAt("dragstart", rowFor(tab), dataTransfer, ...center(rowFor(tab)));
+  is(dataTransfer.mozTypesAt(0)[0], "application/x-moz-tabbrowser-tab", "the tab type comes first");
+  is(dataTransfer.mozGetDataAt("application/x-moz-tabbrowser-tab", 0), tab, "carrying the tab");
+  is(
+    dataTransfer.mozGetDataAt("text/x-moz-text-internal", 0),
+    tab.linkedBrowser.currentURI.spec,
+    "and its address for targets that take one"
+  );
+  ok(tab._dragData?.fromTabList, "Firefox's drag state describes a drag from outside its strip");
+  Assert.deepEqual(tab._dragData.movingTabs, [tab], "moving just this tab");
+  ok(window.AequeraTabs._drag, "the drag is live");
+  dragAt("dragend", rowFor(tab), dataTransfer, ...center(rowFor(tab)));
+  ok(!window.AequeraTabs._drag, "dragend reaches the list and ends the drag");
+  ok(!("_dragData" in tab), "and Firefox's drag state is released");
+});
+
+add_task(async function test_releases_that_never_tear_off() {
+  const [tab] = await openTabs(1);
+  const before = windowCount();
+  const end = (clientX, clientY, dataTransfer) => {
+    dragAt("dragstart", rowFor(tab), new DataTransfer(), ...center(rowFor(tab)));
+    window.AequeraTabs.onDragEnd({
+      type: "dragend",
+      dataTransfer: dataTransfer ?? { dropEffect: "none", mozUserCancelled: false },
+      clientX,
+      clientY,
+      screenX: clientX,
+      screenY: clientY,
+    });
+  };
+  const rail = railBox().getBoundingClientRect();
+  const dock = document.getElementById("aequera-workspace-dock");
+  // Over the workspace dock, below the rows.
+  end(...center(dock));
+  // Just past the rail's edge (within half a rail width).
+  end(rail.right + rail.width / 4, rail.top + 100);
+  // Escape (the platform reports a user-cancelled session), far out.
+  end(5000, 5000, { dropEffect: "none", mozUserCancelled: true });
+  // Something else took the drop.
+  end(5000, 5000, { dropEffect: "move", mozUserCancelled: false });
+  await new Promise(resolve => setTimeout(resolve, 300));
+  is(windowCount(), before, "no release by the rail, cancel, or accepted drop opens a window");
+  ok(gBrowser.tabs.includes(tab), "the tab stays");
+  ok(!window.AequeraTabs._drag, "and no drag is left behind");
+});
+
+add_task(async function test_dragging_out_restores_the_rows() {
+  const [a, , c] = await openTabs(3);
+  const dataTransfer = new DataTransfer();
+  dragAt("dragstart", rowFor(a), dataTransfer, ...center(rowFor(a)));
+  const target = rowFor(c).getBoundingClientRect();
+  for (let i = 0; i < 3; i++) {
+    dragAt("dragover", rowFor(c), dataTransfer, target.left + 20, target.bottom - 2);
+  }
+  if (!window.AequeraTabs._drag.rm) {
+    ok(listedTabs().some(t => rowFor(t).style.transform), "inside, the rows slide");
+  }
+  // Leave the list sideways (over the page).
+  dragAt("dragleave", list(), dataTransfer, list().getBoundingClientRect().right + 300, target.top);
+  ok(rowFor(a).hasAttribute("dragout"), "outside, the dragged row dims in its slot");
+  ok(
+    listedTabs().every(t => !rowFor(t).style.transform),
+    "and every row is back in place: a release out there does not reorder"
+  );
+  dragAt("dragover", rowFor(c), dataTransfer, target.left + 20, target.bottom - 2);
+  ok(!rowFor(a).hasAttribute("dragout"), "coming back in resumes the drag");
+  dragAt("dragend", rowFor(a), dataTransfer, ...center(rowFor(a)));
+});
+
+add_task(async function test_drop_lands_where_released() {
+  // A quick drag can be released before a dragover reached the final
+  // position; the drop's own coordinates decide.
+  const [a, , c] = await openTabs(3);
+  await showLastRows();
+  const dataTransfer = new DataTransfer();
+  dragAt("dragstart", rowFor(a), dataTransfer, ...center(rowFor(a)));
+  dragAt("dragover", rowFor(a), dataTransfer, ...center(rowFor(a)));
+  const target = rowFor(c).getBoundingClientRect();
+  dragAt("drop", rowFor(c), dataTransfer, target.left + 20, target.bottom - 2);
+  dragAt("dragend", rowFor(a), dataTransfer, target.left + 20, target.bottom - 2);
+  await TestUtils.waitForCondition(
+    () => gBrowser.tabs.indexOf(a) == gBrowser.tabs.indexOf(c) + 1,
+    "dropped on c's lower half without a dragover there, the tab lands after c"
+  );
+});
+
+add_task(async function test_autoscroll_keeps_the_row_under_the_pointer() {
+  const fit = Math.ceil(list().clientHeight / 36);
+  const tabs = [];
+  for (let i = 0; i < fit + 8; i++) {
+    tabs.push(BrowserTestUtils.addTab(gBrowser, "about:blank", { skipAnimation: true }));
+  }
+  opened.push(...tabs);
+  await TestUtils.waitForCondition(() => list().scrollHeight > list().clientHeight, "the list overflows");
+  list().scrollTop = 0;
+  const first = listedTabs()[0];
+  const dataTransfer = new DataTransfer();
+  const [x, y] = center(rowFor(first));
+  dragAt("dragstart", rowFor(first), dataTransfer, x, y);
+  if (window.AequeraTabs._drag.rm) {
+    dragAt("dragend", rowFor(first), dataTransfer, x, y);
+    ok(true, "reduced motion has no live slide to check");
+    return;
+  }
+  const pointerY = list().getBoundingClientRect().top + 200;
+  dragAt("dragover", list(), dataTransfer, x, pointerY);
+  list().scrollTop = 150; // what the edge autoscroll does under a still pointer
+  dragAt("dragover", list(), dataTransfer, x, pointerY);
+  const box = rowFor(first).getBoundingClientRect();
+  Assert.less(
+    Math.abs(box.top + box.height / 2 - pointerY),
+    box.height,
+    "the dragged row stays under the pointer while the list scrolls"
+  );
+  dragAt("dragend", rowFor(first), dataTransfer, x, y);
+  for (const tab of tabs) {
+    gBrowser.removeTab(tab, { animate: false });
+  }
+});
+
+add_task(async function test_an_essential_dropped_on_the_rows_is_unpinned() {
+  const [a, b] = await openTabs(2);
+  gBrowser.pinTab(a);
+  ok(a.pinned, "an essential");
+  const dataTransfer = new DataTransfer();
+  dataTransfer.mozSetDataAt("application/x-moz-tabbrowser-tab", a, 0);
+  const [x, y] = center(rowFor(b));
+  dragAt("dragover", rowFor(b), dataTransfer, x, y - 10);
+  dragAt("drop", rowFor(b), dataTransfer, x, y - 10);
+  await TestUtils.waitForCondition(() => !a.pinned, "dropped among the rows, it is unpinned");
+  is(gBrowser.tabs.indexOf(a) + 1, gBrowser.tabs.indexOf(b), "and lands where it was dropped");
+});
+
+add_task(async function test_a_private_tab_never_crosses_into_a_normal_window() {
+  const privateWin = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const privateTab = privateWin.gBrowser.selectedTab;
+  const dataTransfer = new DataTransfer();
+  dataTransfer.mozSetDataAt("application/x-moz-tabbrowser-tab", privateTab, 0);
+  const [b] = await openTabs(1);
+  const count = gBrowser.tabs.length;
+  const [x, y] = center(rowFor(b));
+  is(window.AequeraTabs.foreignTab({ dataTransfer }), null, "the rail does not accept it");
+  dragAt("dragover", rowFor(b), dataTransfer, x, y);
+  dragAt("drop", rowFor(b), dataTransfer, x, y);
+  await new Promise(resolve => setTimeout(resolve, 300));
+  ok(privateWin.gBrowser.tabs.includes(privateTab), "the private tab stays in its window");
+  is(gBrowser.tabs.length, count, "and nothing was adopted into the normal window");
+  await BrowserTestUtils.closeWindow(privateWin);
+  await SimpleTest.promiseFocus(window);
+});
+
+add_task(async function test_a_link_dropped_on_the_rows_opens_there() {
+  const [a, b] = await openTabs(2);
+  const url = "https://example.com/aequera-dropped-link";
+  const dataTransfer = new DataTransfer();
+  dataTransfer.setData("text/uri-list", url);
+  const [x, y] = center(rowFor(b));
+  const opened_ = BrowserTestUtils.waitForNewTab(gBrowser, url, true);
+  dragAt("dragover", rowFor(b), dataTransfer, x, y - 10);
+  dragAt("drop", rowFor(b), dataTransfer, x, y - 10);
+  const tab = await opened_;
+  opened.push(tab);
+  is(gBrowser.tabs.indexOf(tab), gBrowser.tabs.indexOf(a) + 1, "the link opens in the gap it was dropped in");
+  ok(!list().hasAttribute("movingtab"), "and the preview is gone");
+});
+
+add_task(async function test_reduced_motion_marks_the_landing_gap() {
+  await SpecialPowers.pushPrefEnv({ set: [["ui.prefersReducedMotion", 1]] });
+  const [a, , c] = await openTabs(3);
+  const dataTransfer = new DataTransfer();
+  dragAt("dragstart", rowFor(a), dataTransfer, ...center(rowFor(a)));
+  ok(window.AequeraTabs._drag.rm, "reduced motion drag");
+  const target = rowFor(c).getBoundingClientRect();
+  dragAt("dragover", rowFor(c), dataTransfer, target.left + 20, target.bottom - 2);
+  const line = list().querySelector(".aequera-tab-dropline");
+  ok(line, "a still line marks where the tab will land");
+  ok(listedTabs().every(t => !rowFor(t).style.transform), "and nothing slides");
+  dragAt("drop", rowFor(c), dataTransfer, target.left + 20, target.bottom - 2);
+  dragAt("dragend", rowFor(a), dataTransfer, target.left + 20, target.bottom - 2);
+  ok(!list().querySelector(".aequera-tab-dropline"), "the line goes with the drag");
+  await TestUtils.waitForCondition(
+    () => gBrowser.tabs.indexOf(a) == gBrowser.tabs.indexOf(c) + 1,
+    "the tab lands on the marked side"
+  );
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function test_a_drag_over_the_rail_is_hover() {
+  await collapse();
+  const rail = container();
+  const dataTransfer = new DataTransfer();
+  const [x, y] = center(railBox());
+  dragAt("dragenter", rail, dataTransfer, x, y);
+  await TestUtils.waitForCondition(
+    () => ROOT.hasAttribute("aequera-rail-expanded"),
+    "dragging over the collapsed rail widens it, like hovering"
+  );
+  dragAt("dragleave", rail, dataTransfer, 900, y);
+  await TestUtils.waitForCondition(isFullyCollapsed, "leaving it collapses it again");
+});
+
 add_task(async function test_context_menu_is_firefox_tab_menu_for_that_row() {
   const [tab] = await openTabs(1);
+  await showLastRows();
   const menu = document.getElementById("tabContextMenu");
   const shown = BrowserTestUtils.waitForPopupEvent(menu, "shown");
   EventUtils.synthesizeMouseAtCenter(rowFor(tab), { type: "contextmenu", button: 2 });

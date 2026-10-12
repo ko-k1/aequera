@@ -16,10 +16,12 @@
 //     aequera.rail.expandedWidth, a plain CSS width transition (interruptible
 //     by construction: a new target restarts from the current width);
 //   - hover intent: open after aequera.hover.openDelayMs, linger
-//     aequera.hover.closeDelayMs before collapsing;
+//     aequera.hover.closeDelayMs before collapsing; a drag over the rail
+//     counts as hover (drag and drop sends no mouseover/mouseout);
 //   - holds: keyboard focus (:focus-visible) in the rail, a popup opened from
 //     the rail (e.g. the tab context menu), the address bar when
-//     aequera.rail.expandOnAddressFocus is on (prototype unified search);
+//     aequera.rail.expandOnAddressFocus is on (prototype unified search), a
+//     tab row being dragged (aequera-tabs.js);
 //   - pinned (aequera.rail.pinned): always expanded, taking layout space;
 //   - two states: the TARGET (:root[aequera-rail-expanded]) flips at once and
 //     drives the width, the page clip, and the drawer edge; the CONTENT
@@ -66,7 +68,9 @@ var AequeraRail = (() => {
       if (!this.active) {
         return false;
       }
-      if (this.pinned || this.hovered || this.openPopups.size) {
+      // A row being dragged holds the rail open, even while the pointer
+      // is outside it (tear-off): coming back must find the same rows.
+      if (this.pinned || this.hovered || this.openPopups.size || window.AequeraTabs?._drag) {
         return true;
       }
       if (Services.prefs.getBoolPref(PREFS.addressFocus, true) && gURLBar.focused) {
@@ -170,7 +174,40 @@ var AequeraRail = (() => {
             this.settle(this.delay(PREFS.closeDelay, 150));
           }
           break;
+        // Drag and drop sends no mouseover/mouseout, so drags are hover
+        // here: a tab or link dragged in widens the rail to show where it
+        // will land; leaving it, dropping, or ending the drag re-reads hover
+        // from where the pointer is.
+        case "dragenter":
+          if (!this.hovered && this.container.contains(event.target)) {
+            this.hovered = true;
+            this.settle(this.delay(PREFS.openDelay, 40));
+          }
+          break;
+        case "dragleave":
+        case "drop":
+        case "dragend":
+          this.rehover(event);
+          break;
       }
+    },
+
+    /** Hover from an event's coordinates (drag events carry no mouseout). */
+    rehover(event) {
+      const box = this.container.querySelector(":scope > sidebar-main")?.getBoundingClientRect();
+      const x = event.clientX;
+      const y = event.clientY;
+      const inside =
+        !!box &&
+        Number.isFinite(x) &&
+        x >= box.left &&
+        x < box.right &&
+        y >= box.top &&
+        y < box.bottom;
+      if (inside != this.hovered) {
+        this.hovered = inside;
+      }
+      this.settle(this.delay(inside ? PREFS.openDelay : PREFS.closeDelay, inside ? 40 : 150));
     },
 
     observe() {
@@ -185,6 +222,9 @@ var AequeraRail = (() => {
       }
       this.container.addEventListener("mouseover", this);
       this.container.addEventListener("mouseout", this);
+      for (const type of ["dragenter", "dragleave", "drop", "dragend"]) {
+        this.container.addEventListener(type, this);
+      }
       // Rail keyboard focus and the address bar both count, so focus is
       // watched window-wide.
       window.addEventListener("focusin", this);

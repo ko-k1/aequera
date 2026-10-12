@@ -86,13 +86,34 @@ the rail's center line and never moves; rows grow with the rail, titles are
 revealed by the widening and fade in (clipped away, then faded out, on
  collapse). Click selects, middle-click and the dim "x" (on hover, widened
  rail only) close, right-click opens Firefox's own tab context menu for that
- row (rows carry `.tab`). Dragging reorders with a live slide and a settle
- glide (`gBrowser.moveTabTo`); dropping outside the rail tears the tab into a
- new window (`gBrowser.replaceTabsWithWindow`); tabs dragged from another
- window preview a gap and are adopted at the drop position
- (`gBrowser.adoptTab`, carrying the native tab-drop type so vanilla Firefox
- windows interoperate both ways). Hidden tabs (other workspaces, extensions)
- are not listed. The selected row is kept in view: however a tab gets
+ row (rows carry `.tab`). Hidden tabs (other workspaces, extensions) are not
+ listed.
+
+Drag and drop (each row below was checked with real pointer drags on a
+Wayland compositor, and is covered headless by `browser_aequera_tabs.js`):
+
+| Drag | Result |
+|---|---|
+| A row within the list | Live slide under the pointer (also while the list autoscrolls at its edges), settle glide on drop (`gBrowser.moveTabTo`); the release point decides the slot, not the last dragover |
+| A row out of the list | The rows return to their order and the row dims: nothing will be reordered. Release far from the rail tears it into a new window (`gBrowser.replaceTabsWithWindow`); release by the rail (dock, essentials, just past its edge), Escape, or a drop something else took does not |
+| A row onto the essentials grid | Pinned, by Firefox's own drop code |
+| An essential onto the rows | Unpinned at the drop position |
+| A row onto another window's rail or Firefox tab strip | Adopted there at the drop position (`gBrowser.adoptTab`); never between a private and a normal window, or across process models (Firefox's own rules) |
+| A link (page, address bar, bookmark) onto the rows | Opens as a new tab at the gap, with the drop's principal and policy container (`gBrowser.loadTabs`, Firefox's tab-strip link drop) |
+
+How it fits Firefox: the drag source is the row (`addElement`), so
+`dragend` comes back to the list; the native tab type comes first and
+`tab._dragData` has the shape of a drag from Firefox's all-tabs menu
+(`fromTabList`), which is what lets Firefox's strip and other windows take
+it. The tab's address rides as `text/x-moz-text-internal`. A drag over the
+rail counts as hover (drag and drop sends no mouseover/mouseout): it widens
+a collapsed rail, and a dragged row holds it open. Drag image: on Windows and
+macOS a hidden image swapped with `updateDragImage` once the pointer leaves
+the list; Linux cannot swap mid-drag, so a drag panel (live DOM) carries the
+row as a pill and shows it only outside the list. Reduced motion: no slide;
+a still accent line marks the landing gap.
+
+ The selected row is kept in view: however a tab gets
  selected (Ctrl+Tab, the command surface, a new tab, a restored session), the
  list scrolls to show it, measured after the next natural layout flush
  (`promiseDocumentFlushed`) so a switch never forces a reflow, and only the
