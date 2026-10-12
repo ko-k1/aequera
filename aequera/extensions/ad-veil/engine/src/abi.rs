@@ -109,7 +109,8 @@ pub unsafe extern "C" fn veil_check_popup(
     opener: *const u8,
     opener_len: usize,
 ) -> i32 {
-    let (Some(url), Some(opener)) = (unsafe { (text(url, url_len), text(opener, opener_len)) }) else {
+    let (Some(url), Some(opener)) = (unsafe { (text(url, url_len), text(opener, opener_len)) })
+    else {
         return Decision::Unparsable as i32;
     };
     VEIL.with(|v| match v.borrow().as_ref() {

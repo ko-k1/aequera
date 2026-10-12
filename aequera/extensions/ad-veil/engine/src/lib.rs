@@ -321,8 +321,15 @@ example.com##.promo-box:remove()
     fn popup_rules_judge_new_windows() {
         let v = veil();
         let opener = "https://news.test/story";
-        assert_eq!(v.check_popup("https://pops.example/landing", opener), Decision::Block);
-        assert_eq!(v.check_popup("https://pops.example/allowed", opener), Decision::Allow, "exception");
+        assert_eq!(
+            v.check_popup("https://pops.example/landing", opener),
+            Decision::Block
+        );
+        assert_eq!(
+            v.check_popup("https://pops.example/allowed", opener),
+            Decision::Allow,
+            "exception"
+        );
         assert_eq!(
             v.check_popup("https://track.test/go?s=1&zoneid=7&ad_id=2", opener),
             Decision::Block,
@@ -333,18 +340,36 @@ example.com##.promo-box:remove()
             Decision::Allow,
             "the same rule, first-party"
         );
-        assert_eq!(v.check_popup("https://both.example/", opener), Decision::Block, "$popup,script");
-        assert_eq!(v.check_popup("https://cdn.test/page", opener), Decision::Allow);
+        assert_eq!(
+            v.check_popup("https://both.example/", opener),
+            Decision::Block,
+            "$popup,script"
+        );
+        assert_eq!(
+            v.check_popup("https://cdn.test/page", opener),
+            Decision::Allow
+        );
         // Network rules do not judge popups, and popup rules not requests.
-        assert_eq!(v.check_popup("https://ads.example/", opener), Decision::Allow);
-        assert_eq!(v.check("https://pops.example/x.js", opener, "script"), Decision::Allow);
-        assert_eq!(v.check("https://both.example/x.js", opener, "script"), Decision::Allow);
+        assert_eq!(
+            v.check_popup("https://ads.example/", opener),
+            Decision::Allow
+        );
+        assert_eq!(
+            v.check("https://pops.example/x.js", opener, "script"),
+            Decision::Allow
+        );
+        assert_eq!(
+            v.check("https://both.example/x.js", opener, "script"),
+            Decision::Allow
+        );
     }
 
     #[test]
     fn popup_rules_rewrite() {
         assert_eq!(
-            popup_rules("||a.test^$popup\n||b.test^$script\n&z=$popup,~third-party,subdocument\n##.x\n! c$popup\n"),
+            popup_rules(
+                "||a.test^$popup\n||b.test^$script\n&z=$popup,~third-party,subdocument\n##.x\n! c$popup\n"
+            ),
             "||a.test^$document\n&z=$~third-party,document\n"
         );
     }
@@ -397,7 +422,10 @@ example.com##.promo-box:remove()
             Decision::Block,
             "popup rules too"
         );
-        assert!(Veil::deserialize(&bytes[..bytes.len() / 2]).is_none(), "truncated");
+        assert!(
+            Veil::deserialize(&bytes[..bytes.len() / 2]).is_none(),
+            "truncated"
+        );
     }
 
     /// Cosmetic rules of the shipped lists by parse result (run with
@@ -413,12 +441,16 @@ example.com##.promo-box:remove()
             let text = std::fs::read_to_string(path).unwrap();
             for line in popup_rules(&text).lines() {
                 popups += 1;
-                if adblock::filters::network::NetworkFilter::parse(line, false, Default::default()).is_ok() {
+                if adblock::filters::network::NetworkFilter::parse(line, false, Default::default())
+                    .is_ok()
+                {
                     popups_parsed += 1;
                 }
             }
             for line in text.lines() {
-                if !(line.contains("##") || line.contains("#?#") || line.contains("#@#")) || line.starts_with('!') {
+                if !(line.contains("##") || line.contains("#?#") || line.contains("#@#"))
+                    || line.starts_with('!')
+                {
                     continue;
                 }
                 match CosmeticFilter::parse(line, false, Default::default()) {
