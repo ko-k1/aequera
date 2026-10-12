@@ -1,0 +1,21 @@
+# Ad Veil browser-chrome tests (mochitest). Run via tools/build/test-shell.sh;
+# not packaged (jar.mn lists the add-on's files).
+
+["browser_aequera_adveil.js"]
+support-files = [
+  "adveil_page.html",
+  "adveil_app.js",
+  "ads.bundle.js",
+  "adveil_ad.svg",
+  "adveil_frame.html",
+  "adveil_frame.js",
+  "adveil_veil.html",
+  "adveil_stall.sjs",
+  "adbanners/veil_promo.svg",
+  "adveil_popup.html",
+  "adveil_popup_target.html",
+  "adveil_procedural.html",
+  "analytics-tracking.js",
+  "adveil_network_ad.js",
+  "adveil_social.js",
+]

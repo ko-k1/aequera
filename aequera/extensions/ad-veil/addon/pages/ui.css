@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Ad Veil's pages (popup, dashboard). Geometry from
- * aequera/design/tokens.toml (rad 9, gap 6, ctl 30, fs 14, tl 12); colors
- * are the light/dark canvas the new tab page uses. Feedback is immediate;
- * the one transition (the switch) is off under reduced motion. */
+/* Ad Veil's pages (popup, dashboard). Geometry (--ae-rad, gap, ctl, fs, tl) is
+ * tokens.css, generated from aequera/design/tokens.toml by `aequera design
+ * tokens` and linked before this file; colors are the light/dark canvas the
+ * new tab page uses. Feedback is immediate; the one transition (the switch)
+ * is off under reduced motion. */
 
 :root {
   color-scheme: light dark;
@@ -25,11 +26,6 @@
      the dark accent #00ddff is too light for a mark). */
   --ae-chart: light-dark(#0061e0, #0090ed);
   --ae-chart-track: color-mix(in srgb, var(--ae-text) 8%, transparent);
-  --ae-rad: 9px;
-  --ae-gap: 6px;
-  --ae-ctl: 30px;
-  --ae-fs: 14px;
-  --ae-tl: 12px;
   --ae-feedback: 120ms;
 }
 

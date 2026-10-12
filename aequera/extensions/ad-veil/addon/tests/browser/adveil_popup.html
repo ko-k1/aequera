@@ -10,12 +10,12 @@
 </head>
 <body>
 <p id="text">Plain text: a click here opens another site (a "click anywhere" popup).</p>
-<a id="link" href="https://example.org/browser/browser/aequera/tests/browser/adveil_popup_target.html?link" target="_blank">A link that opens in a new tab</a>
+<a id="link" href="https://example.org/browser/browser/aequera-adveil/tests/browser/adveil_popup_target.html?link" target="_blank">A link that opens in a new tab</a>
 <button id="share">Share (a control: may open a window)</button>
 <button id="ruled">A button opening a page EasyList's popup rules name</button>
 <div id="redirect">Plain text: a click here takes the page to another site</div>
 <script>
-  const TARGET = "https://example.org/browser/browser/aequera/tests/browser/adveil_popup_target.html";
+  const TARGET = "https://example.org/browser/browser/aequera-adveil/tests/browser/adveil_popup_target.html";
   // As canyoublockit.com's pop-under test does: one listener for the page.
   document.addEventListener("click", event => {
     switch (event.target.id) {

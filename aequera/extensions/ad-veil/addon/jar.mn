@@ -1,6 +1,6 @@
 # Ad Veil built-in add-on -> resource://builtin-addons/adveil/
 # (gen_built_in_addons.py lists every builtin-addons/*/manifest.json).
-# model.test.mjs is a node:test file, not part of the add-on.
+# Not part of the add-on: model.test.mjs (node:test) and tests/ (mochitest).
 
 browser.jar:
     builtin-addons/adveil/manifest.json         (manifest.json)
@@ -16,6 +16,7 @@ browser.jar:
     builtin-addons/adveil/icons/veil-veiled.svg (icons/veil-veiled.svg)
     builtin-addons/adveil/experiments/veil.json (experiments/veil.json)
     builtin-addons/adveil/experiments/veil.js   (experiments/veil.js)
+    builtin-addons/adveil/pages/tokens.css      (pages/tokens.css)
     builtin-addons/adveil/pages/ui.css          (pages/ui.css)
     builtin-addons/adveil/pages/popup.html      (pages/popup.html)
     builtin-addons/adveil/pages/popup.css       (pages/popup.css)

@@ -11,6 +11,7 @@
 mod bench;
 mod config;
 mod demo;
+mod design;
 mod doctor;
 mod lock;
 mod output;
@@ -58,6 +59,11 @@ enum Command {
     Config {
         #[command(subcommand)]
         op: ConfigOp,
+    },
+    /// Design-token outputs (aequera/design/tokens.toml).
+    Design {
+        #[command(subcommand)]
+        op: DesignOp,
     },
     /// Build the Aequera artifact.
     Build,
@@ -149,6 +155,16 @@ enum ConfigOp {
 }
 
 #[derive(Subcommand)]
+enum DesignOp {
+    /// Regenerate the CSS custom properties pages load from the tokens.
+    Tokens {
+        /// Only compare: fail if a generated file is stale, write nothing.
+        #[arg(long)]
+        check: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum ReleaseOp {
     Check,
 }
@@ -179,6 +195,9 @@ fn main() -> ExitCode {
         Command::Config { op } => match op {
             ConfigOp::Validate { file } => config_validate(cli.json, file.as_deref()),
             ConfigOp::Migrate { file } => config_migrate(cli.json, file.as_deref()),
+        },
+        Command::Design { op } => match op {
+            DesignOp::Tokens { check } => design_tokens(cli.json, check),
         },
         Command::Build => todo_cmd("build", "W2 bootstrap / W3 pipeline"),
         Command::Test => todo_cmd("test", "W6 CI and test skeleton"),
@@ -795,6 +814,34 @@ fn config_migrate(json: bool, file: Option<&std::path::Path>) -> ExitCode {
             );
             output::emit(json, &human, &report);
             ExitCode::SUCCESS
+        }
+    }
+}
+
+fn design_tokens(json: bool, check: bool) -> ExitCode {
+    let (root, _) = match load_context() {
+        Err(code) => return code,
+        Ok(ctx) => ctx,
+    };
+    match design::tokens(&root, check) {
+        Err(e) => {
+            eprintln!("Design tokens failed: {e}");
+            ExitCode::FAILURE
+        }
+        Ok(report) => {
+            let mut human = format!("Design tokens\n-------------\nSource: {}", report.source);
+            for t in &report.targets {
+                human.push_str(&format!("\n  [{}] {}", t.state, t.path));
+            }
+            if !report.up_to_date {
+                human.push_str("\n\nStale: run `aequera design tokens` and commit the result.");
+            }
+            output::emit(json, &human, &report);
+            if report.up_to_date {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
         }
     }
 }

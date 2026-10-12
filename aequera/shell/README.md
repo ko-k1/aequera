@@ -466,8 +466,11 @@ requests EasyList or EasyPrivacy match are cancelled, and ads that still
 reach the page are hidden. It is a built-in add-on (overlay `ad-veil`),
 hidden from about:addons, so `aequera.adveil.enabled` (default true) is its
 control: `adveil/aequera-adveil.js` keeps the add-on's enabled state equal
-to the pref, as Firefox does for its own pref-driven system add-ons.
-Matching runs in the extension process; nothing here touches the network.
+to the pref, as Firefox does for its own pref-driven system add-ons. It is
+a window script, not a module, for the reason in "Startup cache" (each
+window's copy is an idempotent sync). The switch stays in the shell because
+a disabled add-on cannot enable itself. Matching runs in the extension
+process; nothing here touches the network.
 
 Its address bar button (a page action) shows this page's counts and opens
 a popup with the site's mode (Block, Veil: ads load hidden for sites that
@@ -476,10 +479,9 @@ blocked and hidden, kept locally for 90 days; never from private windows).
 `aequera.adveil.veil.adTables` names the tracking-protection tables veil
 mode lifts (Firefox's advertising list).
 
-Tests: `tests/browser/browser_aequera_adveil.js` (built-in install, least
-privilege, blocking and hiding on a fixture, the pref off and on, the vault,
-private windows unrecorded, the popup's site modes, veil mode with Firefox's test trackers, no request of its own).
-The upstream gate runs Firefox's tests with the pref off.
+Tests: the add-on's own `addon/tests/browser/browser_aequera_adveil.js`
+(`aequera/extensions/ad-veil/README.md`), run by the same `aequera` gate
+step. The upstream gate runs Firefox's tests with the pref off.
 
 ## Robustness
 

@@ -5,7 +5,8 @@
 #   bash tools/build/test-shell.sh [aequera|upstream|all] [--repeat N]
 # (run from worktree/firefox; the script path is relative to the checkout root)
 #
-# aequera:  Aequera-owned tests (browser/aequera/tests), Aequera defaults.
+# aequera:  Aequera-owned tests (browser/aequera/tests: the shell;
+#           browser/aequera-adveil/tests: Ad Veil), Aequera defaults.
 # upstream: Firefox's own sidebar, tab, bookmarks-toolbar, about:home cache,
 #           and private browsing page tests with Firefox's defaults
 #           restored, to prove the patches change nothing by default.
@@ -72,7 +73,8 @@ status=0
 ./mach build-backend -b TestManifest > /dev/null || status=1
 
 if [ "$step" = aequera ] || [ "$step" = all ]; then
-  ./mach mochitest --headless "${extra[@]}" browser/aequera/tests/browser || status=1
+  ./mach mochitest --headless "${extra[@]}" \
+    browser/aequera/tests/browser browser/aequera-adveil/tests/browser || status=1
 fi
 if [ "$step" = upstream ] || [ "$step" = all ]; then
   # Sidebar: patches/browser/aequera-rail touches the revamp coupling,

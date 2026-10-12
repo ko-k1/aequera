@@ -27,6 +27,8 @@ aequera patch export
 aequera config validate
 aequera config migrate
 
+aequera design tokens [--check]              # tokens.toml -> generated CSS
+
 aequera build
 aequera test
 aequera bench

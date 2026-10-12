@@ -18,11 +18,11 @@ const { AppUiTestDelegate } = ChromeUtils.importESModule("resource://testing-com
 
 const ID = "adveil@aequera";
 const PREF = "aequera.adveil.enabled";
-const PAGE = "https://example.com/browser/browser/aequera/tests/browser/adveil_page.html";
+const PAGE = "https://example.com/browser/browser/aequera-adveil/tests/browser/adveil_page.html";
 // The fixtures' ad image, and a page whose ad a script draws into an iframe
 // without a src after the slot exists (how real ad slots work).
-const AD_IMAGE = "https://example.com/browser/browser/aequera/tests/browser/adveil_ad.svg";
-const FRAME_PAGE = "https://example.com/browser/browser/aequera/tests/browser/adveil_frame.html";
+const AD_IMAGE = "https://example.com/browser/browser/aequera-adveil/tests/browser/adveil_ad.svg";
+const FRAME_PAGE = "https://example.com/browser/browser/aequera-adveil/tests/browser/adveil_frame.html";
 
 const ALLOWED_PERMISSIONS = [
   "storage",
@@ -182,6 +182,10 @@ function readPopup() {
       hosts: [...doc.querySelectorAll("#hosts li .name")].map(s => s.textContent),
       ads: [...doc.querySelectorAll("#ads li .text")].map(s => s.textContent),
       totals: doc.getElementById("totals").textContent,
+      tokens: {
+        fs: content.getComputedStyle(doc.documentElement).getPropertyValue("--ae-fs").trim(),
+        fontSize: content.getComputedStyle(doc.body).fontSize,
+      },
     };
   });
 }
@@ -224,8 +228,19 @@ async function readVault(tab) {
         site: row.cells[0].textContent,
         mode: row.querySelector("select").value,
       })),
+      tokens: {
+        fs: content.getComputedStyle(doc.documentElement).getPropertyValue("--ae-fs").trim(),
+        fontSize: content.getComputedStyle(doc.body).fontSize,
+      },
     };
   });
+}
+
+// tokens.css (generated from aequera/design/tokens.toml) is linked and
+// ui.css reads it: --ae-fs is defined and the body text uses it.
+function checkTokens({ fs, fontSize }, page) {
+  ok(fs, `${page} loads the generated tokens (tokens.css)`);
+  is(fontSize, fs, `${page} text uses them`);
 }
 
 async function openVault() {
@@ -316,7 +331,7 @@ add_task(async function test_blocks_and_hides() {
 // page): each operator adblock-rust produces, and a filter the browser
 // rejects matching nothing.
 add_task(async function test_procedural_filters() {
-  const url = "https://example.com/browser/browser/aequera/tests/browser/adveil_procedural.html?section=deals";
+  const url = "https://example.com/browser/browser/aequera-adveil/tests/browser/adveil_procedural.html?section=deals";
   await BrowserTestUtils.withNewTab(url, browser =>
     SpecialPowers.spawn(browser, [], () => {
       const scope = {};
@@ -347,7 +362,7 @@ add_task(async function test_procedural_filters() {
 // name are closed; a link and a control open theirs; a script redirect on
 // a click on plain content is stopped. With Ad Veil off, the page's popup
 // and redirect happen (so the checks see Ad Veil's doing).
-const POPUP_PAGE = "https://example.com/browser/browser/aequera/tests/browser/adveil_popup.html";
+const POPUP_PAGE = "https://example.com/browser/browser/aequera-adveil/tests/browser/adveil_popup.html";
 
 // Selects `tab` (switchTab waits for a switch, which an already selected
 // tab never makes).
@@ -434,6 +449,7 @@ add_task(async function test_vault_records_hidden_ads_and_blocked_requests() {
   is(empty.ads.length, 0, "cleared: no ads");
   is(empty.blocked, 0, "cleared: nothing blocked");
   ok(empty.keep, "the vault is kept by default");
+  checkTokens(empty.tokens, "the dashboard");
 
   const page = await openFixture();
   await TestUtils.waitForCondition(() => /1 hidden/.test(buttonTitle()), "the hidden ad is counted");
@@ -449,7 +465,7 @@ add_task(async function test_vault_records_hidden_ads_and_blocked_requests() {
         link: "https://example.org/landing?campaign=veil",
         site: "example.com",
         text: "Veil test ad",
-        creative: "https://example.com/browser/browser/aequera/tests/browser/adveil_ad.svg",
+        creative: "https://example.com/browser/browser/aequera-adveil/tests/browser/adveil_ad.svg",
       },
     ],
     "the ad's link, site, text, and image"
@@ -649,6 +665,7 @@ add_task(async function test_popup_turns_a_site_off_and_on() {
     popup = await readPopup();
     return popup.ads.length > 0;
   }, "the popup lists the hidden ad");
+  checkTokens(popup.tokens, "the popup");
   Assert.deepEqual(
     { site: popup.site, mode: popup.mode, blocked: popup.blocked, hidden: popup.hidden, domains: popup.domains },
     { site: "example.com", mode: "block", blocked: 1, hidden: 1, domains: "1 / 1" },
@@ -679,7 +696,7 @@ add_task(async function test_popup_turns_a_site_off_and_on() {
 
 // Veil mode, on a page at example.net with Firefox's test trackers: the
 // tracking-protection test table stands in for its advertising list.
-const VEIL_PAGE = "https://example.net/browser/browser/aequera/tests/browser/adveil_veil.html";
+const VEIL_PAGE = "https://example.net/browser/browser/aequera-adveil/tests/browser/adveil_veil.html";
 
 function veilState(browser) {
   return SpecialPowers.spawn(browser, [], () => {
@@ -804,7 +821,7 @@ add_task(async function test_veil_mode() {
   await TestUtils.waitForCondition(() => /icons\/veil-veiled\.svg/.test(buttonIcon()), "with the veil icon");
 
   // The vault has it, as any hidden ad: its image and where it leads.
-  const PROMO = "https://example.net/browser/browser/aequera/tests/browser/adbanners/veil_promo.svg";
+  const PROMO = "https://example.net/browser/browser/aequera-adveil/tests/browser/adbanners/veil_promo.svg";
   const vault = await openVault();
   let promo;
   await TestUtils.waitForCondition(async () => {
