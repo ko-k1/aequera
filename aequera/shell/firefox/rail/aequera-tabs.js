@@ -33,8 +33,10 @@
 //
 // Drag decisions (slide, landing slot, settle, foreign gap, tear-off) are the
 // pure AequeraDragModel (drag-model.js, node-tested); this file measures,
-// writes transforms, and calls gBrowser.
+// writes transforms, and calls gBrowser. Wheel momentum and the reveal
+// spring are the pure AequeraScrollModel (scroll-model.js).
 var AequeraTabs = (() => {
+  const { wheelDistance, kick, momentum, spring, stateAt, atRest } = AequeraScrollModel;
   const {
     EDGE_SCROLL_STEP,
     slideShift,
@@ -87,6 +89,16 @@ var AequeraTabs = (() => {
     element: null,
     rows: new WeakMap(),
     newTabRow: null,
+    /** The list scrolls (its last overflow/underflow event). */
+    _overflowing: false,
+    /** An overflow change arrived mid-drag; re-place New Tab once idle. */
+    _newTabStale: false,
+    /** Scroll-fade observer and the first/last children it watches. */
+    _edges: null,
+    _edgeFirst: null,
+    _edgeLast: null,
+    /** Running scroll motion: { motion, max, start, frame }; null at rest. */
+    _glide: null,
     _drag: null,
     _foreign: null,
     _ghost: null,
@@ -185,13 +197,132 @@ var AequeraTabs = (() => {
         .then(top => {
           this._revealPending = false;
           if (top !== null) {
-            this.element.scrollTo({ top, behavior: this.reduceMotion() ? "instant" : "smooth" });
+            this.glideTo(top);
           }
         })
         .catch(() => {
           // The window closed before the flush.
           this._revealPending = false;
         });
+    },
+
+    /**
+     * Mouse wheel (line and page deltas): momentum (scroll-model.js). A notch
+     * kicks the list, which coasts to a stop wherever friction leaves it;
+     * notches while it still moves add up and hit harder the faster it goes
+     * (acceleration); a notch the other way turns it at once. Pixel deltas
+     * (touchpads, precise wheels) keep Firefox's own kinetic scrolling, as do
+     * zoom/horizontal modifiers and a running drag (edge autoscroll).
+     */
+    onWheel(event) {
+      // New Tab forwards its wheel only while it sits outside the list;
+      // inside, the list's own listener sees the event as it bubbles.
+      if (event.currentTarget === this.newTabRow && this.newTabRow.parentNode === this.element) {
+        return;
+      }
+      if (
+        this._drag ||
+        !event.deltaY ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ) {
+        return;
+      }
+      if (event.deltaMode == WheelEvent.DOM_DELTA_PIXEL) {
+        this.stopGlide();
+        return;
+      }
+      const element = this.element;
+      const max = element.scrollHeight - element.clientHeight;
+      if (max <= 0) {
+        return;
+      }
+      event.preventDefault();
+      const distance = wheelDistance(event.deltaY, event.deltaMode, element.clientHeight);
+      if (this.instantScroll()) {
+        this.stopGlide();
+        element.scrollTop = Math.min(Math.max(element.scrollTop + distance, 0), max);
+        return;
+      }
+      const { position, velocity } = this.glideState();
+      // Pressed against the edge it is already at: nothing to coast.
+      if ((distance < 0 && position <= 0) || (distance > 0 && position >= max)) {
+        this.stopGlide();
+        return;
+      }
+      this.startGlide(momentum(position, kick(velocity, distance)), max);
+    },
+
+    /**
+     * Glide the list to `top` (revealing a row) on the reveal spring,
+     * starting from where a running glide is and at its speed.
+     */
+    glideTo(top) {
+      if (this.instantScroll()) {
+        this.stopGlide();
+        this.element.scrollTop = top;
+        return;
+      }
+      const { position, velocity } = this.glideState();
+      // Momentum the other way is dropped: the reveal turns at once instead
+      // of swinging past and back.
+      const carried = Math.sign(velocity) == Math.sign(top - position) ? velocity : 0;
+      this.startGlide(spring(position, top, carried), Infinity);
+    },
+
+    /** Reduced motion, or smooth scrolling off (general.smoothScroll). */
+    instantScroll() {
+      return this.reduceMotion() || !Services.prefs.getBoolPref("general.smoothScroll", true);
+    },
+
+    /** Where the list is and how fast it moves (px, px/s). */
+    glideState() {
+      const glide = this._glide;
+      if (!glide) {
+        return { position: this.element.scrollTop, velocity: 0 };
+      }
+      return stateAt(glide.motion, (performance.now() - glide.start) / 1000);
+    },
+
+    startGlide(motion, max) {
+      this._glide = {
+        motion,
+        max,
+        start: performance.now(),
+        frame: this._glide?.frame || requestAnimationFrame(() => this.glideFrame()),
+      };
+    },
+
+    glideFrame() {
+      const glide = this._glide;
+      if (!glide || !this.element) {
+        return;
+      }
+      const t = (performance.now() - glide.start) / 1000;
+      const { position } = stateAt(glide.motion, t);
+      const clamped = Math.min(Math.max(position, 0), glide.max);
+      // A coast ends where friction leaves it, or at an edge it runs into;
+      // a reveal ends exactly on its row. A non-finite position (numerical
+      // trouble) ends it too, rather than spinning frames forever.
+      if (!Number.isFinite(position) || atRest(glide.motion, t) || clamped != position) {
+        this.element.scrollTop =
+          glide.motion.kind == "spring" ? glide.motion.to : Number.isFinite(clamped) ? clamped : this.element.scrollTop;
+        this._glide = null;
+        return;
+      }
+      this.element.scrollTop = position;
+      glide.frame = requestAnimationFrame(() => this.glideFrame());
+    },
+
+    /** Drop a running glide where it is (a drag, native scrolling). */
+    stopGlide() {
+      if (this._glide) {
+        cancelAnimationFrame(this._glide.frame);
+        this._glide = null;
+      }
     },
 
     /** Put exactly the listed tabs' rows in tab order (nodes are reused). */
@@ -218,7 +349,115 @@ var AequeraTabs = (() => {
         this.setMoving(false);
       }
       const rows = this.tabs().map(tab => this.rows.get(tab) ?? this.createRow(tab));
-      this.element.replaceChildren(...rows, this.newTabRow);
+      // New Tab closes the list unless overflow already moved it out.
+      if (this.newTabRow.isConnected && this.newTabRow.parentNode !== this.element) {
+        this.element.replaceChildren(...rows);
+      } else {
+        this.element.replaceChildren(...rows, this.newTabRow);
+      }
+      this.observeEdges();
+    },
+
+    /**
+     * Scroll fades (aequera-tabs.css [fade-start]/[fade-end]): an edge fades
+     * while a row is cut off or scrolled away past it. An IntersectionObserver
+     * on the first and last child against the list itself tracks that
+     * through scrolling, resizing, and new rows, without layout reads here.
+     */
+    observeEdges() {
+      const first = this.element.firstElementChild;
+      const last = this.element.lastElementChild;
+      if (first === this._edgeFirst && last === this._edgeLast) {
+        return;
+      }
+      this._edges ??= new IntersectionObserver(entries => this.onEdges(entries), {
+        root: this.element,
+        threshold: 0.99,
+      });
+      this._edges.disconnect();
+      this._edgeFirst = first;
+      this._edgeLast = last;
+      for (const node of new Set([first, last])) {
+        if (node) {
+          this._edges.observe(node);
+        }
+      }
+      if (!first) {
+        this.element.removeAttribute("fade-start");
+        this.element.removeAttribute("fade-end");
+      }
+    },
+
+    onEdges(entries) {
+      for (const entry of entries) {
+        const cut = entry.intersectionRatio < 0.99;
+        if (entry.target === this._edgeFirst) {
+          this.element.toggleAttribute("fade-start", cut);
+        }
+        if (entry.target === this._edgeLast) {
+          this.element.toggleAttribute("fade-end", cut);
+        }
+      }
+    },
+
+    /**
+     * New Tab closes the list while the rows fit. Once they overflow, it
+     * would scroll away under the workspace dock, so it steps out of the
+     * scroller and sits right under it, always in reach; it steps back in
+     * when they fit again. Both places take the same 36px (6px gap + 30px
+     * row inside; 2px + 30px + 4px outside, see aequera-tabs.css), so the
+     * move never flips the overflow state back. Driven by Gecko's
+     * overflow/underflow events: no layout reads on the tab-open path.
+     */
+    onOverflowChange(event) {
+      // detail 1 is horizontal-only; titles never scroll sideways.
+      if (event.target !== this.element || event.detail == 1) {
+        return;
+      }
+      this._overflowing = event.type == "overflow";
+      // Drag transforms count as overflow: never move New Tab mid-drag.
+      if (this._drag || this._settleTimer || this.element.hasAttribute("movingtab")) {
+        this._newTabStale = true;
+        return;
+      }
+      this.placeNewTab();
+    },
+
+    placeNewTab() {
+      const inside = this.newTabRow.parentNode === this.element;
+      if (this._overflowing == !inside) {
+        return;
+      }
+      this.newTabRow.style.transform = "";
+      if (this._overflowing) {
+        this.element.after(this.newTabRow);
+      } else {
+        this.element.append(this.newTabRow);
+      }
+      this.element.toggleAttribute("overflowing", this._overflowing);
+      this.observeEdges();
+    },
+
+    /** After a drag: the events seen during it may have been transforms. */
+    syncNewTab() {
+      if (!this._newTabStale) {
+        return;
+      }
+      this._newTabStale = false;
+      const element = this.element;
+      window
+        .promiseDocumentFlushed(() => element.scrollHeight > element.clientHeight)
+        .then(overflowing => {
+          if (this._drag || element.hasAttribute("movingtab")) {
+            this._newTabStale = true;
+            return;
+          }
+          // New Tab takes the same 36px in or out of the list, so this
+          // measure holds wherever it currently is.
+          this._overflowing = overflowing;
+          this.placeNewTab();
+        })
+        .catch(() => {});
     },
 
     handleEvent(event) {
@@ -266,6 +505,13 @@ var AequeraTabs = (() => {
         case "dragend":
           this.onDragEnd(event);
           break;
+        case "wheel":
+          this.onWheel(event);
+          break;
+        case "overflow":
+        case "underflow":
+          this.onOverflowChange(event);
+          break;
         default:
           // Structure changed (open/close/move/pin/show/hide). TabClose fires
           // while the tab is still in gBrowser.tabs (filtered as closing).
@@ -288,8 +534,6 @@ var AequeraTabs = (() => {
       }
       if (target.classList.contains("aequera-tab-close") && target.tab) {
         gBrowser.removeTab(target.tab, { animate: true });
-      } else if (target.closest(".aequera-newtab")) {
-        BrowserCommands.openTab();
       }
     },
 
@@ -321,12 +565,15 @@ var AequeraTabs = (() => {
         this.element.setAttribute("movingtab", "true");
       } else {
         this.element.removeAttribute("movingtab");
+        this.syncNewTab();
       }
     },
 
     onDragStart(event) {
-      // A new local drag supersedes any foreign preview in progress.
+      // A new local drag supersedes any foreign preview in progress, and
+      // owns the scroll position (edge autoscroll) from here on.
       this.clearForeign();
+      this.stopGlide();
       const row = this.dragRowOf(event.target);
       if (!row?.tab || !row.tab.isConnected) {
         return;
@@ -648,8 +895,9 @@ var AequeraTabs = (() => {
         row.style.transform = s ? `translateY(${s}px)` : "";
       }
       // The New Tab row closes the list: it makes room like any row below
-      // the gap, so the last row never slides over it.
-      if (this.newTabRow) {
+      // the gap, so the last row never slides over it. Out of the list
+      // (overflowing rows) it stays put above the dock.
+      if (this.newTabRow?.parentNode === this.element) {
         f.shifts.set(this.newTabRow, gap.step);
         f.rows.add(this.newTabRow);
         this.newTabRow.style.transform = `translateY(${gap.step}px)`;
@@ -1368,13 +1616,23 @@ var AequeraTabs = (() => {
       plus.setAttribute("aria-hidden", "true");
       plus.textContent = "+";
       newTab.append(plus);
+      // Its own listeners: the row also lives outside the list (overflow),
+      // where a wheel over it still scrolls the list.
+      newTab.addEventListener("click", event => {
+        if (event.button == 0) {
+          BrowserCommands.openTab();
+        }
+      });
+      newTab.addEventListener("wheel", this, { passive: false });
       this.newTabRow = newTab;
       verticalTabs.after(element);
       this.element = element;
 
-      for (const type of ["mousedown", "click", "auxclick", "contextmenu", "dragstart", "dragover", "drop", "dragleave", "dragend"]) {
+      for (const type of ["mousedown", "click", "auxclick", "contextmenu", "dragstart", "dragover", "drop", "dragleave", "dragend", "overflow", "underflow"]) {
         element.addEventListener(type, this);
       }
+      // Not passive: a handled notch replaces the native wheel scroll.
+      element.addEventListener("wheel", this, { passive: false });
       const container = gBrowser.tabContainer;
       for (const type of [...STRUCTURE_EVENTS, ...ROW_EVENTS]) {
         container.addEventListener(type, this);

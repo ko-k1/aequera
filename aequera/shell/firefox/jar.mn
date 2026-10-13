@@ -9,6 +9,7 @@ browser.jar:
     content/browser/aequera/rail/aequera-rail.css              (rail/aequera-rail.css)
     content/browser/aequera/rail/aequera-essentials.css        (rail/aequera-essentials.css)
     content/browser/aequera/rail/drag-model.js                 (rail/drag-model.js)
+    content/browser/aequera/rail/scroll-model.js               (rail/scroll-model.js)
     content/browser/aequera/rail/aequera-tabs.js               (rail/aequera-tabs.js)
     content/browser/aequera/rail/aequera-tabs.css              (rail/aequera-tabs.css)
     content/browser/aequera/workspaces/workspace-model.js      (workspaces/workspace-model.js)

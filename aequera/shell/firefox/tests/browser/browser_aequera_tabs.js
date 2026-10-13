@@ -11,7 +11,8 @@ const list = () => document.getElementById("aequera-tabs");
 const rowFor = tab => window.AequeraTabs.rows.get(tab);
 const listedTabs = () =>
   [...list().querySelectorAll(".aequera-tab:not(.aequera-newtab)")].map(r => r.tab);
-const newTabRow = () => list().querySelector(".aequera-newtab");
+// Not always in the list: overflowing rows put it right under the list.
+const newTabRow = () => window.AequeraTabs.newTabRow;
 const container = () => document.getElementById("sidebar-container");
 const railBox = () => container().querySelector(":scope > sidebar-main");
 const isFullyCollapsed = () =>
@@ -168,6 +169,12 @@ add_task(async function test_a_switch_touches_only_two_rows() {
   const touched = new Set();
   const observer = new MutationObserver(records => {
     for (const record of records) {
+      // The list's own scroll-fade attributes (the switch may scroll the
+      // incoming row into view) restyle only the list, not its rows. Any
+      // other change on the list itself (rows re-inserted) still counts.
+      if (record.target === list() && record.attributeName?.startsWith("fade-")) {
+        continue;
+      }
       touched.add(record.target.closest(".aequera-tab"));
     }
   });
@@ -245,6 +252,141 @@ add_task(async function test_new_tab_row() {
   const created = gBrowser.selectedTab;
   opened.push(created);
   ok(listedTabs().includes(created), "which gets a row");
+});
+
+add_task(async function test_new_tab_stays_in_reach_when_rows_overflow() {
+  // A rail full of tabs must not scroll New Tab away under the workspace
+  // dock: it steps out of the list and sits right under it.
+  await collapse();
+  const row = newTabRow();
+  const hittable = () => {
+    const box = row.getBoundingClientRect();
+    const hit = document.elementFromPoint(centerX(box), box.top + box.height / 2);
+    return !!hit && row.contains(hit);
+  };
+  const extra = [];
+  while (list().scrollHeight <= list().clientHeight && extra.length < 80) {
+    extra.push(...(await openTabs(1)));
+  }
+  extra.push(...(await openTabs(2)));
+  opened.push(...extra);
+  await TestUtils.waitForCondition(() => row.parentNode !== list(), "overflowing: New Tab leaves the list");
+  is(row.previousElementSibling, list(), "and sits right under it");
+  const dock = document.getElementById("aequera-workspace-dock");
+  if (dock) {
+    Assert.lessOrEqual(row.getBoundingClientRect().bottom, dock.getBoundingClientRect().top, "above the workspace dock");
+  }
+  ok(hittable(), "collapsed: New Tab is under the pointer, not covered");
+
+  // The wheel over it, out there, still scrolls the list.
+  list().scrollTop = 0;
+  EventUtils.synthesizeWheel(row, 10, 10, { deltaY: 3, deltaMode: WheelEvent.DOM_DELTA_LINE });
+  await TestUtils.waitForCondition(() => list().scrollTop > 50, "a wheel over New Tab scrolls the list");
+  await TestUtils.waitForCondition(() => !window.AequeraTabs._glide, "and coasts to rest");
+
+  // Scroll fades: an edge fades only while rows are cut off past it.
+  ok(list().hasAttribute("overflowing"), "overflowing rows arm the fade mask");
+  list().scrollTop = 0;
+  await TestUtils.waitForCondition(
+    () => list().hasAttribute("fade-end") && !list().hasAttribute("fade-start"),
+    "at the top: only the end fades"
+  );
+  list().scrollTop = list().scrollHeight;
+  await TestUtils.waitForCondition(
+    () => list().hasAttribute("fade-start") && !list().hasAttribute("fade-end"),
+    "at the bottom: only the start fades"
+  );
+
+  hoverRail();
+  const expandedWidth = Services.prefs.getIntPref("aequera.rail.expandedWidth", 220);
+  await TestUtils.waitForCondition(
+    () => Math.abs(railBox().getBoundingClientRect().width - expandedWidth) < 1,
+    "widened"
+  );
+  is(Math.round(row.getBoundingClientRect().width), expandedWidth - 12, "widened: still the full-width row");
+  ok(hittable(), "widened: New Tab is under the pointer, not covered");
+  const count = gBrowser.tabs.length;
+  row.click();
+  await TestUtils.waitForCondition(() => gBrowser.tabs.length == count + 1, "it opens a new tab");
+  extra.push(gBrowser.selectedTab);
+  opened.push(gBrowser.selectedTab);
+
+  for (const tab of extra) {
+    gBrowser.removeTab(tab, { animate: false });
+  }
+  await TestUtils.waitForCondition(() => row.parentNode === list(), "rows fit again: New Tab is back in the list");
+  is(list().lastElementChild, row, "closing it");
+  is(getComputedStyle(list()).maskImage, "none", "rows that fit wear no fade mask");
+  await collapse();
+});
+
+add_task(async function test_wheel_coasts_with_momentum() {
+  // scroll-model.js: a notch (3 lines, doubled to 6 by Firefox's system
+  // scroll override) kicks the list, which coasts 108px to wherever friction
+  // stops it (no row grid); quick notches accelerate; a reversal turns at
+  // once; the edges stop it; pixel deltas stay native.
+  await collapse();
+  const extra = [];
+  while (list().scrollHeight - list().clientHeight < 1200 && extra.length < 80) {
+    extra.push(...(await openTabs(1)));
+  }
+  opened.push(...extra);
+  const glideDone = () => TestUtils.waitForCondition(() => !window.AequeraTabs._glide, "the coast ends");
+  list().scrollTop = 0;
+  await new Promise(resolve => requestAnimationFrame(resolve));
+
+  const positions = [];
+  const onScroll = () => positions.push(list().scrollTop);
+  list().addEventListener("scroll", onScroll);
+  let prevented = null;
+  const onWheel = event => (prevented = event.defaultPrevented);
+  window.addEventListener("wheel", onWheel);
+  const wheel = (deltaY, deltaMode = WheelEvent.DOM_DELTA_LINE) =>
+    EventUtils.synthesizeWheel(list(), 10, 40, { deltaY, deltaMode });
+
+  wheel(3);
+  ok(prevented, "a line notch is the list's own scroll");
+  await glideDone();
+  const single = list().scrollTop;
+  Assert.greater(single, 100, `one notch coasts its distance (${single})`);
+  Assert.less(single, 112, "and no further");
+  ok(positions.some(top => top > 1 && top < single - 1), "through intermediate positions");
+  const steps = positions.slice(1).map((top, i) => top - positions[i]);
+  ok(steps.every(step => step >= -0.5), "never backwards");
+
+  list().scrollTop = 0;
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  wheel(3);
+  wheel(3);
+  wheel(3);
+  await glideDone();
+  Assert.greater(list().scrollTop, 3 * single + 20, `quick notches accelerate (${list().scrollTop})`);
+
+  const from = list().scrollTop;
+  wheel(3);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const before = list().scrollTop;
+  wheel(-3);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  Assert.less(list().scrollTop, before, "a notch the other way turns it at once");
+  await glideDone();
+  Assert.less(list().scrollTop, from + single, "and carries none of the old momentum");
+
+  list().scrollTop = 0;
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  wheel(-3);
+  ok(prevented, "at the top, an upward notch is still the list's");
+  await glideDone();
+  is(list().scrollTop, 0, "and the edge holds it");
+
+  wheel(20, WheelEvent.DOM_DELTA_PIXEL);
+  ok(!prevented, "pixel deltas (touchpads) keep native scrolling");
+
+  window.removeEventListener("wheel", onWheel);
+  list().removeEventListener("scroll", onScroll);
+  for (const tab of extra) {
+    gBrowser.removeTab(tab, { animate: false });
+  }
 });
 
 add_task(async function test_hidden_tabs_are_not_listed() {

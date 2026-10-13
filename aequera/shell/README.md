@@ -129,7 +129,17 @@ a still accent line marks the landing gap.
  list scrolls, never the rail. A switch rewrites only the outgoing and
  incoming rows, and a row update writes only what changed, so switching costs
  the same with 5 or 500 tabs. New Tab is the same row with a dim "+" centered in both
- states: a 30px square collapsed, a full-width row widened. Pinned tabs stay
+ states: a 30px square collapsed, a full-width row widened. Once the rows
+ overflow it leaves the scrolling list and stays right under it, above the
+ workspace dock, so it is always in reach; the list's top and bottom edges
+ fade (an eased mask) while rows are scrolled away past them. The wheel
+ scrolls the list with momentum (rail/scroll-model.js): a notch kicks it and
+ it coasts 108px to wherever friction stops it, with no row grid; notches
+ while it moves add up and accelerate (up to 3x for fast spins); a notch the
+ other way turns it at once. Revealing the selected row rides a critically
+ damped spring (niri's view movement). Touchpads (pixel deltas) keep
+ Firefox's kinetic scrolling; reduced motion or general.smoothScroll=false
+ jumps. Pinned tabs stay
  Firefox's (the essentials grid). Not yet: keyboard focus and arrow-key
  navigation of the rows (tabs switch with Ctrl+Tab / Ctrl+Page Down
  meanwhile), tab groups (grouped tabs list as plain rows), sound indicators,

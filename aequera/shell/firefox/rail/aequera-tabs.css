@@ -14,7 +14,8 @@
  *   rgba(127,140,170,.12) hover and .22 selected wash, 12px/16px titles;
  * - close: a dim "x" glyph, only on hover in the widened rail;
  * - New Tab: the same row with a dim "+" glyph, centered: a 30px square in the
- *   collapsed rail, a full-width row when widened (prototype #newtab-rail).
+ *   collapsed rail, a full-width row when widened (prototype #newtab-rail);
+ *   it closes the list, or sits under it once the rows overflow.
  * Firefox's own unpinned rows and New Tab buttons are hidden; pinned tabs
  * stay in Firefox's pinned container (the essentials grid). */
 
@@ -48,6 +49,48 @@
   padding: 4px var(--aequera-row-inset);
   overflow: hidden auto;
   scrollbar-width: none;
+}
+
+/* Scroll fades: once the rows overflow, an edge with rows cut off or
+ * scrolled away past it fades them out ([fade-start]/[fade-end], set by
+ * aequera-tabs.js observeEdges). A mask, not a painted gradient, so it reads
+ * the same on the opaque rail and on the transparent glass material. The
+ * fade depths are registered lengths so they ease in and out; no mask at all
+ * while the rows fit. */
+@property --aequera-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --aequera-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+#aequera-tabs[overflowing] {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--aequera-fade-start),
+    #000 calc(100% - var(--aequera-fade-end)),
+    transparent
+  );
+
+  &[fade-start] {
+    --aequera-fade-start: 24px;
+  }
+
+  &[fade-end] {
+    --aequera-fade-end: 24px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition-property: --aequera-fade-start, --aequera-fade-end;
+    transition-duration: min(var(--aequera-motion-duration, 200ms), 150ms);
+    transition-timing-function: ease-out;
+  }
 }
 
 .aequera-tab {
@@ -138,6 +181,16 @@
 .aequera-newtab {
   justify-content: center;
   padding-inline: 0;
+}
+
+/* Overflowing rows (aequera-tabs.js placeNewTab): New Tab steps out of the
+ * scroller to sit under it, above the workspace dock, at the list's own
+ * inset. 2px + the list's 4px end padding = the 6px row gap; with the 4px
+ * below, it takes the same 36px it took inside, so moving never flips the
+ * overflow state back. */
+#aequera-tabs + .aequera-newtab {
+  /* Inline: the list's 6px inset (--aequera-row-inset lives on the list). */
+  margin: 2px 6px 4px;
 }
 
 .aequera-newtab-icon {
