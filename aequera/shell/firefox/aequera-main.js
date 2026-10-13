@@ -14,6 +14,7 @@ for (const name of [
   "rail/aequera-rail.js",
   "rail/drag-model.js",
   "rail/scroll-model.js",
+  "rail/magnify-model.js",
   "rail/aequera-tabs.js",
   "workspaces/aequera-workspaces.js",
   "command/command-model.js",

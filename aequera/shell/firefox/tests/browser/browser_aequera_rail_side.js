@@ -4,7 +4,8 @@
 "use strict";
 
 // Rail side: Settings > Browser layout > Vertical tabs side
-// (patches/browser/rail-position) writes sidebar.position_start; Firefox
+// (patches/browser/rail-position) writes sidebar.position_start (and
+// "Magnify tab icons", patches/browser/rail-magnify, sits with it); Firefox
 // orders the rail after the page, and the Aequera rail mirrors its own
 // geometry (:root[aequera-rail-end]): it widens toward the page from the
 // right edge, the page clip and its rounded corner follow, and icons stay
@@ -57,6 +58,7 @@ add_setup(async () => {
     : null;
   registerCleanupFunction(() => {
     Services.prefs.clearUserPref("sidebar.position_start");
+    Services.prefs.clearUserPref("aequera.rail.magnify");
     if (savedTabstrip === null) {
       Services.prefs.clearUserPref(tabstripPref);
     } else {
@@ -110,8 +112,27 @@ add_task(async function test_settings_offers_the_side() {
     );
     ok(!ROOT.hasAttribute("aequera-rail-end"), "and the rail goes back");
 
+    // patches/browser/rail-magnify: the icon magnification switch sits with it.
+    const magnifyControl = group.querySelector("#setting-control-browserLayoutTabsMagnify");
+    ok(magnifyControl && !magnifyControl.hidden, "Magnify tab icons is offered too");
+    const checkbox = magnifyControl.controlEl;
+    ok(checkbox?.inputEl, "as a checkbox");
+    is(checkbox.checked, false, "off by default");
+    checkbox.inputEl.click();
+    await TestUtils.waitForCondition(
+      () => Services.prefs.getBoolPref("aequera.rail.magnify", false),
+      "checking it writes aequera.rail.magnify"
+    );
+    await TestUtils.waitForCondition(() => ROOT.hasAttribute("aequera-rail-magnify"), "and arms the rail");
+    magnifyControl.controlEl.inputEl.click();
+    await TestUtils.waitForCondition(
+      () => !Services.prefs.getBoolPref("aequera.rail.magnify", true),
+      "unchecking turns it off"
+    );
+
     await SpecialPowers.pushPrefEnv({ set: [["sidebar.verticalTabs", false]] });
     await TestUtils.waitForCondition(() => control.hidden, "hidden with horizontal tabs");
+    ok(magnifyControl.hidden, "both of them");
     await SpecialPowers.popPrefEnv();
     await TestUtils.waitForCondition(() => !control.hidden, "back with vertical tabs");
   }

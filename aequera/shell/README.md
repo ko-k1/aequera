@@ -64,7 +64,7 @@ pinned mode (`aequera.rail.pinned`, takes layout space); and
 card clips back on the same timing. Turning `sidebar.revamp` on hands the
 rail back to Firefox's launcher.
 
-Side: Settings > General > Browser layout > Vertical tabs side (Left /
+Side: Settings > Tabs and browsing > Browser layout > Vertical tabs side (Left /
 Right; `patches/browser/rail-position`) writes Firefox's
 `sidebar.position_start`. Firefox orders the rail after the page when it is
 false; `rail/aequera-rail.js` sets `:root[aequera-rail-end]`, and the
@@ -154,6 +154,14 @@ a still accent line marks the landing gap.
  jumps. Closing a tab fades its row where it was while the rows below slide
  up into the slot (at the bottom of a scrolled list the rows above glide down
  instead); only rows on screen animate, and reduced motion drops it at once.
+ Magnification (`aequera.rail.magnify`, off by default; Settings > Tabs and
+ browsing > Browser layout, `patches/browser/rail-magnify`): the icons near
+ the pointer grow on a raised-cosine bell over 2.5 rows
+ (`rail/magnify-model.js`), peaking at `aequera.rail.magnifyPercent`
+ (150, clamped to 100..175). Unlike the macOS Dock, rows never spread: only
+ the icon scales, in place, so no target moves under the pointer; one update
+ per frame from layout offsets, a 90ms ease between pointer reports, off
+ under reduced motion and while a tab is dragged.
  Pinned tabs stay Firefox's (the essentials grid). Not yet: keyboard focus
  and arrow-key navigation of the rows (tabs switch with Ctrl+Tab / Ctrl+Page Down
  meanwhile), tab groups (grouped tabs list as plain rows), sound indicators,

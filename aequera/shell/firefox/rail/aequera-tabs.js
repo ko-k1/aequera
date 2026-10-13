@@ -34,9 +34,13 @@
 // Drag decisions (slide, landing slot, settle, foreign gap, tear-off) are the
 // pure AequeraDragModel (drag-model.js, node-tested); this file measures,
 // writes transforms, and calls gBrowser. Wheel momentum and the reveal
-// spring are the pure AequeraScrollModel (scroll-model.js).
+// spring are the pure AequeraScrollModel (scroll-model.js); icon
+// magnification under the pointer is AequeraMagnifyModel (magnify-model.js).
 var AequeraTabs = (() => {
   const { wheelDistance, kick, momentum, spring, stateAt, atRest } = AequeraScrollModel;
+  const { RADIUS_ROWS, falloff, peakScale, rowScales } = AequeraMagnifyModel;
+  const MAGNIFY_PREF = "aequera.rail.magnify";
+  const MAGNIFY_PERCENT_PREF = "aequera.rail.magnifyPercent";
   const {
     EDGE_SCROLL_STEP,
     slideShift,
@@ -51,6 +55,7 @@ var AequeraTabs = (() => {
     shouldTearOff,
     releasedOutside,
     settleMs,
+    clamp,
   } = AequeraDragModel;
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   /** Close motion: the rows slide at most this long (ms); the closing row
@@ -104,6 +109,12 @@ var AequeraTabs = (() => {
     _glide: null,
     /** Running close slides (closeMotionPlay). */
     _closeSlides: new Set(),
+    /**
+     * Icon magnification (aequera.rail.magnify): the peak scale (1 = off),
+     * the pointer's clientY over the rows (null when away), the pending
+     * frame, and the rows currently scaled.
+     */
+    _magnify: { peak: 1, pointer: null, frame: 0, scaled: new Set() },
     _drag: null,
     _foreign: null,
     _ghost: null,
@@ -249,7 +260,7 @@ var AequeraTabs = (() => {
       const distance = wheelDistance(event.deltaY, event.deltaMode, element.clientHeight);
       if (this.instantScroll()) {
         this.stopGlide();
-        element.scrollTop = Math.min(Math.max(element.scrollTop + distance, 0), max);
+        element.scrollTop = clamp(element.scrollTop + distance, 0, max);
         return;
       }
       const { position, velocity } = this.glideState();
@@ -308,7 +319,7 @@ var AequeraTabs = (() => {
       }
       const t = (performance.now() - glide.start) / 1000;
       const { position } = stateAt(glide.motion, t);
-      const clamped = Math.min(Math.max(position, 0), glide.max);
+      const clamped = clamp(position, 0, glide.max);
       // A coast ends where friction leaves it, or at an edge it runs into;
       // a reveal ends exactly on its row. A non-finite position (numerical
       // trouble) ends it too, rather than spinning frames forever.
@@ -328,6 +339,91 @@ var AequeraTabs = (() => {
         cancelAnimationFrame(this._glide.frame);
         this._glide = null;
       }
+    },
+
+    /** Read the magnification prefs; :root[aequera-rail-magnify] arms the CSS. */
+    readMagnifyPrefs() {
+      const on = Services.prefs.getBoolPref(MAGNIFY_PREF, false);
+      this._magnify.peak = on ? peakScale(Services.prefs.getIntPref(MAGNIFY_PERCENT_PREF, 150)) : 1;
+      document.documentElement.toggleAttribute("aequera-rail-magnify", this._magnify.peak > 1);
+      this.queueMagnify();
+    },
+
+    /** Pointer over the rows (or New Tab) moved, left, or the rows moved. */
+    onMagnifyPointer(event) {
+      const m = this._magnify;
+      if (event.type == "mouseout") {
+        const to = event.relatedTarget;
+        if (to && (this.element.contains(to) || this.newTabRow.contains(to))) {
+          return;
+        }
+        m.pointer = null;
+      } else {
+        m.pointer = event.clientY;
+      }
+      this.queueMagnify();
+    },
+
+    /** One magnification update per frame, however fast the pointer reports. */
+    queueMagnify() {
+      const m = this._magnify;
+      if (!m.frame && (m.pointer !== null || m.scaled.size)) {
+        m.frame = requestAnimationFrame(() => this.magnifyFrame());
+      }
+    },
+
+    /**
+     * Scale the icons near the pointer (magnify-model.js): rows keep their
+     * size and place, only the icon inside grows (--aequera-magnify, a CSS
+     * scale), so nothing moves under the pointer. Geometry from layout
+     * offsets (never transformed rects): rows are uniform, so one row and
+     * the gap give every center. Off under reduced motion and while a tab
+     * is dragged.
+     */
+    magnifyFrame() {
+      const m = this._magnify;
+      m.frame = 0;
+      const next = new Map();
+      if (m.peak > 1 && m.pointer !== null && !this._drag && !this.reduceMotion() && this.element) {
+        const element = this.element;
+        const children = element.children;
+        let count = children.length;
+        while (count && !this.isFlowRow(children[count - 1])) {
+          count--;
+        }
+        const first = children[0];
+        if (count && this.isFlowRow(first)) {
+          const listTop = element.getBoundingClientRect().top;
+          const step = first.offsetHeight + (parseFloat(getComputedStyle(element).rowGap) || 0);
+          const firstCenter = listTop + first.offsetTop + first.offsetHeight / 2 - element.scrollTop;
+          for (const [i, scale] of rowScales({ pointer: m.pointer, firstCenter, step, count, peak: m.peak })) {
+            next.set(children[i], scale);
+          }
+          // New Tab under the list (overflowing rows) is on the same bell.
+          if (this.newTabRow.isConnected && this.newTabRow.parentNode !== element) {
+            const box = this.newTabRow.getBoundingClientRect();
+            const scale =
+              1 + (m.peak - 1) * falloff((box.top + box.height / 2 - m.pointer) / (RADIUS_ROWS * step));
+            if (scale > 1.001) {
+              next.set(this.newTabRow, scale);
+            }
+          }
+        }
+      }
+      for (const row of m.scaled) {
+        if (!next.has(row)) {
+          row.style.removeProperty("--aequera-magnify");
+        }
+      }
+      for (const [row, scale] of next) {
+        row.style.setProperty("--aequera-magnify", scale.toFixed(3));
+      }
+      m.scaled = new Set(next.keys());
+    },
+
+    /** A row in the list's flow (not a closing ghost, not the drop line). */
+    isFlowRow(node) {
+      return node.classList.contains("aequera-tab") && !node.classList.contains("aequera-tab-closing");
     },
 
     /**
@@ -372,6 +468,8 @@ var AequeraTabs = (() => {
         this.closeMotionPlay(motion, newTabInside ? [...rows, this.newTabRow] : rows);
       }
       this.observeEdges();
+      // Rows moved under a pointer that may be still.
+      this.queueMagnify();
     },
 
     /**
@@ -637,6 +735,13 @@ var AequeraTabs = (() => {
         case "wheel":
           this.onWheel(event);
           break;
+        case "mousemove":
+        case "mouseout":
+          this.onMagnifyPointer(event);
+          break;
+        case "scroll":
+          this.queueMagnify();
+          break;
         case "overflow":
         case "underflow":
           this.onOverflowChange(event);
@@ -705,6 +810,8 @@ var AequeraTabs = (() => {
       this.stopGlide();
       // Drag geometry is measured from row rects: no slide may be running.
       this.finishCloseMotion();
+      // Nothing magnified while a row is carried.
+      this.queueMagnify();
       const row = this.dragRowOf(event.target);
       if (!row?.tab || !row.tab.isConnected) {
         return;
@@ -1755,6 +1862,8 @@ var AequeraTabs = (() => {
         }
       });
       newTab.addEventListener("wheel", this, { passive: false });
+      newTab.addEventListener("mousemove", this);
+      newTab.addEventListener("mouseout", this);
       this.newTabRow = newTab;
       verticalTabs.after(element);
       this.element = element;
@@ -1764,19 +1873,29 @@ var AequeraTabs = (() => {
       }
       // Not passive: a handled notch replaces the native wheel scroll.
       element.addEventListener("wheel", this, { passive: false });
+      for (const type of ["mousemove", "mouseout", "scroll"]) {
+        element.addEventListener(type, this, { passive: true });
+      }
       const container = gBrowser.tabContainer;
       for (const type of [...STRUCTURE_EVENTS, ...ROW_EVENTS]) {
         container.addEventListener(type, this);
       }
+      const magnifyPrefs = () => this.readMagnifyPrefs();
+      Services.prefs.addObserver(MAGNIFY_PREF, magnifyPrefs);
+      Services.prefs.addObserver(MAGNIFY_PERCENT_PREF, magnifyPrefs);
       window.addEventListener(
         "unload",
         () => {
           for (const type of [...STRUCTURE_EVENTS, ...ROW_EVENTS]) {
             container.removeEventListener(type, this);
           }
+          Services.prefs.removeObserver(MAGNIFY_PREF, magnifyPrefs);
+          Services.prefs.removeObserver(MAGNIFY_PERCENT_PREF, magnifyPrefs);
+          cancelAnimationFrame(this._magnify.frame);
         },
         { once: true }
       );
+      this.readMagnifyPrefs();
       this.render();
       // Last: Firefox's own rows are hidden only once this list is live
       // (aequera-tabs.css), so a failed init never leaves the window tabless.

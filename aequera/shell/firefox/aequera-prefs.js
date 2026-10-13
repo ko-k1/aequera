@@ -37,6 +37,12 @@ pref("aequera.rail.expandedWidth", 220);
 pref("aequera.rail.pinned", false);
 // Prototype: focusing the address bar widens the rail (unified search).
 pref("aequera.rail.expandOnAddressFocus", true);
+// Tab icon magnification under the pointer (macOS Dock-style, in place:
+// rows never move; rail/magnify-model.js). Off by default; Settings > Tabs
+// and browsing > Browser layout. magnifyPercent is the peak icon scale,
+// clamped to 100..175 (a 16px icon at 175% still fits its 30px row).
+pref("aequera.rail.magnify", false);
+pref("aequera.rail.magnifyPercent", 150);
 
 // Bookmarks toolbar: a hover drawer under the top bar (prototype "hover"
 // mode). The toolbar stays built ("always") and aequera-bookmarks.js turns it

@@ -67,6 +67,11 @@ patches:
   # the right side (rail/aequera-rail.js [aequera-rail-end]).
   - id: rail-position
     series: browser/rail-position
+  # Settings > Browser layout: "Magnify tab icons under the pointer"
+  # (aequera.rail.magnify, Aequera's Dock-style in-place icon magnification),
+  # offered under the same conditions as rail-position, after it.
+  - id: rail-magnify
+    series: browser/rail-magnify
 
 overlays:
   # Stage 1 shell: frame-model stylesheet, launcher-width glue, default

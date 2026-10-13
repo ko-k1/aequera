@@ -308,6 +308,7 @@ var AequeraDragModel = (() => {
 
   return {
     EDGE_SCROLL_STEP,
+    clamp,
     overlap,
     slideShift,
     slideFrame,

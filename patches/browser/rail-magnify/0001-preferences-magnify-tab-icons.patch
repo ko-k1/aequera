@@ -1,0 +1,82 @@
+Subject: [PATCH] preferences: magnify tab icons option in Browser layout
+
+Why Firefox source must change:
+  Aequera's rail can magnify the tab icons near the pointer
+  (aequera.rail.magnify, rail/magnify-model.js). Settings is Firefox's own
+  settings surface and no pref, policy, or theme can add a control to it;
+  without one the option would live only in about:config.
+
+What it changes:
+  - Settings > Tabs and browsing > Browser layout: a "Magnify tab icons
+    under the pointer" checkbox bound to aequera.rail.magnify.
+  - Shown under the same conditions as the vertical tabs side choice
+    (vertical tabs on, sidebar.verticalTabs.requireRevamp false), so with
+    Firefox's defaults the group is unchanged (the pref does not exist in
+    Firefox).
+  - Two en-US strings (label, description) in preferences.ftl.
+
+Depends on: browser/rail-position (the side setting this sits after, in the
+  same group and string block).
+Validation: aequera/shell/firefox/tests/browser/browser_aequera_rail_side.js
+  (the checkbox shows with the Aequera rail and writes the pref);
+  Firefox's browser_tabs_browsing_pane.js and browser_appearance_pane.js
+  with Firefox's defaults (tools/build/test-shell.sh upstream).
+Upstream risk: low-medium; same settings-redesign config as rail-position.
+
+diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
+index 15e309d7481c..c6e8323f14db 100644
+--- a/browser/components/preferences/config/tabs-browsing.mjs
++++ b/browser/components/preferences/config/tabs-browsing.mjs
+@@ -102,6 +102,7 @@ Preferences.addAll([
+   // Browser layout
+   { id: "sidebar.verticalTabs", type: "bool" },
+   { id: "sidebar.position_start", type: "bool" },
++  { id: "aequera.rail.magnify", type: "bool" },
+ ]);
+ 
+ if (lazy.AppConstants.platform === "win") {
+@@ -578,6 +579,18 @@ Preferences.addSetting({
+   set: value => (value === "left") != Services.locale.isAppLocaleRTL,
+ });
+ 
++// Tab icons near the pointer grow in place (Dock-style magnification in a
++// shell-hosted rail; aequera.rail.magnify, an Aequera pref). Offered with
++// the side choice above, under the same conditions.
++Preferences.addSetting({
++  id: "browserLayoutTabsMagnify",
++  pref: "aequera.rail.magnify",
++  deps: ["browserLayoutRadioGroup"],
++  visible: ({ browserLayoutRadioGroup }) =>
++    browserLayoutRadioGroup.value === "true" &&
++    !Services.prefs.getBoolPref("sidebar.verticalTabs.requireRevamp", true),
++});
++
+ SettingGroupManager.registerGroups({
+   browserLayout: {
+     subcategory: "layout",
+@@ -628,6 +641,10 @@ SettingGroupManager.registerGroups({
+           },
+         ],
+       },
++      {
++        id: "browserLayoutTabsMagnify",
++        l10nId: "browser-layout-tabs-magnify",
++      },
+     ],
+   },
+   tabs: {
+diff --git a/browser/locales/en-US/browser/preferences/preferences.ftl b/browser/locales/en-US/browser/preferences/preferences.ftl
+index 62301decb58e..401c4a7d4163 100644
+--- a/browser/locales/en-US/browser/preferences/preferences.ftl
++++ b/browser/locales/en-US/browser/preferences/preferences.ftl
+@@ -374,6 +374,10 @@ browser-layout-tabs-side-left =
+ browser-layout-tabs-side-right =
+     .label = Right
+ 
++browser-layout-tabs-magnify =
++    .label = Magnify tab icons under the pointer
++    .description = The icons near the pointer grow so the one you are about to click is easy to spot. Tabs stay in place.
++
+ page-navigation-group =
+     .label = Page navigation
+ 

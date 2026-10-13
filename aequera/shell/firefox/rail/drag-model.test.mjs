@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import model from "./drag-model.js";
 
 const {
+  clamp,
   overlap,
   slideShift,
   slideFrame,
@@ -281,6 +282,13 @@ test("shouldTearOff: only an unclaimed release away from the rail", () => {
   assert.equal(shouldTearOff({ ...release, dropEffect: "move" }), false, "another target took it");
   assert.equal(shouldTearOff({ ...release, allowDetach: false }), false, "detaching is off");
   assert.equal(shouldTearOff({ ...release, outside: false }), false, "released by the rail");
+});
+
+test("clamp keeps a value inside [lo, hi] (also used by the tab list's scrolling)", () => {
+  assert.equal(clamp(5, 0, 10), 5);
+  assert.equal(clamp(-3, 0, 10), 0);
+  assert.equal(clamp(12, 0, 10), 10);
+  assert.equal(clamp(10, 0, 10), 10);
 });
 
 test("releasedOutside: by the rail stays, past half a rail width tears off", () => {

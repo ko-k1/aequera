@@ -222,6 +222,73 @@ add_task(async function test_closing_from_the_rows() {
   await collapse();
 });
 
+add_task(async function test_magnify_icons_in_place() {
+  // aequera.rail.magnify: the icons near the pointer grow on a bell
+  // (magnify-model.js), in place: rows keep their size and position.
+  await collapse();
+  const tabs = await openTabs(6);
+  const rows = tabs.map(rowFor);
+  const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const magnify = row => row.style.getPropertyValue("--aequera-magnify");
+  // Where each row is along the list and how tall (the hover-widening rail
+  // changes only their width).
+  const boxes = () =>
+    rows.map(row => {
+      const { top, height, left } = row.getBoundingClientRect();
+      return { top, height, left };
+    });
+  const pointAt = row =>
+    EventUtils.synthesizeMouse(row, 15, row.getBoundingClientRect().height / 2, { type: "mousemove" });
+
+  // Off by default: nothing scales.
+  pointAt(rows[3]);
+  await frame();
+  ok(!ROOT.hasAttribute("aequera-rail-magnify"), "off by default");
+  ok(rows.every(row => !magnify(row)), "no row is magnified");
+
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["aequera.rail.magnify", true],
+      ["aequera.rail.magnifyPercent", 150],
+    ],
+  });
+  ok(ROOT.hasAttribute("aequera-rail-magnify"), "the pref arms it");
+  const before = boxes();
+  pointAt(rows[3]);
+  await TestUtils.waitForCondition(() => magnify(rows[3]) == "1.500", "the icon under the pointer peaks");
+  const near = parseFloat(magnify(rows[2]));
+  Assert.greater(near, 1, "its neighbours grow too");
+  Assert.less(near, 1.5, "but less");
+  is(magnify(rows[2]), magnify(rows[4]), "evenly on both sides");
+  ok(!magnify(rows[0]) || parseFloat(magnify(rows[0])) < near, "and it fades with distance");
+  await TestUtils.waitForCondition(
+    () => getComputedStyle(rows[3].querySelector(".aequera-tab-icon")).scale == "1.5",
+    "the icon itself scales"
+  );
+  Assert.deepEqual(boxes(), before, "rows keep their size and position: nothing moves under the pointer");
+
+  pointAt(rows[1]);
+  await TestUtils.waitForCondition(() => magnify(rows[1]) == "1.500", "the bell follows the pointer");
+  Assert.less(parseFloat(magnify(rows[3]) || "1"), 1.5, "the old peak eases off");
+
+  // Leaving the rows settles every icon back.
+  EventUtils.synthesizeMouseAtCenter(document.getElementById("tabbrowser-tabbox"), { type: "mousemove" });
+  await TestUtils.waitForCondition(() => rows.every(row => !magnify(row)), "away from the rows, nothing is magnified");
+
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.magnifyPercent", 900]] });
+  pointAt(rows[3]);
+  await TestUtils.waitForCondition(() => magnify(rows[3]) == "1.750", "the peak is capped so the icon fits its row");
+
+  await SpecialPowers.popPrefEnv();
+  await SpecialPowers.popPrefEnv();
+  await TestUtils.waitForCondition(() => !ROOT.hasAttribute("aequera-rail-magnify"), "off again");
+  await TestUtils.waitForCondition(() => rows.every(row => !magnify(row)), "and nothing stays magnified");
+  for (const tab of tabs) {
+    gBrowser.removeTab(tab, { animate: false });
+  }
+  await collapse();
+});
+
 add_task(async function test_close_motion() {
   // Closing a tab: its row fades where it was, out of the flow, while the
   // rows below slide up into its place (no instant jump). Reduced motion

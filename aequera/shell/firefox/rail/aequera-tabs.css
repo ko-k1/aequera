@@ -154,6 +154,22 @@
   }
 }
 
+/* Magnification (aequera.rail.magnify; aequera-tabs.js magnifyFrame): the
+ * icons near the pointer grow on a bell, in place. Only the icon scales,
+ * from its center, inside a row that keeps its size, so no target moves
+ * under the pointer; at the 1.75 cap a 16px icon still fits its 30px row.
+ * A short ease smooths the bell between pointer reports and lets it settle
+ * back when the pointer leaves; under reduced motion it never applies
+ * (the script sets no scale). */
+:root[aequera-rail-magnify] :is(.aequera-tab-icon, .aequera-newtab-icon) {
+  scale: var(--aequera-magnify, 1);
+  transform-origin: center;
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: scale 90ms ease-out;
+  }
+}
+
 /* Rail at the inline end (aequera-rail.js [aequera-rail-end]): the widening
  * rail grows toward the page, so the rows mirror to keep the rule "icons
  * never move": the icon sits on the collapsed rail's column at the outer
