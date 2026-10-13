@@ -53,6 +53,9 @@ var AequeraTabs = (() => {
     settleMs,
   } = AequeraDragModel;
   const HTML_NS = "http://www.w3.org/1999/xhtml";
+  /** Close motion: the rows slide at most this long (ms); the closing row
+   * fades in 60% of it. */
+  const CLOSE_MOTION_CAP_MS = 200;
   const DEFAULT_ICON = "chrome://global/skin/icons/defaultFavicon.svg";
   // Favicons come from web content (tab `image` attribute). An <img> does not
   // execute script, but a crafted attribute could still load privileged image
@@ -99,6 +102,8 @@ var AequeraTabs = (() => {
     _edgeLast: null,
     /** Running scroll motion: { motion, max, start, frame }; null at rest. */
     _glide: null,
+    /** Running close slides (closeMotionPlay). */
+    _closeSlides: new Set(),
     _drag: null,
     _foreign: null,
     _ghost: null,
@@ -325,8 +330,12 @@ var AequeraTabs = (() => {
       }
     },
 
-    /** Put exactly the listed tabs' rows in tab order (nodes are reused). */
-    render() {
+    /**
+     * Put exactly the listed tabs' rows in tab order (nodes are reused).
+     * `closing`: the tab a TabClose is removing, whose row leaves with the
+     * close motion (closeMotionStart) instead of vanishing.
+     */
+    render(closing = null) {
       if (!this.element) {
         return;
       }
@@ -348,14 +357,127 @@ var AequeraTabs = (() => {
       if (!this._settleTimer && !this._committing) {
         this.setMoving(false);
       }
+      const motion = closing ? this.closeMotionStart(closing) : null;
+      // Rows of earlier closes still fading out ride along.
+      const ghosts = this.element.querySelectorAll(":scope > .aequera-tab-closing");
       const rows = this.tabs().map(tab => this.rows.get(tab) ?? this.createRow(tab));
       // New Tab closes the list unless overflow already moved it out.
-      if (this.newTabRow.isConnected && this.newTabRow.parentNode !== this.element) {
-        this.element.replaceChildren(...rows);
+      const newTabInside = !this.newTabRow.isConnected || this.newTabRow.parentNode === this.element;
+      if (newTabInside) {
+        this.element.replaceChildren(...rows, this.newTabRow, ...ghosts);
       } else {
-        this.element.replaceChildren(...rows, this.newTabRow);
+        this.element.replaceChildren(...rows, ...ghosts);
+      }
+      if (motion) {
+        this.closeMotionPlay(motion, newTabInside ? [...rows, this.newTabRow] : rows);
       }
       this.observeEdges();
+    },
+
+    /**
+     * Close motion, measured before the closing row leaves the flow: where
+     * it sits, one slot (row + gap), and where the scroll position will be
+     * once the list is one slot shorter (it clamps at the bottom). Plain
+     * arithmetic on a clean layout; nothing is measured after the change.
+     * Null when there is nothing to animate (reduced motion, a drag, the
+     * row not listed).
+     */
+    closeMotionStart(tab) {
+      const element = this.element;
+      const row = this.rows.get(tab);
+      const duration = Math.min(this.motionMs(), CLOSE_MOTION_CAP_MS);
+      if (!row || row.parentNode !== element || this._drag || this.reduceMotion() || !(duration > 0)) {
+        return null;
+      }
+      const index = Array.prototype.indexOf.call(element.children, row);
+      const style = getComputedStyle(element);
+      const step = row.offsetHeight + (parseFloat(style.rowGap) || 0);
+      if (index < 0 || !(step > 0)) {
+        return null;
+      }
+      const scrollTop = element.scrollTop;
+      const clientHeight = element.clientHeight;
+      return {
+        row,
+        index,
+        step,
+        padTop: parseFloat(style.paddingTop) || 0,
+        scrollTop,
+        // One slot shorter: a list scrolled to the bottom clamps up by it.
+        scrollAfter: Math.min(scrollTop, Math.max(0, element.scrollHeight - step - clientHeight)),
+        clientHeight,
+        duration,
+        easing: getComputedStyle(document.documentElement).getPropertyValue("--aequera-motion-easing").trim() || "ease-out",
+      };
+    },
+
+    /**
+     * Play the close motion once the rows are in their new order (`flow`:
+     * the rows, then New Tab when it closes the list). The closing row
+     * stays where it was, out of the flow, and fades out (faster than the
+     * slide: exits lead); the rows that moved slide from where they were
+     * into place. Additive transform animations: compositor-run, and quick
+     * successive closes stack instead of cutting each other off. Only the
+     * rows on screen animate, so a close costs the same with 5 or 500 tabs.
+     */
+    closeMotionPlay(motion, flow) {
+      const { row, index, step, padTop, scrollTop, scrollAfter, clientHeight, duration, easing } = motion;
+      const element = this.element;
+      // The rows above it move only if the scroll position clamps.
+      const shift = scrollAfter - scrollTop;
+      row.classList.add("aequera-tab-closing");
+      row.setAttribute("aria-hidden", "true");
+      row.removeAttribute("role");
+      row.style.top = `${padTop + index * step + shift}px`;
+      element.append(row);
+      const fade = row.animate([{ opacity: 1 }, { opacity: 0, transform: "scale(0.96)" }], {
+        duration: duration * 0.6,
+        easing: "ease-in",
+      });
+      const drop = () => {
+        if (row.parentNode === element && row.classList.contains("aequera-tab-closing")) {
+          row.remove();
+        }
+      };
+      fade.finished.then(drop, drop);
+
+      const first = Math.max(0, Math.floor((scrollAfter - padTop) / step) - 1);
+      const last = Math.min(flow.length - 1, Math.ceil((scrollAfter + clientHeight) / step) + 1);
+      for (let j = first; j <= last; j++) {
+        // Where it was on screen minus where it is now. At the bottom the
+        // clamp moves everything down by -shift: the rows below land where
+        // they were (no slide, so no transform stretching the scroll range
+        // and slowing the clamp), and the rows above glide down instead.
+        const was = j < index ? j : j + 1;
+        const delta = (was - j) * step + shift;
+        if (!delta) {
+          continue;
+        }
+        const slide = flow[j].animate(
+          [{ transform: `translateY(${delta}px)` }, { transform: "none" }],
+          { duration, easing, composite: "add" }
+        );
+        this._closeSlides.add(slide);
+        const done = () => this._closeSlides.delete(slide);
+        slide.finished.then(done, done);
+      }
+    },
+
+    /** Land every close slide at once (a drag measures rows next). */
+    finishCloseMotion() {
+      for (const slide of this._closeSlides) {
+        slide.finish();
+      }
+      this._closeSlides.clear();
+    },
+
+    /** The shared motion duration in ms (0 under reduced motion). */
+    motionMs() {
+      try {
+        return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--aequera-motion-duration")) || 0;
+      } catch (e) {
+        return 0;
+      }
     },
 
     /**
@@ -365,8 +487,15 @@ var AequeraTabs = (() => {
      * through scrolling, resizing, and new rows, without layout reads here.
      */
     observeEdges() {
-      const first = this.element.firstElementChild;
-      const last = this.element.lastElementChild;
+      // Rows fading out of a close are not the list's edges.
+      let first = this.element.firstElementChild;
+      while (first?.classList.contains("aequera-tab-closing")) {
+        first = first.nextElementSibling;
+      }
+      let last = this.element.lastElementChild;
+      while (last?.classList.contains("aequera-tab-closing")) {
+        last = last.previousElementSibling;
+      }
       if (first === this._edgeFirst && last === this._edgeLast) {
         return;
       }
@@ -515,7 +644,7 @@ var AequeraTabs = (() => {
         default:
           // Structure changed (open/close/move/pin/show/hide). TabClose fires
           // while the tab is still in gBrowser.tabs (filtered as closing).
-          this.render();
+          this.render(event.type == "TabClose" ? event.target : null);
       }
     },
 
@@ -574,6 +703,8 @@ var AequeraTabs = (() => {
       // owns the scroll position (edge autoscroll) from here on.
       this.clearForeign();
       this.stopGlide();
+      // Drag geometry is measured from row rects: no slide may be running.
+      this.finishCloseMotion();
       const row = this.dragRowOf(event.target);
       if (!row?.tab || !row.tab.isConnected) {
         return;

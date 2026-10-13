@@ -139,9 +139,11 @@ a still accent line marks the landing gap.
  other way turns it at once. Revealing the selected row rides a critically
  damped spring (niri's view movement). Touchpads (pixel deltas) keep
  Firefox's kinetic scrolling; reduced motion or general.smoothScroll=false
- jumps. Pinned tabs stay
- Firefox's (the essentials grid). Not yet: keyboard focus and arrow-key
- navigation of the rows (tabs switch with Ctrl+Tab / Ctrl+Page Down
+ jumps. Closing a tab fades its row where it was while the rows below slide
+ up into the slot (at the bottom of a scrolled list the rows above glide down
+ instead); only rows on screen animate, and reduced motion drops it at once.
+ Pinned tabs stay Firefox's (the essentials grid). Not yet: keyboard focus
+ and arrow-key navigation of the rows (tabs switch with Ctrl+Tab / Ctrl+Page Down
  meanwhile), tab groups (grouped tabs list as plain rows), sound indicators,
  multiselect.
 

@@ -10,7 +10,7 @@ const ROOT = document.documentElement;
 const list = () => document.getElementById("aequera-tabs");
 const rowFor = tab => window.AequeraTabs.rows.get(tab);
 const listedTabs = () =>
-  [...list().querySelectorAll(".aequera-tab:not(.aequera-newtab)")].map(r => r.tab);
+  [...list().querySelectorAll(".aequera-tab:not(.aequera-newtab, .aequera-tab-closing)")].map(r => r.tab);
 // Not always in the list: overflowing rows put it right under the list.
 const newTabRow = () => window.AequeraTabs.newTabRow;
 const container = () => document.getElementById("sidebar-container");
@@ -166,6 +166,8 @@ add_task(async function test_a_switch_touches_only_two_rows() {
   const [a, b] = opened.filter(t => t.isConnected && !t.hidden);
   gBrowser.selectedTab = a;
   await TestUtils.waitForCondition(() => rowFor(a).getAttribute("aria-selected") == "true", "a selected");
+  // Earlier closes finish fading first: dropping their rows is not the switch.
+  await TestUtils.waitForCondition(() => !list().querySelector(".aequera-tab-closing"), "earlier closes have faded");
   const touched = new Set();
   const observer = new MutationObserver(records => {
     for (const record of records) {
@@ -218,6 +220,74 @@ add_task(async function test_closing_from_the_rows() {
   await TestUtils.waitForCondition(() => !other.isConnected, "the close button closes the tab");
   await SpecialPowers.popPrefEnv();
   await collapse();
+});
+
+add_task(async function test_close_motion() {
+  // Closing a tab: its row fades where it was, out of the flow, while the
+  // rows below slide up into its place (no instant jump). Reduced motion
+  // (a zero motion duration) drops the row at once.
+  await collapse();
+  const [a, b, c, d] = await openTabs(4);
+  const rowB = rowFor(b);
+  const rowC = rowFor(c);
+  const rowD = rowFor(d);
+  const topB = rowB.getBoundingClientRect().top;
+  const topC = rowC.getBoundingClientRect().top;
+  const topA = rowFor(a).getBoundingClientRect().top;
+
+  gBrowser.removeTab(b, { animate: false });
+  ok(!listedTabs().includes(b), "the closed tab is no longer listed");
+  ok(rowB.isConnected && rowB.classList.contains("aequera-tab-closing"), "its row stays to fade out");
+  is(rowB.getAttribute("aria-hidden"), "true", "hidden from assistive tech while it fades");
+  is(getComputedStyle(rowB).pointerEvents, "none", "and never a target");
+  Assert.less(Math.abs(rowB.getBoundingClientRect().top - topB), 1, "where it was");
+  ok(rowC.getAnimations().length > 0 && rowD.getAnimations().length > 0, "the rows below slide");
+  Assert.less(Math.abs(rowC.getBoundingClientRect().top - topC), 1, "starting from where they were");
+  is(rowFor(a).getAnimations().length, 0, "the rows above stay put");
+
+  await TestUtils.waitForCondition(
+    () => !rowB.isConnected && !rowC.getAnimations().length && !rowD.getAnimations().length,
+    "the fade and the slide finish"
+  );
+  Assert.less(Math.abs(rowC.getBoundingClientRect().top - topB), 1, "the next row lands in the closed slot");
+  Assert.less(Math.abs(rowFor(a).getBoundingClientRect().top - topA), 1, "the row above never moved");
+
+  // Scrolled to the bottom, the list gets one slot shorter and its scroll
+  // position clamps: the rows above glide down into the slot instead, and
+  // the rows below never move.
+  const extra = [];
+  while (list().scrollHeight <= list().clientHeight + 100 && extra.length < 80) {
+    extra.push(...(await openTabs(1)));
+  }
+  extra.push(...(await openTabs(3)));
+  opened.push(...extra);
+  list().scrollTop = list().scrollHeight;
+  await TestUtils.waitForCondition(() => !window.AequeraTabs._glide, "at rest at the bottom");
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  const [up, gone, down] = extra.slice(-3);
+  const rowUp = rowFor(up);
+  const rowDown = rowFor(down);
+  const topUp = rowUp.getBoundingClientRect().top;
+  const topGone = rowFor(gone).getBoundingClientRect().top;
+  const topDown = rowDown.getBoundingClientRect().top;
+  gBrowser.removeTab(gone, { animate: false });
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  Assert.less(Math.abs(rowDown.getBoundingClientRect().top - topDown), 1, "bottom: the row below stays put");
+  Assert.less(Math.abs(rowUp.getBoundingClientRect().top - topUp), 18, "no jump for the row above");
+  await TestUtils.waitForCondition(() => !rowUp.getAnimations().length, "the glide finishes");
+  Assert.less(Math.abs(rowUp.getBoundingClientRect().top - topGone), 1, "the row above lands in the slot");
+  Assert.less(Math.abs(rowDown.getBoundingClientRect().top - topDown), 1, "the row below never moved");
+
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.motion.durationMs", 0]] });
+  gBrowser.removeTab(c, { animate: false });
+  ok(!rowC.isConnected, "no motion: the row goes at once");
+  ok(!rowD.getAnimations().length, "and nothing slides");
+  await SpecialPowers.popPrefEnv();
+  for (const tab of extra) {
+    if (tab.isConnected) {
+      gBrowser.removeTab(tab, { animate: false });
+    }
+  }
 });
 
 add_task(async function test_new_tab_row() {
@@ -560,7 +630,7 @@ add_task(async function test_drop_from_another_window_adopts_tab() {
   const otherRows = () => [
     ...win.document
       .getElementById("aequera-tabs")
-      .querySelectorAll(".aequera-tab:not(.aequera-newtab)"),
+      .querySelectorAll(".aequera-tab:not(.aequera-newtab, .aequera-tab-closing)"),
   ];
   const fire = (type, target, clientY) => {
     const box = target.getBoundingClientRect();

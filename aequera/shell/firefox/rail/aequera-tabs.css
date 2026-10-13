@@ -248,6 +248,15 @@
   pointer-events: none;
 }
 
+/* Close motion (aequera-tabs.js closeMotionPlay): the closed tab's row stays
+ * where it was, out of the flow (top set inline), while it fades and the
+ * rows below slide up into its place. Never a target. */
+.aequera-tab-closing {
+  position: absolute;
+  inset-inline: var(--aequera-row-inset);
+  pointer-events: none;
+}
+
 /* A row dragged out of the list stays in its slot, dimmed: releasing out
  * there tears it off rather than reordering. */
 .aequera-tab[dragout] {
