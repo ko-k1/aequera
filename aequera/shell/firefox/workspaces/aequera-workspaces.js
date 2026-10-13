@@ -12,15 +12,22 @@
 // Persistence: window value "aequera-workspaces" (JSON state), tab value
 // "aequera-workspace" (membership). Firefox's own session restore carries
 // both, plus each tab's native hidden flag.
+//
+// Sort tabs by site (site-sort-model.js) runs only on request: Ctrl+Alt+S
+// (Cmd+Opt+S on macOS), the end of the tab context menu, or the
+// command surface.
 
 var AequeraWorkspaces = (() => {
   const WINDOW_KEY = "aequera-workspaces";
   const TAB_KEY = "aequera-workspace";
   const HTML_NS = "http://www.w3.org/1999/xhtml";
+  const SORT_OVER_PREF = "aequera.tabs.sortBySite.over";
+  const SORT_KEY_ID = "aequera-key-sort-tabs";
 
-  // Loaded just before this script by aequera-main.js.
+  // Loaded before this script by aequera-main.js.
   const { WORKSPACE_SOURCE, normalizeState, createWorkspace, withActive, membershipOf, planSwitch } =
     AequeraWorkspaceModel;
+  const { DEFAULT_OVER, planSort } = AequeraSiteSortModel;
 
   const controller = {
     state: null,
@@ -38,6 +45,7 @@ var AequeraWorkspaces = (() => {
       await SessionStore.promiseInitialized;
       this.reload();
       this.mountDock();
+      this.mountSortCommand();
       gBrowser.tabContainer.addEventListener("TabOpen", this);
       gBrowser.tabContainer.addEventListener("TabSelect", this);
       gBrowser.tabContainer.addEventListener("TabClose", this);
@@ -124,6 +132,135 @@ var AequeraWorkspaces = (() => {
       this.state = state;
       this.save();
       this.switchTo(workspace.id);
+    },
+
+    /** Registrable domain of a web page (the host where there is none, as
+     *  for localhost or an IP address); null for every other page. */
+    siteOf(uri) {
+      if (!uri?.schemeIs("http") && !uri?.schemeIs("https")) {
+        return null;
+      }
+      try {
+        return Services.eTLD.getBaseDomain(uri);
+      } catch {
+        return uri.asciiHost || null;
+      }
+    },
+
+    sortInfo(tab) {
+      let uri = tab.linkedBrowser?.currentURI;
+      // A tab waiting to be restored shows about:blank until it loads; sort
+      // it by the page it will load.
+      if (tab.hasAttribute("pending") && (!uri || uri.spec === "about:blank")) {
+        try {
+          const { entries, index } = JSON.parse(SessionStore.getTabState(tab));
+          const url = entries?.[(index ?? entries.length) - 1]?.url;
+          if (url) {
+            uri = Services.io.newURI(url);
+          }
+        } catch {}
+      }
+      return {
+        key: tab,
+        url: uri?.spec ?? "",
+        site: this.siteOf(uri),
+        sortable: !tab.group && !tab.splitview,
+        selected: tab.selected,
+        sharing: !!tab.linkedBrowser?._sharingState?.webRTC?.sharing,
+        lastAccessed: tab.lastAccessed,
+      };
+    },
+
+    /**
+     * Sort the active workspace's tabs by site, and move each site with more
+     * than aequera.tabs.sortBySite.over tabs to a workspace named after it.
+     * Tabs in a tab group or split view keep their place. The workspace
+     * stays active; the dock shows where tabs went.
+     */
+    sortBySite() {
+      const tabs = gBrowser.tabs.filter(t => !t.pinned && !t.hidden && !t.closing);
+      const over = Services.prefs.getIntPref(SORT_OVER_PREF, DEFAULT_OVER);
+      const plan = planSort(this.state.workspaces, this.state.active, tabs.map(t => this.sortInfo(t)), { over });
+      for (const move of plan.moves) {
+        if (!move.workspace) {
+          const { state, workspace } = createWorkspace(this.state, move.name);
+          this.state = state;
+          move.workspace = workspace.id;
+        }
+      }
+      this.save();
+      // The rail lists the result once instead of after every move.
+      const apply = () => this.applySort(plan);
+      if (window.AequeraTabs) {
+        AequeraTabs.batch(apply);
+      } else {
+        apply();
+      }
+      this.render();
+    },
+
+    applySort(plan) {
+      // The sorted tabs stay where the first of them was (pinned tabs and
+      // other workspaces' hidden tabs around them do not matter); a tab
+      // already right after its predecessor is not moved.
+      const anchor = plan.order.reduce((first, t) => (!first || t.index < first.index ? t : first), null);
+      plan.order.forEach((tab, i) => {
+        if (i === 0) {
+          if (tab !== anchor) {
+            gBrowser.moveTabBefore(tab, anchor);
+          }
+        } else if (tab.index !== plan.order[i - 1].index + 1) {
+          gBrowser.moveTabAfter(tab, plan.order[i - 1]);
+        }
+      });
+
+      // Selection first: Firefox refuses to hide the selected tab.
+      if (plan.select) {
+        gBrowser.selectedTab = plan.select;
+      }
+      for (const move of plan.moves) {
+        for (const tab of move.keys) {
+          SessionStore.setCustomTabValue(tab, TAB_KEY, move.workspace);
+          // After the workspace's own tabs, in sorted order.
+          gBrowser.moveTabToEnd(tab);
+          gBrowser.hideTab(tab, WORKSPACE_SOURCE);
+        }
+        // Opening the site's workspace returns to the tab that was in use.
+        const used = move.keys.reduce((best, t) => (!best || t.lastAccessed > best.lastAccessed ? t : best), null);
+        this.lastSelected.set(move.workspace, new WeakRef(used));
+      }
+    },
+
+    /**
+     * Ctrl+Alt+S (a keyset of its own, like extension shortcuts) and a "Sort
+     * Tabs by Site" item at the end of the tab context menu. The end is the
+     * menu's open section, where WebExtension items go: Firefox's menu layout
+     * (TabContextMenu.MENU_SECTIONS) refuses unknown items anywhere else.
+     */
+    mountSortCommand() {
+      const keyset = document.createXULElement("keyset");
+      keyset.id = "aequera-keyset";
+      const key = document.createXULElement("key");
+      key.id = SORT_KEY_ID;
+      key.setAttribute("key", "S");
+      key.setAttribute("modifiers", "accel,alt");
+      key.addEventListener("command", () => this.sortBySite());
+      keyset.append(key);
+      document.documentElement.append(keyset);
+
+      const item = document.createXULElement("menuitem");
+      item.id = "aequera-context-sort-tabs";
+      item.setAttribute("label", "Sort Tabs by Site");
+      item.setAttribute("key", SORT_KEY_ID);
+      item.addEventListener("command", () => this.sortBySite());
+      const separator = document.createXULElement("menuseparator");
+      separator.id = "aequera-context-sort-separator";
+      const menu = document.getElementById("tabContextMenu");
+      if (menu) {
+        menu.append(separator, item);
+      } else {
+        console.error("aequera-workspaces: tabContextMenu missing; sort menu item not added");
+      }
     },
 
     handleEvent(event) {

@@ -97,6 +97,9 @@ var AequeraCommand = (() => {
             SessionStore.undoCloseTab(window, 0);
           }
           break;
+        case "sort-by-site":
+          window.AequeraWorkspaces?.sortBySite();
+          break;
       }
     },
   };

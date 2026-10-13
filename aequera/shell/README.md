@@ -19,7 +19,7 @@ pref-gated browser patches. No telemetry, no network.
 | `aequera-frame.js` | `AequeraFrame`: publishes motion tokens and the frame material from prefs, owns the page's top inset |
 | `fullscreen/` | `AequeraFullscreen`: popups open whole in Wayland fullscreen |
 | `rail/` | The tab rail |
-| `workspaces/` | Workspaces + dock |
+| `workspaces/` | Workspaces + dock, sort tabs by site |
 | `command/` | Command surface: Aequera rows in the address bar |
 | `newtab/` | New tab page (about:newtab, about:home): shortcuts grid |
 | `privatebrowsing/` | about:privatebrowsing in the new tab page design (stylesheet) |
@@ -290,6 +290,42 @@ the rest are parked with Firefox's native hidden tabs.
   `browser.tabs.parkedHiddenSources`).
 - Corrupt persisted state recovers to one workspace with every tab reachable.
 
+### Sort tabs by site
+
+Never automatic: Ctrl+Alt+S (Cmd+Opt+S on macOS), "Sort Tabs by Site" at
+the end of the tab context menu, or the command surface's "Sort tabs by site"
+sorts the active workspace's visible tabs.
+
+- Order: by site (registrable domain, so `docs.github.com` sorts with
+  `github.com`), then by address (scheme and `www.` ignored); web pages
+  first, other pages (about:, file:, extension pages) after them. Ties keep
+  their order. The sorted tabs start where the first of them was.
+- A site with more than `aequera.tabs.sortBySite.over` tabs (default 7; 0
+  never moves) moves to a workspace named after it, appended in sorted
+  order; an existing workspace of that name (any case) is reused. The
+  workspace you sort in stays active: the dock shows where tabs went, and
+  the site's workspace opens on its most recently used tab.
+- The workspace never empties: a site that would take all its tabs stays
+  (sorting inside the `github.com` workspace moves nothing out of it).
+- Tabs in a tab group or split view keep their place and never move; tabs
+  sharing camera/mic/screen are sorted but stay (they cannot be hidden).
+  When the selected tab moves, the most recently used staying tab is
+  selected.
+- The shortcut is a keyset of its own (as WebExtension shortcuts are). The
+  menu item sits in the context menu's open (trailing) section, where
+  WebExtension items go: Firefox's menu layout (`TabContextMenu.MENU_SECTIONS`)
+  refuses unknown items anywhere else.
+- Cost (one user action, not an input path): a tab already right after its
+  predecessor is not moved, and the rail renders the result once
+  (`AequeraTabs.batch`) instead of after every move. 150 tabs on 30 sites in
+  reverse order: 44 ms (80 ms without the batch), logged by
+  `test_sort_cost_with_many_tabs`.
+
+| File | Role |
+|---|---|
+| `site-sort-model.js` | Pure model: order, which sites move where, the selection. Classic script + CommonJS; node tests: `node --test aequera/shell/firefox/workspaces/site-sort-model.test.mjs` |
+| `aequera-workspaces.js` | `sortBySite()`: site per tab (`Services.eTLD`; a restoring tab by the page it will load), applies the plan via gBrowser; the shortcut and menu item |
+
 Tests: `tests/browser/browser_aequera_workspaces.js`.
 
 ## Bookmarks drawer (`bookmarks/`)
@@ -321,8 +357,9 @@ public `ProvidersManager` API (no Firefox patch):
 - other workspaces of this window ("Switch to workspace");
 - this window's recently closed tabs ("Reopen closed tab", with the
   workspace they were closed from; restored with history via SessionStore);
-- commands: New tab, New workspace, Restore closed tab (from 3 typed
-  characters, so a short URL prefix does not push history aside).
+- commands: New tab, New workspace, Restore closed tab, Sort tabs by site
+  (from 3 typed characters, so a short URL prefix does not push history
+  aside).
 
 Rows sit right after the first (heuristic) row, at most 3 per query, so
 Firefox's own results keep the rest of the list. Enter still runs the

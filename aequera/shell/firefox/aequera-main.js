@@ -11,6 +11,7 @@
 for (const name of [
   "aequera-frame.js",
   "workspaces/workspace-model.js",
+  "workspaces/site-sort-model.js",
   "rail/aequera-rail.js",
   "rail/drag-model.js",
   "rail/scroll-model.js",

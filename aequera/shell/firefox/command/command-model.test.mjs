@@ -75,6 +75,16 @@ test("commands need three characters and restore needs a closed tab", () => {
   assert.deepEqual(rows("reopen", sources({ closed })).map(r => r.title), ["Restore closed tab"]);
 });
 
+test("sort tabs by site is a command, also found by domain", () => {
+  for (const query of ["sort", "sort tabs", "by domain", "organize"]) {
+    assert.deepEqual(
+      rows(query, sources()).map(r => r.action),
+      [{ type: "command", id: "sort-by-site" }],
+      query
+    );
+  }
+});
+
 test("sections keep prototype order and the list is capped", () => {
   const closed = [
     { closedId: 1, title: "Work log", url: "https://a.test/", workspace: null },

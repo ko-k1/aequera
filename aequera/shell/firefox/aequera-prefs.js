@@ -88,6 +88,12 @@ pref("browser.fullscreen.autohide", false);
 // window and discard the other workspaces.
 pref("browser.tabs.parkedHiddenSources", "aequera-workspaces", locked);
 
+// Sort Tabs by Site (Ctrl+Alt+S, the tab context menu, the command surface;
+// never automatic): a site with more than this many tabs in the workspace
+// moves to a workspace named after it. 0 sorts without moving; a negative
+// value recovers to 7 (workspaces/site-sort-model.js).
+pref("aequera.tabs.sortBySite.over", 7);
+
 // Default toolbar layout (patches/browser/customization-defaults): no "List
 // all tabs" button next to the tab rail. It stays in the customize palette;
 // applies to new profiles and Restore Defaults, never to a saved layout.

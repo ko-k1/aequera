@@ -14,6 +14,7 @@ browser.jar:
     content/browser/aequera/rail/aequera-tabs.js               (rail/aequera-tabs.js)
     content/browser/aequera/rail/aequera-tabs.css              (rail/aequera-tabs.css)
     content/browser/aequera/workspaces/workspace-model.js      (workspaces/workspace-model.js)
+    content/browser/aequera/workspaces/site-sort-model.js      (workspaces/site-sort-model.js)
     content/browser/aequera/workspaces/aequera-workspaces.js   (workspaces/aequera-workspaces.js)
     content/browser/aequera/workspaces/aequera-workspaces.css  (workspaces/aequera-workspaces.css)
     content/browser/aequera/command/command-model.js           (command/command-model.js)

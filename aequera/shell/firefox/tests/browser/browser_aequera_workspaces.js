@@ -221,3 +221,172 @@ add_task(async function test_dock_names_show_when_widened_and_dots_never_move() 
   await SpecialPowers.popPrefEnv();
   await resetWorkspaces();
 });
+
+// Sort Tabs by Site (workspaces/site-sort-model.js has the node tests). Lazy
+// tabs: their address comes from session data, so no network is needed.
+const SORT_OVER_PREF = "aequera.tabs.sortBySite.over";
+// The address each test tab was opened with: a selected lazy tab starts
+// loading and reports about:blank until the load commits.
+const urlOf = new WeakMap();
+/** The visible tabs of the last lazyTabs() call, in order. */
+const visibleUrls = () => gBrowser.tabs.filter(t => !t.hidden && urlOf.has(t)).map(t => urlOf.get(t));
+const workspaceNamed = name => ws().state.workspaces.find(w => w.name === name);
+/** Opens a test's tabs; tabs left from earlier tests (the window's first
+ *  tab after resetWorkspaces) are no longer listed by visibleUrls. */
+const lazyTabs = urls => {
+  for (const tab of gBrowser.tabs) {
+    urlOf.delete(tab);
+  }
+  return urls.map(url => {
+    const tab = gBrowser.addTab(url, {
+      createLazyBrowser: true,
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+    });
+    urlOf.set(tab, url);
+    return tab;
+  });
+};
+const exampleCom = count => Array.from({ length: count }, (_, i) => `https://test1.example.com/p${i}`);
+
+add_task(async function test_shortcut_sorts_by_site_and_moves_busy_sites() {
+  const home = ws().state.active;
+  const first = gBrowser.tabs[0];
+  lazyTabs([
+    "about:robots",
+    "https://example.org/b",
+    ...exampleCom(4),
+    "https://example.net/a",
+    "https://www.example.com/x",
+    ...exampleCom(8).slice(4),
+    "https://example.org/a",
+  ]);
+
+  EventUtils.synthesizeKey("s", { accelKey: true, altKey: true });
+
+  is(ws().state.active, home, "the workspace stays active");
+  Assert.deepEqual(
+    visibleUrls(),
+    ["https://example.net/a", "https://example.org/a", "https://example.org/b", "about:robots"],
+    "sorted by site, then address; the non-web page last"
+  );
+  const site = workspaceNamed("example.com");
+  ok(site, "9 example.com tabs (more than 7) got a workspace named after the site");
+  const moved = gBrowser.tabs.filter(t => memberOf(t) == site.id);
+  is(moved.length, 9, "all of them, subdomains included");
+  ok(
+    moved.every(t => t.hidden && SessionStore.getCustomTabValue(t, "hiddenBy") == SOURCE),
+    "parked like any other workspace's tabs"
+  );
+  is(gBrowser.selectedTab, first, "the selected tab did not move");
+  const button = document.querySelector(`#aequera-workspace-dock button[data-ws="${site.id}"]`);
+  is(button?.querySelector(".aequera-ws-count").textContent, "9", "the dock shows where they went");
+
+  ws().switchTo(site.id);
+  Assert.deepEqual(
+    visibleUrls(),
+    ["https://www.example.com/x", ...exampleCom(8)],
+    "the site's workspace holds them, sorted"
+  );
+  ws().switchTo(home);
+
+  const before = [...gBrowser.tabs];
+  const count = ws().state.workspaces.length;
+  ws().sortBySite();
+  Assert.deepEqual([...gBrowser.tabs], before, "sorting a sorted workspace moves nothing");
+  is(ws().state.workspaces.length, count, "and creates no workspace");
+  await resetWorkspaces();
+});
+
+add_task(async function test_context_menu_sort_reuses_a_workspace_and_moves_the_selected_tab() {
+  const home = ws().state.active;
+  const { state, workspace } = AequeraWorkspaceModel.createWorkspace(ws().state, "example.org");
+  ws().state = state;
+  ws().save();
+  ws().render();
+  const [net, ...org] = lazyTabs([
+    "https://example.net/",
+    ...Array.from({ length: 8 }, (_, i) => `https://example.org/${i}`),
+  ]);
+  gBrowser.selectedTab = net;
+  gBrowser.selectedTab = org[5];
+
+  const menu = document.getElementById("tabContextMenu");
+  const item = document.getElementById("aequera-context-sort-tabs");
+  is(item.parentNode, menu, "the item is in Firefox's tab context menu");
+  is(item.getAttribute("key"), "aequera-key-sort-tabs", "and shows its shortcut");
+  // MenuSectionLayout throws on an item it does not place, except in a
+  // menu's open (trailing) section.
+  for (const layout of Object.values(TabContextMenu.MENU_SECTIONS)) {
+    new TabContextMenu.MenuSectionLayout(layout, {
+      dynamicItemSelectors: TabContextMenu.DYNAMIC_MENU_ITEM_SELECTORS,
+    }).arrange(menu);
+  }
+  is(menu.lastElementChild, item, "both of Firefox's menu structures accept it and keep it last");
+  const shown = BrowserTestUtils.waitForPopupEvent(menu, "shown");
+  EventUtils.synthesizeMouseAtCenter(window.AequeraTabs.rows.get(net), { type: "contextmenu", button: 2 });
+  await shown;
+  ok(BrowserTestUtils.isVisible(item), "the item is shown");
+  const hidden = BrowserTestUtils.waitForPopupEvent(menu, "hidden");
+  menu.activateItem(item);
+  await hidden;
+
+  is(ws().state.workspaces.length, 2, "the existing example.org workspace was reused");
+  ok(
+    org.every(t => memberOf(t) == workspace.id && t.hidden),
+    "the 8 example.org tabs moved there"
+  );
+  is(ws().state.active, home, "the workspace stays active");
+  is(gBrowser.selectedTab, net, "the most recently used staying tab is selected");
+  ws().switchTo(workspace.id);
+  is(gBrowser.selectedTab, org[5], "the site's workspace opens on the tab that was in use");
+  await resetWorkspaces();
+});
+
+add_task(async function test_sort_threshold_pref() {
+  await SpecialPowers.pushPrefEnv({ set: [[SORT_OVER_PREF, 0]] });
+  lazyTabs([...exampleCom(12), "https://example.org/"]);
+  ws().sortBySite();
+  is(ws().state.workspaces.length, 1, "0 sorts without moving");
+  is(visibleUrls()[0], "https://test1.example.com/p0", "but still sorts");
+
+  await SpecialPowers.pushPrefEnv({ set: [[SORT_OVER_PREF, 12]] });
+  ws().sortBySite();
+  is(ws().state.workspaces.length, 1, "12 tabs are not more than 12");
+  await SpecialPowers.pushPrefEnv({ set: [[SORT_OVER_PREF, 11]] });
+  ws().sortBySite();
+  ok(workspaceNamed("example.com"), "but more than 11");
+  await SpecialPowers.popPrefEnv();
+  await SpecialPowers.popPrefEnv();
+  await SpecialPowers.popPrefEnv();
+  await resetWorkspaces();
+});
+
+add_task(async function test_grouped_tabs_keep_their_place() {
+  const [grouped] = lazyTabs(["https://example.org/z", "https://example.net/", "https://example.org/a"]);
+  const group = gBrowser.addTabGroup([grouped], { insertBefore: grouped });
+  ws().sortBySite();
+  is(grouped.group, group, "a grouped tab stays in its group");
+  Assert.deepEqual(
+    visibleUrls(),
+    ["https://example.net/", "https://example.org/a", "https://example.org/z"],
+    "the ungrouped tabs are sorted; the group follows them"
+  );
+  group.ungroupTabs();
+  await resetWorkspaces();
+});
+
+add_task(async function test_sort_cost_with_many_tabs() {
+  // 150 tabs on 30 sites (5 each, so none moves), interleaved.
+  const urls = Array.from({ length: 150 }, (_, i) => `https://site${i % 30}.example/page${i}`);
+  lazyTabs(urls.reverse());
+  const start = ChromeUtils.now();
+  ws().sortBySite();
+  info(`sortBySite: 150 tabs in ${(ChromeUtils.now() - start).toFixed(1)} ms`);
+  const sites = visibleUrls().map(url => ws().siteOf(Services.io.newURI(url)));
+  is(new Set(sites).size, 30, "30 sites");
+  ok(
+    sites.every((site, i) => i == 0 || sites[i - 1] <= site),
+    "150 tabs end up in site order"
+  );
+  await resetWorkspaces();
+});

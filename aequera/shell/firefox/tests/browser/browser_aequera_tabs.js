@@ -1003,6 +1003,28 @@ add_task(async function test_a_drag_over_the_rail_is_hover() {
   await TestUtils.waitForCondition(isFullyCollapsed, "leaving it collapses it again");
 });
 
+add_task(async function test_batch_renders_structure_changes_once() {
+  const tabs = await openTabs(2);
+  const list = window.AequeraTabs;
+  const render = list.render;
+  let renders = 0;
+  list.render = function (...args) {
+    renders++;
+    return render.apply(this, args);
+  };
+  try {
+    list.batch(() => {
+      gBrowser.moveTabToStart(tabs[1]);
+      gBrowser.moveTabToStart(tabs[0]);
+      is(renders, 0, "no render inside the batch");
+    });
+  } finally {
+    list.render = render;
+  }
+  is(renders, 1, "one render after it");
+  Assert.deepEqual(listedTabs().slice(0, 2), tabs, "the list shows the final order");
+});
+
 add_task(async function test_context_menu_is_firefox_tab_menu_for_that_row() {
   const [tab] = await openTabs(1);
   await showLastRows();

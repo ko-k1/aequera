@@ -120,6 +120,8 @@ var AequeraTabs = (() => {
     _ghost: null,
     _settleTimer: 0,
     _revealPending: false,
+    /** Depth of batch() calls; structure renders wait while above 0. */
+    _batch: 0,
     /** Drag sessions whose drop this list took (see onDragOver). */
     _droppedSessions: new WeakSet(),
 
@@ -749,7 +751,25 @@ var AequeraTabs = (() => {
         default:
           // Structure changed (open/close/move/pin/show/hide). TabClose fires
           // while the tab is still in gBrowser.tabs (filtered as closing).
-          this.render(event.type == "TabClose" ? event.target : null);
+          if (!this._batch) {
+            this.render(event.type == "TabClose" ? event.target : null);
+          }
+      }
+    },
+
+    /**
+     * Structure changes made inside `fn` render the list once, after it: a
+     * bulk change (Sort Tabs by Site) moves and hides many tabs, and each
+     * would otherwise re-render every row.
+     */
+    batch(fn) {
+      this._batch++;
+      try {
+        return fn();
+      } finally {
+        if (!--this._batch) {
+          this.render();
+        }
       }
     },
 
