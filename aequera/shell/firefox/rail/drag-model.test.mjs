@@ -293,6 +293,14 @@ test("releasedOutside: by the rail stays, past half a rail width tears off", () 
   assert.equal(releasedOutside({ ...view, x: NaN, y: 300 }), true, "no coordinates");
 });
 
+test("releasedOutside: a rail on the right tears off over the page to its left", () => {
+  const view = { width: 1200, height: 800, rail: { left: 980, right: 1200, width: 220 }, list: null };
+  assert.equal(releasedOutside({ ...view, x: 1100, y: 300 }), false, "on the rail");
+  assert.equal(releasedOutside({ ...view, x: 870, y: 300 }), false, "just past its edge");
+  assert.equal(releasedOutside({ ...view, x: 869, y: 300 }), true, "over the page");
+  assert.equal(releasedOutside({ ...view, x: 1205, y: 300 }), true, "right of the window");
+});
+
 test("releasedOutside: without a rail box, only near the list stays", () => {
   const view = {
     width: 1200,

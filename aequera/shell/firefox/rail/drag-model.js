@@ -271,8 +271,9 @@ var AequeraDragModel = (() => {
 
   /**
    * A release is away from the rail when it is outside the window, or more
-   * than half a rail width right of the rail (Firefox: 1.5 x the strip's
-   * width from the window edge). Without a rail box, only a release near the
+   * than half a rail width past the rail on the page's side (Firefox: 1.5 x
+   * the strip's width from the window edge): right of a rail on the left,
+   * left of a rail on the right. Without a rail box, only a release near the
    * list (DETACH_MARGIN) stays. Unknown coordinates count as away.
    */
   function releasedOutside({ x, y, width, height, rail, list }) {
@@ -283,7 +284,7 @@ var AequeraDragModel = (() => {
       return true;
     }
     if (rail && rail.width > 0) {
-      return x > rail.right + rail.width / 2;
+      return x > rail.right + rail.width / 2 || x < rail.left - rail.width / 2;
     }
     if (!list) {
       return true;

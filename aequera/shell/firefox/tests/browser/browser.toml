@@ -7,6 +7,8 @@ prefs = [
 
 ["browser_aequera_rail.js"]
 
+["browser_aequera_rail_side.js"]
+
 ["browser_aequera_workspaces.js"]
 
 ["browser_aequera_bookmarks_drawer.js"]

@@ -34,6 +34,17 @@
   transition: clip-path var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out);
 }
 
+/* The same clip with the rail on the physical right (clip-path is physical):
+ * the rail at the inline end of a left-to-right UI, or at the start of a
+ * right-to-left one. The rounded corner is the one the rail meets. Never in
+ * fullscreen with the chrome hidden (below). */
+:root:is([aequera-rail-end]:-moz-locale-dir(ltr), :not([aequera-rail-end]):-moz-locale-dir(rtl)):not([inDOMFullscreen], [fullscreenNavToolboxHidden]) #tabbrowser-tabbox {
+  clip-path: inset(
+    var(--aequera-page-top, 0px) var(--aequera-rail-overlay, 0px) 0 0
+    round 0 var(--border-radius-medium) 0 0
+  );
+}
+
 /* Fullscreen with the chrome hidden (DOM fullscreen, or F11 with
  * browser.fullscreen.autohide) shows the page edge to edge: never clip it.
  * While F11 keeps the chrome up (the Aequera default), the page stays a card

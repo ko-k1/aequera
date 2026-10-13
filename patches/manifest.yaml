@@ -60,6 +60,13 @@ patches:
   # page, its strings, and behavior stay Firefox's).
   - id: privatebrowsing
     series: browser/privatebrowsing
+  # Settings > Browser layout: a vertical tabs side choice (Left / Right,
+  # sidebar.position_start), offered only when a shell hosts vertical tabs
+  # (sidebar.verticalTabs.requireRevamp false, from aequera-rail); Firefox's
+  # defaults leave the group unchanged. The Aequera rail mirrors itself for
+  # the right side (rail/aequera-rail.js [aequera-rail-end]).
+  - id: rail-position
+    series: browser/rail-position
 
 overlays:
   # Stage 1 shell: frame-model stylesheet, launcher-width glue, default

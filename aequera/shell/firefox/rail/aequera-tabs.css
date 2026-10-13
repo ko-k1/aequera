@@ -154,6 +154,21 @@
   }
 }
 
+/* Rail at the inline end (aequera-rail.js [aequera-rail-end]): the widening
+ * rail grows toward the page, so the rows mirror to keep the rule "icons
+ * never move": the icon sits on the collapsed rail's column at the outer
+ * edge, the title reads out from it toward the page, the close glyph on
+ * the far side. */
+:root[aequera-rail-end] .aequera-tab {
+  flex-direction: row-reverse;
+  padding-inline: 7px var(--aequera-row-icon-start);
+}
+
+:root[aequera-rail-end] .aequera-tab-title {
+  margin-inline: 0 6px;
+  text-align: end;
+}
+
 /* Prototype .x: a 22 x 16 "x" glyph, dim, shown on hover (widened rail). */
 .aequera-tab-close {
   flex: none;

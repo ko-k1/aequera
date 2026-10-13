@@ -66,6 +66,7 @@ TAB_TESTS=browser/components/tabbrowser/test/browser/tabs
 PLACES_TESTS=browser/components/places/tests/browser
 HOMECACHE_TESTS=browser/components/newtab/test/browser/abouthomecache
 PRIVATE_TESTS=browser/components/privatebrowsing/test/browser
+PREFS_TESTS=browser/components/preferences/tests
 status=0
 
 # Artifact builds do not refresh the test index on their own; new or moved
@@ -128,5 +129,12 @@ if [ "$step" = upstream ] || [ "$step" = all ]; then
     "$PRIVATE_TESTS/browser_privatebrowsing_about_search_banner.js" \
     "$PRIVATE_TESTS/browser_privatebrowsing_about_default_promo.js" \
     "$PRIVATE_TESTS/browser_privatebrowsing_about_nova_promo.js" || status=1
+  # Settings: patches/browser/rail-position adds a vertical tabs side choice
+  # to Browser layout, offered only for a shell-hosted rail
+  # (sidebar.verticalTabs.requireRevamp false); with Firefox's defaults the
+  # layout settings must behave exactly as in Firefox.
+  ./mach mochitest --headless "${extra[@]}" "${FIREFOX_DEFAULTS[@]}" \
+    "$PREFS_TESTS/browser_tabs_browsing_pane.js" \
+    "$PREFS_TESTS/browser_appearance_pane.js" || status=1
 fi
 exit $status

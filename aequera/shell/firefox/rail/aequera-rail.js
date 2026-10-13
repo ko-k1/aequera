@@ -31,6 +31,10 @@
 //     wide content away instead of it snapping to icons mid-animation.
 // The widened rail overlays the page; the page card clips back in step
 // (aequera-shell.css) so the rail stays on the frame material.
+// Side: Firefox's sidebar.position_start (Settings > General > Browser
+// layout). Firefox itself orders the rail after the page when it is false
+// (browser-sidebar.js setPosition); :root[aequera-rail-end] tells the
+// Aequera CSS to mirror the rail's own geometry for that side.
 var AequeraRail = (() => {
   const PREFS = {
     revamp: "sidebar.revamp",
@@ -40,6 +44,7 @@ var AequeraRail = (() => {
     expandedWidth: "aequera.rail.expandedWidth",
     pinned: "aequera.rail.pinned",
     addressFocus: "aequera.rail.expandOnAddressFocus",
+    positionStart: "sidebar.position_start",
   };
   const ROOT = document.documentElement;
 
@@ -120,6 +125,10 @@ var AequeraRail = (() => {
       const active = this.active;
       ROOT.toggleAttribute("aequera-rail", active);
       ROOT.toggleAttribute("aequera-rail-pinned", active && this.pinned);
+      ROOT.toggleAttribute(
+        "aequera-rail-end",
+        active && !Services.prefs.getBoolPref(PREFS.positionStart, true)
+      );
       ROOT.style.setProperty(
         "--aequera-rail-expanded-width",
         `${Services.prefs.getIntPref(PREFS.expandedWidth, 220)}px`

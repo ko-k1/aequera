@@ -64,6 +64,18 @@ pinned mode (`aequera.rail.pinned`, takes layout space); and
 card clips back on the same timing. Turning `sidebar.revamp` on hands the
 rail back to Firefox's launcher.
 
+Side: Settings > General > Browser layout > Vertical tabs side (Left /
+Right; `patches/browser/rail-position`) writes Firefox's
+`sidebar.position_start`. Firefox orders the rail after the page when it is
+false; `rail/aequera-rail.js` sets `:root[aequera-rail-end]`, and the
+Aequera CSS mirrors the rail's own geometry for that side: it widens from
+the window's edge toward the page, the page card clips back (and rounds) on
+the side the rail meets, the bookmarks drawer ends where the rail begins,
+and tab rows and workspace rows mirror (icon at the outer edge, title
+reading toward the page) so icons still never move; the essentials grid
+keeps its far edge on the rail's outer edge so the widening reveals it in
+place.
+
 The rail is on the frame material with the top bar (Firefox's legacy sidebar
 color is removed): it paints nothing on Windows (Mica) and under the glass
 material, and the top bar's opaque toolbar color elsewhere, so collapsed,
@@ -509,7 +521,7 @@ address bar, tabs, dock, and drawer must be sane.
   it is a separate decision), zero-prefix Aequera rows, localized strings.
 - Workspaces: rename/delete/reorder, move tab to workspace, dot/row morph
   animation, keyboard switching, localized strings (English literals now).
-- Rail: position end (right side), resizable expanded width.
+- Rail: resizable expanded width.
 - New tab: add/edit a shortcut and drag to reorder (Firefox's page has both;
   the Aequera page has pin, unpin, and dismiss).
 - Full branding build (own exe name/icon): see `patches/build/branding`.

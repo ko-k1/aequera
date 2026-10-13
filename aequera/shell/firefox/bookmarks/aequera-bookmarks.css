@@ -74,6 +74,18 @@
   }
 }
 
+/* Rail at the inline end: the drawer runs from the window's start edge to
+ * where the rail currently begins (--aequera-content-start is measured from
+ * that end, aequera-bookmarks.js). */
+:root[aequera-rail-end][aequera-bookmarks-peek] #PersonalToolbar:not([collapsed]),
+:root[aequera-rail-end][aequera-bookmarks-peek][aequera-bookmarks-open] #navigator-toolbox::after {
+  inset-inline: 0 calc(var(--aequera-content-start, 0px) + var(--aequera-rail-overlay, 0px));
+}
+
+:root[aequera-rail-end][aequera-bookmarks-peek] #PersonalToolbar:not([collapsed]) {
+  transition-property: inset-inline-end, clip-path, translate, opacity, visibility;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root[aequera-bookmarks-peek] #PersonalToolbar:not([collapsed]) {
     transition: none;

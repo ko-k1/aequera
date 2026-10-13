@@ -78,6 +78,12 @@
   width: var(--aequera-rail-expanded-width, 220px);
 }
 
+/* Rail at the window's inline end (sidebar.position_start false; Firefox
+ * orders it after the page): it widens from that edge toward the page. */
+:root[aequera-rail-end] #sidebar-container > sidebar-main {
+  inset-inline: auto 0;
+}
+
 :root[aequera-rail] #vertical-tabs {
   display: flex;
   flex-direction: column;

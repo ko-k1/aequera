@@ -64,6 +64,15 @@
   padding: var(--aequera-essential-inset);
 }
 
+/* Rail at the inline end: the full-width grid keeps its far edge on the
+ * rail's outer edge, so the widening rail reveals it in place (from the
+ * outer edge in) rather than sliding it along with the rail's moving inner
+ * edge. A negative start margin of (current width - full width); the
+ * columns never re-flow. */
+:root[aequera-rail][aequera-rail-end] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"]::part(items-wrapper) {
+  margin-inline-start: calc(100% - var(--aequera-rail-expanded-width, 220px));
+}
+
 :root[aequera-rail] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
   /* Tiles fill their grid cell; Firefox's per-tab min/max widths would
    * push a row wider than the grid. */

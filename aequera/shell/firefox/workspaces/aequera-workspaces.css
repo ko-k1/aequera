@@ -48,6 +48,14 @@
   overflow: hidden;
 }
 
+/* Rail at the inline end: mirrored like the tab rows (aequera-tabs.css),
+ * so each dot stays on the collapsed rail's column at the outer edge. */
+:root[aequera-rail-end] .aequera-ws {
+  flex-direction: row-reverse;
+  padding-inline: 7px var(--aequera-dock-dot-start);
+  text-align: end;
+}
+
 .aequera-ws:hover {
   background-color: var(--button-background-color-ghost-hover, color-mix(in srgb, currentColor 12%, transparent));
 }

@@ -1,0 +1,114 @@
+Subject: [PATCH] preferences: vertical tabs side in Browser layout
+
+Why Firefox source must change:
+  Firefox already supports a vertical tab strip on either side of the
+  window (sidebar.position_start; browser-sidebar.js setPosition orders it
+  after the page when false), but the only control for it lives in the
+  revamped sidebar's customize panel. Aequera hosts vertical tabs in its
+  own rail with the revamp off (patches/browser/aequera-rail), so that
+  panel never loads and the side can only be changed in about:config.
+  Settings is Firefox's own settings surface; no pref, policy, or theme can
+  add a control to it.
+
+What it changes:
+  - Settings > General > Browser layout: a "Vertical tabs side" radio group
+    (Left / Right) bound to sidebar.position_start, mapped to physical
+    sides (the start side is the right in a right-to-left UI).
+  - Shown only while vertical tabs are on and a shell hosts them
+    (sidebar.verticalTabs.requireRevamp false). With Firefox's defaults
+    (true) the group is unchanged and the sidebar panel stays the place
+    for it.
+  - Three en-US strings in preferences.ftl.
+
+Depends on: 0001 of browser/aequera-rail (introduces
+  sidebar.verticalTabs.requireRevamp; the setting reads it with a true
+  fallback, so it applies cleanly and stays hidden without it).
+Validation: aequera/shell/firefox/tests/browser/browser_aequera_rail_side.js
+  (the control shows with the Aequera rail, writes the pref both ways, and
+  hides with horizontal tabs; the rail mirrors to the right);
+  Firefox's browser_tabs_browsing_pane.js and browser_appearance_pane.js
+  with Firefox's defaults (tools/build/test-shell.sh upstream).
+Upstream risk: low-medium; one setting and one group item in the
+  settings-redesign config (tabs-browsing.mjs), which Firefox is actively
+  reworking, so the group's item list may move between releases.
+
+diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
+index 50ba8c2da36d..15e309d7481c 100644
+--- a/browser/components/preferences/config/tabs-browsing.mjs
++++ b/browser/components/preferences/config/tabs-browsing.mjs
+@@ -101,6 +101,7 @@ Preferences.addAll([
+ 
+   // Browser layout
+   { id: "sidebar.verticalTabs", type: "bool" },
++  { id: "sidebar.position_start", type: "bool" },
+ ]);
+ 
+ if (lazy.AppConstants.platform === "win") {
+@@ -560,6 +561,23 @@ Preferences.addSetting({
+   set: value => value === "true",
+ });
+ 
++// Which side of the window vertical tabs take (sidebar.position_start: the
++// UI's start side). Offered when a browser shell hosts vertical tabs itself
++// (sidebar.verticalTabs.requireRevamp false); with the revamped sidebar the
++// sidebar's own customize panel offers the same switch.
++Preferences.addSetting({
++  id: "browserLayoutTabsSide",
++  pref: "sidebar.position_start",
++  deps: ["browserLayoutRadioGroup"],
++  visible: ({ browserLayoutRadioGroup }) =>
++    browserLayoutRadioGroup.value === "true" &&
++    !Services.prefs.getBoolPref("sidebar.verticalTabs.requireRevamp", true),
++  // Physical sides: the start side is the right in a right-to-left UI.
++  get: prefValue =>
++    prefValue != Services.locale.isAppLocaleRTL ? "left" : "right",
++  set: value => (value === "left") != Services.locale.isAppLocaleRTL,
++});
++
+ SettingGroupManager.registerGroups({
+   browserLayout: {
+     subcategory: "layout",
+@@ -593,6 +611,23 @@ SettingGroupManager.registerGroups({
+           },
+         ],
+       },
++      {
++        id: "browserLayoutTabsSide",
++        control: "moz-radio-group",
++        l10nId: "browser-layout-tabs-side",
++        options: [
++          {
++            id: "browserLayoutTabsSideLeft",
++            value: "left",
++            l10nId: "browser-layout-tabs-side-left",
++          },
++          {
++            id: "browserLayoutTabsSideRight",
++            value: "right",
++            l10nId: "browser-layout-tabs-side-right",
++          },
++        ],
++      },
+     ],
+   },
+   tabs: {
+diff --git a/browser/locales/en-US/browser/preferences/preferences.ftl b/browser/locales/en-US/browser/preferences/preferences.ftl
+index cd3117f19a46..62301decb58e 100644
+--- a/browser/locales/en-US/browser/preferences/preferences.ftl
++++ b/browser/locales/en-US/browser/preferences/preferences.ftl
+@@ -365,6 +365,15 @@ browser-layout-vertical-tabs2 =
+     .title = Tabs on the side, in the sidebar
+     .description = Tabs on the side, in the sidebar
+ 
++browser-layout-tabs-side =
++    .label = Vertical tabs side
++
++browser-layout-tabs-side-left =
++    .label = Left
++
++browser-layout-tabs-side-right =
++    .label = Right
++
+ page-navigation-group =
+     .label = Page navigation
+ 
