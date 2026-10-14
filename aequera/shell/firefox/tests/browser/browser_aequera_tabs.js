@@ -89,6 +89,48 @@ add_task(async function test_rows_mirror_the_unpinned_tabs() {
   is(list().lastElementChild, newTabRow(), "New Tab closes the list");
 });
 
+add_task(async function test_svg_favicons_show_and_follow_the_color_scheme() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.tabs.remoteSVGIconDecoding", true],
+      ["ui.systemUsesDarkTheme", 0],
+    ],
+  });
+  let pushed = 1;
+  const [tab] = await openTabs(1);
+  try {
+    const icon = () => rowFor(tab).querySelector(".aequera-tab-icon").getAttribute("src");
+    // The form FaviconLoader hands tabbrowser for a site's SVG favicon.
+    const svg = `data:image/svg+xml;base64,${btoa(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>'
+    )}`;
+    gBrowser.setIcon(tab, svg);
+    const light = tab.getAttribute("image");
+    ok(light.startsWith("moz-remote-image://"), "tabbrowser hands SVG favicons over as moz-remote-image");
+    is(icon(), light, "the row shows it instead of the default icon");
+
+    const schemeChange = new Promise(resolve =>
+      matchMedia("(prefers-color-scheme: dark)").addEventListener("change", resolve, { once: true })
+    );
+    await SpecialPowers.pushPrefEnv({ set: [["ui.systemUsesDarkTheme", 1]] });
+    pushed++;
+    await schemeChange;
+    const dark = tab.getAttribute("image");
+    isnot(dark, light, "tabbrowser re-renders the icon for the dark scheme");
+    await TestUtils.waitForCondition(() => icon() == dark, "the row follows without TabAttrModified");
+
+    tab.setAttribute("image", "file:///etc/passwd");
+    gBrowser._tabAttrModified(tab, ["image"]);
+    is(icon(), "chrome://global/skin/icons/defaultFavicon.svg", "other schemes still fall back");
+  } finally {
+    // Later tests measure row geometry: leave no extra row behind.
+    gBrowser.removeTab(tab, { animate: false });
+    while (pushed--) {
+      await SpecialPowers.popPrefEnv();
+    }
+  }
+});
+
 add_task(async function test_prototype_geometry() {
   // prototype/shell styles.css: a 42px rail; 30px rows, 6px apart, whose
   // icons sit on the rail's center line; collapsed rows are 30px squares.

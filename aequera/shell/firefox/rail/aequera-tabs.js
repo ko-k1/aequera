@@ -65,7 +65,9 @@ var AequeraTabs = (() => {
   // Favicons come from web content (tab `image` attribute). An <img> does not
   // execute script, but a crafted attribute could still load privileged image
   // bytes into chrome UI (spoofing). Allowlist keeps http(s) + data:image for
-  // web favicons plus chrome:// + resource:// which Firefox itself uses for
+  // web favicons, moz-remote-image:// which tabbrowser substitutes for SVG
+  // favicons (browser.tabs.remoteSVGIconDecoding: decoded in the content
+  // process), plus chrome:// + resource:// which Firefox itself uses for
   // internal pages and the default icon below; everything else falls back to
   // the default icon.
   function sanitizeIcon(raw) {
@@ -81,6 +83,7 @@ var AequeraTabs = (() => {
       lower.startsWith("http://") ||
       lower.startsWith("https://") ||
       lower.startsWith("data:image/") ||
+      lower.startsWith("moz-remote-image://") ||
       lower.startsWith("chrome://") ||
       lower.startsWith("resource://")
     ) {
@@ -1903,12 +1906,24 @@ var AequeraTabs = (() => {
       const magnifyPrefs = () => this.readMagnifyPrefs();
       Services.prefs.addObserver(MAGNIFY_PREF, magnifyPrefs);
       Services.prefs.addObserver(MAGNIFY_PERCENT_PREF, magnifyPrefs);
+      // tabbrowser re-renders SVG favicons for the new color scheme by setting
+      // `image` without TabAttrModified. Resync on the next frame so this runs
+      // after its own listener whatever the order.
+      const scheme = matchMedia("(prefers-color-scheme: dark)");
+      const schemeChanged = () =>
+        requestAnimationFrame(() => {
+          for (const tab of this.tabs()) {
+            this.updateRow(tab);
+          }
+        });
+      scheme.addEventListener("change", schemeChanged);
       window.addEventListener(
         "unload",
         () => {
           for (const type of [...STRUCTURE_EVENTS, ...ROW_EVENTS]) {
             container.removeEventListener(type, this);
           }
+          scheme.removeEventListener("change", schemeChanged);
           Services.prefs.removeObserver(MAGNIFY_PREF, magnifyPrefs);
           Services.prefs.removeObserver(MAGNIFY_PERCENT_PREF, magnifyPrefs);
           cancelAnimationFrame(this._magnify.frame);
