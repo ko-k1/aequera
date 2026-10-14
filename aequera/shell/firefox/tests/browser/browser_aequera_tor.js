@@ -112,9 +112,17 @@ add_task(async function test_launch_writes_a_fresh_profile() {
   };
   const profileDir = PathUtils.join(TOR_BASE, "profile");
 
-  // Something left from an earlier session: removed.
+  // Something left from an earlier session: removed, with the socket
+  // directory of a session that did not quit cleanly. A directory the
+  // launcher does not name is never touched.
   await IOUtils.makeDirectory(profileDir);
   await IOUtils.writeUTF8(PathUtils.join(profileDir, "leftover"), "x");
+  const oldSocketDir = PathUtils.join(PathUtils.tempDir, "aequera-tor-0123abcd");
+  await IOUtils.makeDirectory(oldSocketDir);
+  await IOUtils.writeUTF8(
+    PathUtils.join(profileDir, "user.js"),
+    `user_pref("aequera.tor.socksPath", ${JSON.stringify(PathUtils.join(oldSocketDir, "socks"))});\n`,
+  );
 
   await AequeraTorLauncher.openWindow("https://example.com/");
   is(calls.length, 1, "one process started");
@@ -130,6 +138,7 @@ add_task(async function test_launch_writes_a_fresh_profile() {
   Assert.strictEqual(environment.MOZ_REMOTE_ALLOW_SYSTEM_ACCESS, null, "nor system access for it");
 
   ok(!(await IOUtils.exists(PathUtils.join(profileDir, "leftover"))), "old profile removed");
+  ok(!(await IOUtils.exists(oldSocketDir)), "the crashed session's socket directory removed");
   const prefs = readUserJs(await IOUtils.readUTF8(PathUtils.join(profileDir, "user.js")));
   is(prefs.get("aequera.tor.instance"), true, "marks the instance");
   is(prefs.get("network.proxy.type"), 1, "manual proxy");
@@ -146,6 +155,24 @@ add_task(async function test_launch_writes_a_fresh_profile() {
   ok(!(await IOUtils.exists(socksPath)), "nothing listens before tor");
   is((await IOUtils.stat(PathUtils.join(TOR_BASE, "data"))).permissions & 0o777, 0o700, "tor data private");
   await IOUtils.remove(socketDir, { recursive: true });
+});
+
+add_task(async function test_launch_never_removes_other_directories() {
+  AequeraTorLauncher.spawn = async () => fakeProcess();
+  const profileDir = PathUtils.join(TOR_BASE, "profile");
+  const notOurs = PathUtils.join(PathUtils.tempDir, "aequera-tor-test-not-ours");
+  await IOUtils.makeDirectory(notOurs);
+  await IOUtils.writeUTF8(PathUtils.join(notOurs, "keep"), "x");
+  await IOUtils.makeDirectory(profileDir);
+  await IOUtils.writeUTF8(
+    PathUtils.join(profileDir, "user.js"),
+    `user_pref("aequera.tor.socksPath", ${JSON.stringify(PathUtils.join(notOurs, "socks"))});\n`,
+  );
+  await AequeraTorLauncher.openWindow();
+  ok(await IOUtils.exists(PathUtils.join(notOurs, "keep")), "a directory the launcher did not name stays");
+  await IOUtils.remove(notOurs, { recursive: true });
+  const prefs = readUserJs(await IOUtils.readUTF8(PathUtils.join(profileDir, "user.js")));
+  await IOUtils.remove(PathUtils.parent(prefs.get("aequera.tor.socksPath")), { recursive: true });
 });
 
 add_task(async function test_launch_while_running_keeps_the_profile() {

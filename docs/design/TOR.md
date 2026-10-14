@@ -65,7 +65,8 @@ ordinary instance (profile P)                Tor instance (profile P/tor/profile
   variables that pick a profile ahead of `-profile` and those that turn on
   automation (Marionette, Remote Agent).
 - **Fresh profile.** The Tor profile is removed and rewritten whenever no
-  Tor instance runs. tor's data directory beside it is kept: guards and
+  Tor instance runs, with the socket directory of a session that crashed
+  (one named `aequera-tor-*` by the launcher, never another). tor's data directory beside it is kept: guards and
   the directory cache, so later starts connect in seconds (2.5 s measured,
   10.5 s the first time).
 - **Load order.** `tor/aequera-tor.js` is the first window script. In the

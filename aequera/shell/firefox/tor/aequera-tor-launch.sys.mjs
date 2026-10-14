@@ -200,6 +200,7 @@ export const AequeraTorLauncher = {
    */
   async prepareProfile(paths) {
     await IOUtils.makeDirectory(paths.base, { permissions: 0o700 });
+    await this.removeOldSocketDir(paths);
     await IOUtils.remove(paths.profile, { recursive: true, ignoreAbsent: true });
     await IOUtils.makeDirectory(paths.profile, { permissions: 0o700 });
     await IOUtils.makeDirectory(paths.data, { permissions: 0o700 });
@@ -210,6 +211,30 @@ export const AequeraTorLauncher = {
     const executable = Services.prefs.getStringPref(this.model.EXECUTABLE_PREF, "");
     const prefs = this.model.instancePrefs({ socksPath, socksUrl, dataDir: paths.data, executable });
     await IOUtils.writeUTF8(PathUtils.join(paths.profile, "user.js"), this.model.userJs(prefs));
+  },
+
+  /**
+   * The previous session's socket directory, when it did not quit cleanly
+   * (a crash leaves it; a clean quit removes it). Only a directory this
+   * launcher names (aequera-tor-*) is removed, and only here, where no Tor
+   * instance runs.
+   */
+  async removeOldSocketDir(paths) {
+    let text;
+    try {
+      text = await IOUtils.readUTF8(PathUtils.join(paths.profile, "user.js"));
+    } catch {
+      return;
+    }
+    const m = /^user_pref\("aequera\.tor\.socksPath", ("(?:[^"\\]|\\.)*")\);$/m.exec(text);
+    const socksPath = m ? JSON.parse(m[1]) : "";
+    if (this.model.socketPathProblem(socksPath)) {
+      return;
+    }
+    const dir = PathUtils.parent(socksPath);
+    if (/^aequera-tor-[0-9a-f]{8}$/.test(PathUtils.filename(dir))) {
+      await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
+    }
   },
 
   /**
