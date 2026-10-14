@@ -12,7 +12,7 @@ pref-gated browser patches. No telemetry, no network.
 
 | File | Role |
 |---|---|
-| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (`aequera.material.frame`: Mica/Acrylic on Windows, vibrancy or Liquid Glass on macOS, Linux glass on blurring desktops, opaque elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on |
+| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (`aequera.material.frame`: Mica/Acrylic on Windows, vibrancy or Liquid Glass on macOS, Linux glass on blurring desktops, opaque elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on, Tor windows on |
 | `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome; the glass frame material (Linux and macOS tint, macOS vibrant layer) |
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
@@ -26,6 +26,7 @@ pref-gated browser patches. No telemetry, no network.
 | `privatebrowsing/` | about:privatebrowsing in the new tab page design (stylesheet) |
 | `privacy/` | Privacy model: applies Strict tracking protection once per profile |
 | `adveil/` | Ad Veil switch: `aequera.adveil.enabled` enables or disables the built-in ad blocker (`aequera/extensions/ad-veil`) |
+| `tor/` | Tor windows: a second instance on a throwaway profile, all traffic through tor (below) |
 | `bookmarks/` | Bookmarks drawer |
 | `moz.build`, `jar.mn` | Build registration -> `chrome://browser/content/aequera/` |
 
@@ -603,6 +604,28 @@ mode lifts (Firefox's advertising list).
 Tests: the add-on's own `addon/tests/browser/browser_aequera_adveil.js`
 (`aequera/extensions/ad-veil/README.md`), run by the same `aequera` gate
 step. The upstream gate runs Firefox's tests with the pref off.
+
+## Tor windows (`tor/`)
+
+Private windows whose traffic goes through Tor, beside ordinary windows
+(Brave's "New Private Window with Tor"; `docs/design/TOR.md`, ADR 0004).
+A Tor window belongs to a second Aequera process on a throwaway profile
+(`<profile>/tor/profile`), with Firefox's global SOCKS proxy on a tor daemon
+that instance runs: no local DNS, no direct fallback, and the network prefs
+locked. Linux and macOS (`aequera.tor.enabled`; tor from
+`aequera.tor.executable` or `PATH`, never downloaded).
+
+| File | Role |
+|---|---|
+| `tor-model.js` | Pure model: the Tor instance's prefs with reasons (which are required), their check, `user.js` and torrc text, tor log parsing, circuit keys, launch arguments. Classic script + CommonJS, also loaded by the modules; node tests: `node --test aequera/shell/firefox/tor/tor-model.test.mjs` |
+| `aequera-tor-launch.sys.mjs` | Ordinary instance: writes the fresh profile and the socket directory, starts the Tor instance, or hands the command line to the running one (remoting) |
+| `aequera-tor-daemon.sys.mjs` | Tor instance: locks and checks the required prefs (offline if one is wrong), the per-site circuit filter (last position, SOCKS credentials per site), tor's process and log, the session's search engine |
+| `aequera-tor.js` | Window script, loaded first: entry points (app and File menus, Alt+Shift+N / Option+Command+N, link context menu); in the Tor instance, the Tor button and panel, failure notifications, reloading tabs that failed while connecting |
+| `aequera-tor.css`, `tor.svg` | The Tor button (state label, violet accent of the private page) and its panel |
+
+Tests: `tests/browser/browser_aequera_tor.js` (launcher with a fake spawn,
+the circuit filter on real channels, tor's lifecycle with a fake tor, the
+panel); the live check through the Tor network is in `docs/design/TOR.md`.
 
 ## Robustness
 

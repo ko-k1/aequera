@@ -192,6 +192,17 @@ pref("widget.macos.titlebar-glass.enabled", true);
 // (Hyprland) get glass under auto.
 pref("widget.wayland.background-blur.enabled", true);
 
+// Tor windows (docs/design/TOR.md, ADR 0004): "New Tor Window" (app and File
+// menus, Alt+Shift+N; Option+Command+N on macOS) and "Open Link in Tor
+// Window" start a second Aequera instance on a throwaway private profile
+// whose every connection goes through tor (tor/). Off removes the entry
+// points. tor is found as aequera.tor.executable (an absolute path) or, when
+// empty, as `tor` on PATH; it is never downloaded. Linux and macOS only.
+// The prefs of the Tor instance itself are in tor/tor-model.js, not here:
+// they are written to its own profile and locked there.
+pref("aequera.tor.enabled", true);
+pref("aequera.tor.executable", "");
+
 // Ad Veil (docs/design/ADS.md): Aequera's built-in ad and tracker blocker
 // (EasyList, EasyPrivacy). Requests the lists match are cancelled and ads
 // that reach the page are hidden. Off disables the built-in add-on

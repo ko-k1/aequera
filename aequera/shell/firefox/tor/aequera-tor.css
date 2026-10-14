@@ -1,0 +1,110 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Tor windows (tor/aequera-tor.js): the Tor button at the start of the
+ * toolbar, the only element that tells a Tor window from a private one, and
+ * its panel. The violet accent is the private browsing page's
+ * (privatebrowsing/aequera-private.css). The progress bar and the label are
+ * the bootstrap state; nothing animates beyond Firefox's own button
+ * feedback. Sizes are Firefox's design tokens. */
+
+:root[aequera-tor] {
+  --aequera-tor-accent: light-dark(#6e3fd1, #b59cff);
+}
+
+#aequera-tor-button {
+  list-style-image: url("chrome://browser/content/aequera/tor/tor.svg");
+  -moz-context-properties: fill, fill-opacity;
+  fill: var(--aequera-tor-accent);
+
+  /* The label is the state ("Tor", "Tor 45%", "Tor offline"): always
+   * shown, unlike other toolbar buttons'. */
+  > .toolbarbutton-text {
+    display: flex;
+    padding-inline-start: var(--space-xsmall);
+    color: var(--aequera-tor-accent);
+    font-weight: var(--font-weight-semibold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &[tor-status="failed"],
+  &[tor-status="refused"] {
+    fill: var(--icon-color-critical);
+
+    > .toolbarbutton-text {
+      color: var(--text-color-error);
+    }
+  }
+}
+
+#aequera-tor-panel {
+  --panel-width: 22em;
+
+  .aequera-tor-panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-small);
+    width: var(--panel-width);
+    padding: var(--space-medium) var(--space-large) var(--space-large);
+  }
+
+  h2 {
+    margin: 0;
+    font-size: var(--font-size-large);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  p {
+    margin: 0;
+  }
+
+  .aequera-tor-detail:empty {
+    display: none;
+  }
+
+  .aequera-tor-detail,
+  .aequera-tor-about {
+    color: var(--text-color-deemphasized);
+    font-size: var(--font-size-small);
+  }
+
+  .aequera-tor-progress {
+    width: 100%;
+    accent-color: var(--aequera-tor-accent);
+  }
+
+  .aequera-tor-actions {
+    display: flex;
+    gap: var(--space-small);
+
+    > [hidden] {
+      display: none;
+    }
+
+    /* Firefox's button tokens (as in its panels' footers). */
+    > button {
+      appearance: none;
+      padding: var(--space-xsmall) var(--space-medium);
+      border: 1px solid var(--button-border-color, transparent);
+      border-radius: var(--button-border-radius);
+      background-color: var(--button-background-color);
+      color: var(--button-text-color);
+      font: inherit;
+      font-weight: var(--font-weight-semibold);
+
+      &:hover {
+        background-color: var(--button-background-color-hover);
+      }
+
+      &:hover:active {
+        background-color: var(--button-background-color-active);
+      }
+
+      &:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: var(--focus-outline-offset);
+      }
+    }
+  }
+}

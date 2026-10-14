@@ -28,6 +28,7 @@ var AequeraCommandModel = (() => {
     { id: "new-workspace", title: "New workspace", keywords: ["create workspace", "add workspace"] },
     { id: "restore-closed", title: "Restore closed tab", keywords: ["reopen closed tab", "undo close tab"] },
     { id: "sort-by-site", title: "Sort tabs by site", keywords: ["sort tabs by domain", "organize tabs"] },
+    { id: "new-tor-window", title: "New Tor window", keywords: ["private window with tor", "onion"] },
   ];
 
   /** Lowercased, trimmed, whitespace-collapsed query. */

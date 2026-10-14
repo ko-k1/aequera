@@ -68,6 +68,7 @@ test("commands need three characters and restore needs a closed tab", () => {
     [
       { type: "command", id: "new-tab" },
       { type: "command", id: "new-workspace" },
+      { type: "command", id: "new-tor-window" },
     ]
   );
   assert.deepEqual(rows("reopen", sources()), [], "nothing to restore");
@@ -80,6 +81,16 @@ test("sort tabs by site is a command, also found by domain", () => {
     assert.deepEqual(
       rows(query, sources()).map(r => r.action),
       [{ type: "command", id: "sort-by-site" }],
+      query
+    );
+  }
+});
+
+test("new Tor window is a command, also found as Brave's name and by onion", () => {
+  for (const query of ["tor", "new tor", "private window with tor", "onion"]) {
+    assert.deepEqual(
+      rows(query, sources()).map(r => r.action),
+      [{ type: "command", id: "new-tor-window" }],
       query
     );
   }

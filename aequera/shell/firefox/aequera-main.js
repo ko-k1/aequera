@@ -9,6 +9,10 @@
 // these uncached too: add new scripts here (and to jar.mn), never to the
 // bootstrap.
 for (const name of [
+  // First: in the Tor instance it locks the network prefs and starts tor
+  // before any other feature runs.
+  "tor/tor-model.js",
+  "tor/aequera-tor.js",
   "aequera-frame.js",
   "aequera-hover.js",
   "workspaces/workspace-model.js",

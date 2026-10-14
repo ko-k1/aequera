@@ -100,6 +100,9 @@ var AequeraCommand = (() => {
         case "sort-by-site":
           window.AequeraWorkspaces?.sortBySite();
           break;
+        case "new-tor-window":
+          window.AequeraTor?.open();
+          break;
       }
     },
   };

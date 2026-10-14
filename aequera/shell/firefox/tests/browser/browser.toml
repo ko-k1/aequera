@@ -34,3 +34,6 @@ prefs = [
 ["browser_aequera_private.js"]
 
 ["browser_aequera_privacy.js"]
+
+["browser_aequera_tor.js"]
+skip-if = ["os == 'win'"] # Tor windows are Linux and macOS only (ADR 0004)

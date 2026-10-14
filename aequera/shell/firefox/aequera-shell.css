@@ -17,6 +17,7 @@
 @import url("chrome://browser/content/aequera/rail/aequera-tabs.css");
 @import url("chrome://browser/content/aequera/workspaces/aequera-workspaces.css");
 @import url("chrome://browser/content/aequera/bookmarks/aequera-bookmarks.css");
+@import url("chrome://browser/content/aequera/tor/aequera-tor.css");
 
 /* The page card yields on two edges, each a plain transition on the shared
  * motion tokens (--aequera-motion-*, set from prefs by aequera-frame.js), so
