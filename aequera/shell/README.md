@@ -57,9 +57,9 @@ Aequera shows `#sidebar-container` as the rail and owns what the launcher did:
 width (collapsed = Firefox's `--tab-collapsed-width`, set to the 42px token
 rail: 30px token tabs + 2 x 6px inset; expanded =
 `aequera.rail.expandedWidth`) as a plain, interruptible CSS transition;
-hover intent (`aequera.hover.openDelayMs` / `closeDelayMs`; hover is the
-pointer moving onto the rail, never the rail widening under a resting
-pointer); holds (keyboard focus in the rail, a context menu opened from it,
+hover intent (`aequera.hover.openDelayMs` / `closeDelayMs`; a rail widened
+without hover may reach under a resting pointer, which hovers it only once
+it moves, presses, or scrolls); holds (keyboard focus in the rail, a context menu opened from it,
 address-bar focus; focus holds only while the window is active);
 pinned mode (`aequera.rail.pinned`, takes layout space); and
 `tabbrowser-tabs[expanded]`. The widened rail overlays the page and the page
@@ -387,10 +387,10 @@ from the first frame (before the wipe has revealed all of it); while open,
 the top bar stacks above the browser area, whose positioned `#browser` box
 would otherwise take every pointer event over the drawer. A menu or panel
 opened from the top bar or drawer (a bookmark's context menu, a folder)
-holds it open, but never opens it. Hover is the pointer moving onto the top
-bar or drawer: a drawer opened by the address bar under a resting pointer
-still closes when the address bar blurs. Focus holds only while the window
-is active. Firefox's own "Never" / "Only on new tab"
+holds it open, but never opens it. A drawer opened by the address bar under
+a resting pointer still closes when the address bar blurs, unless that
+pointer has since moved, pressed, or scrolled. Focus holds only while the
+window is active. Firefox's own "Never" / "Only on new tab"
 behave natively; customize mode turns it off.
 
 Tests: `tests/browser/browser_aequera_bookmarks_drawer.js`.

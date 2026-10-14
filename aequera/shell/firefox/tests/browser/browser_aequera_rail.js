@@ -34,6 +34,23 @@ function leaveRail() {
   EventUtils.synthesizeMouseAtCenter(tabbox(), { type: "mousemove" });
 }
 
+/** On the page, inside where the widened rail will reach. */
+function restPoint() {
+  const box = tabbox().getBoundingClientRect();
+  return { x: box.left + 100, y: box.top + 200 };
+}
+
+function restOnPageUnderWidenedRail() {
+  const { x, y } = restPoint();
+  EventUtils.synthesizeMouseAtPoint(x, y, { type: "mousemove" });
+}
+
+function assertPointerUnderRail() {
+  const { x, y } = restPoint();
+  const rail = railBox().getBoundingClientRect();
+  ok(x >= rail.left && x < rail.right && y >= rail.top && y < rail.bottom, "the widened rail is under the resting pointer");
+}
+
 async function collapse() {
   if (gURLBar.focused) {
     gBrowser.selectedBrowser.focus();
@@ -250,12 +267,19 @@ add_task(async function test_widening_under_a_still_pointer_is_not_hover() {
   // The pointer rests on the page where the widened rail will reach (Ctrl+L
   // or a new tab with the mouse left there): the rail widening under it is
   // not the pointer moving onto it.
-  await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.expandOnAddressFocus", true]] });
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["aequera.rail.expandOnAddressFocus", true],
+      ["aequera.rail.expandedWidth", 220],
+      ["sidebar.position_start", true],
+    ],
+  });
   await collapse();
-  EventUtils.synthesizeMouse(tabbox(), 100, 200, { type: "mousemove" });
+  restOnPageUnderWidenedRail();
   gURLBar.focus();
   ok(isExpanded(), "the address bar widens the rail");
-  await wait(300); // past the width transition: the rail is under the pointer
+  await wait(300); // past the width transition
+  assertPointerUnderRail();
   gBrowser.selectedBrowser.focus();
   await TestUtils.waitForCondition(
     isFullyCollapsed,
@@ -269,6 +293,19 @@ add_task(async function test_widening_under_a_still_pointer_is_not_hover() {
   gBrowser.selectedBrowser.focus();
   await wait(450);
   ok(isExpanded(), "a move onto the rail holds it after the address bar blurs");
+  await collapse();
+
+  // So is a press without any move (a touchpad tap).
+  restOnPageUnderWidenedRail();
+  gURLBar.focus();
+  await wait(300);
+  assertPointerUnderRail();
+  const { x, y } = restPoint();
+  EventUtils.synthesizeMouseAtPoint(x, y, { type: "mousedown" });
+  EventUtils.synthesizeMouseAtPoint(x, y, { type: "mouseup" });
+  gBrowser.selectedBrowser.focus();
+  await wait(450);
+  ok(isExpanded(), "a press on the rail holds it after the address bar blurs");
   await collapse();
   await SpecialPowers.popPrefEnv();
 });

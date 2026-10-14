@@ -23,8 +23,9 @@
 //     aequera.rail.expandOnAddressFocus is on (prototype unified search), a
 //     tab row being dragged (aequera-tabs.js); focus holds only in the active
 //     window (a background window keeps its focused element but shows no
-//     caret or focus ring); hover is the pointer moving onto the rail, never
-//     the rail widening under a resting pointer;
+//     caret or focus ring); a rail widened without hover (the address bar)
+//     may reach under a resting pointer, which hovers it only once it moves,
+//     presses, or scrolls;
 //   - pinned (aequera.rail.pinned): always expanded, taking layout space;
 //   - two states: the TARGET (:root[aequera-rail-expanded]) flips at once and
 //     drives the width, the page clip, and the drawer edge; the CONTENT
@@ -49,6 +50,8 @@ var AequeraRail = (() => {
     addressFocus: "aequera.rail.expandOnAddressFocus",
     positionStart: "sidebar.position_start",
   };
+  /** What the pointer does, as opposed to what moves under it. */
+  const POINTER_ACTS = ["mousemove", "mousedown", "wheel"];
   const ROOT = document.documentElement;
 
   const rail = {
@@ -57,6 +60,8 @@ var AequeraRail = (() => {
     expanded: false,
     timer: 0,
     contentTimer: 0,
+    /** Widened without hover: mouseover is not hover until the pointer acts. */
+    awaitingPointer: false,
     /** Popups opened from inside the rail (context menus, tab menus). */
     openPopups: new Set(),
 
@@ -81,6 +86,9 @@ var AequeraRail = (() => {
       if (this.pinned || this.hovered || this.openPopups.size || window.AequeraTabs?._drag) {
         return true;
       }
+      // Focus holds apply in the active window only. Lowering a window
+      // clears the active window and then blurs, so focusout re-decides;
+      // raising focuses again (focusin).
       if (Services.focus.activeWindow !== window) {
         return false;
       }
@@ -104,6 +112,7 @@ var AequeraRail = (() => {
         return;
       }
       this.expanded = expanded;
+      this.awaitPointer(expanded && !this.hovered);
       ROOT.toggleAttribute("aequera-rail-expanded", expanded);
       clearTimeout(this.contentTimer);
       if (expanded) {
@@ -119,6 +128,34 @@ var AequeraRail = (() => {
             this.setContentExpanded(false);
           }
         }, delay);
+      }
+    },
+
+    /** Widening without hover can reach under a resting pointer, and Gecko
+     * then sends that pointer a mouseover (a synthesized move after layout),
+     * which would hold the rail open after the address bar blurs. Until the
+     * pointer moves, presses, or scrolls, mouseover is not hover; synthesized
+     * moves never reach the DOM as mousemove. The listeners exist only in
+     * that state, so pointer moves cost nothing otherwise. */
+    awaitPointer(on) {
+      if (on === this.awaitingPointer) {
+        return;
+      }
+      this.awaitingPointer = on;
+      for (const type of POINTER_ACTS) {
+        if (on) {
+          this.container.addEventListener(type, this, { passive: true });
+        } else {
+          this.container.removeEventListener(type, this, { passive: true });
+        }
+      }
+    },
+
+    enter() {
+      this.awaitPointer(false);
+      if (!this.hovered) {
+        this.hovered = true;
+        this.settle(this.delay(PREFS.openDelay, 40));
       }
     },
 
@@ -152,18 +189,20 @@ var AequeraRail = (() => {
 
     handleEvent(event) {
       switch (event.type) {
-        // mousemove/mouseout rather than the slower mouseenter/leave (Gecko
-        // flags those in chrome): entering is the first move; leaving is an
-        // out whose destination is outside the rail. Not mouseover: Gecko
-        // also sends it when the rail widens under a resting pointer (a
-        // synthesized move after layout), which would then hold the rail
-        // open after the address bar blurs; synthesized moves never reach
-        // the DOM as mousemove.
-        case "mousemove":
-          if (!this.hovered) {
-            this.hovered = true;
-            this.settle(this.delay(PREFS.openDelay, 40));
+        // mouseover/mouseout rather than the slower mouseenter/leave (Gecko
+        // flags those in chrome): entering is the first over; leaving is an
+        // out whose destination is outside the rail. A mouseover after a
+        // menu closes over the rail is hover again (not awaiting then).
+        case "mouseover":
+          if (!this.awaitingPointer) {
+            this.enter();
           }
+          break;
+        // Only while awaiting the pointer (awaitPointer).
+        case "mousemove":
+        case "mousedown":
+        case "wheel":
+          this.enter();
           break;
         case "mouseout":
           if (!this.container.contains(event.relatedTarget)) {
@@ -182,12 +221,6 @@ var AequeraRail = (() => {
         case "focusout":
           this.settle(this.delay(PREFS.closeDelay, 150));
           break;
-        // Focus holds follow the window's activation. Gecko fires deactivate
-        // before it clears the active window, so re-decide a tick later.
-        case "activate":
-        case "deactivate":
-          this.settle(0);
-          break;
         case "popupshown":
           if (this.container.contains(event.target.triggerNode)) {
             this.openPopups.add(event.target);
@@ -204,9 +237,8 @@ var AequeraRail = (() => {
         // will land; leaving it, dropping, or ending the drag re-reads hover
         // from where the pointer is.
         case "dragenter":
-          if (!this.hovered && this.container.contains(event.target)) {
-            this.hovered = true;
-            this.settle(this.delay(PREFS.openDelay, 40));
+          if (this.container.contains(event.target)) {
+            this.enter();
           }
           break;
         case "dragleave":
@@ -229,9 +261,10 @@ var AequeraRail = (() => {
         x < box.right &&
         y >= box.top &&
         y < box.bottom;
-      if (inside != this.hovered) {
-        this.hovered = inside;
+      if (inside) {
+        this.awaitPointer(false);
       }
+      this.hovered = inside;
       this.settle(this.delay(inside ? PREFS.openDelay : PREFS.closeDelay, inside ? 40 : 150));
     },
 
@@ -245,7 +278,7 @@ var AequeraRail = (() => {
         console.error("aequera-rail: #sidebar-container missing; rail disabled");
         return;
       }
-      this.container.addEventListener("mousemove", this);
+      this.container.addEventListener("mouseover", this);
       this.container.addEventListener("mouseout", this);
       for (const type of ["dragenter", "dragleave", "drop", "dragend"]) {
         this.container.addEventListener(type, this);
@@ -254,8 +287,6 @@ var AequeraRail = (() => {
       // watched window-wide.
       window.addEventListener("focusin", this);
       window.addEventListener("focusout", this);
-      window.addEventListener("activate", this);
-      window.addEventListener("deactivate", this);
       document.addEventListener("popupshown", this);
       document.addEventListener("popuphidden", this);
       const prefs = Object.values(PREFS);
