@@ -64,6 +64,7 @@ var AequeraFrame = (() => {
     tabbox: null,
     top: 0,
     blurQuery: null,
+    onBlurChange: null,
 
     /** Configured easing, or the fallback when it is not a CSS easing. */
     easing() {
@@ -120,8 +121,7 @@ var AequeraFrame = (() => {
     },
 
     /** Configured frame material, resolved to "solid" or "glass". */
-    material() {
-      const material = this.configured();
+    material(material = this.configured()) {
       if (material != "auto") {
         return material;
       }
@@ -138,19 +138,19 @@ var AequeraFrame = (() => {
      *   glass: Acrylic (2), a live blur of what is behind the window;
      *   solid: no backdrop.
      */
-    publishWindowsBackdrop() {
+    publishWindowsBackdrop(material) {
       if (AppConstants.platform != "win") {
         return;
       }
-      const material = this.configured();
       const defaults = Services.prefs.getDefaultBranch("");
       defaults.setBoolPref("widget.windows.mica", material != "solid");
       defaults.setIntPref("widget.windows.mica.toplevel-backdrop", material == "glass" ? 2 : 0);
     },
 
     publishMaterial() {
-      this.publishWindowsBackdrop();
-      ROOT.setAttribute("aequera-material", this.material());
+      const configured = this.configured();
+      this.publishWindowsBackdrop(configured);
+      ROOT.setAttribute("aequera-material", this.material(configured));
       const opacity = Math.min(100, Math.max(MIN_OPACITY, Services.prefs.getIntPref(OPACITY_PREF, 80)));
       ROOT.style.setProperty("--aequera-material-opacity", `${opacity}%`);
     },
@@ -181,8 +181,9 @@ var AequeraFrame = (() => {
       this.publishMaterial();
       if (AppConstants.platform == "linux") {
         // The compositor can start or stop offering blur while we run.
+        this.onBlurChange = () => this.publishMaterial();
         this.blurQuery = window.matchMedia("(-moz-gtk-background-blur-available)");
-        this.blurQuery.addEventListener("change", () => this.publishMaterial());
+        this.blurQuery.addEventListener("change", this.onBlurChange);
       }
       const prefs = [DURATION_PREF, EASING_PREF, MATERIAL_PREF, OPACITY_PREF];
       for (const pref of prefs) {
@@ -194,6 +195,7 @@ var AequeraFrame = (() => {
           for (const pref of prefs) {
             Services.prefs.removeObserver(pref, this);
           }
+          this.blurQuery?.removeEventListener("change", this.onBlurChange);
         },
         { once: true }
       );
