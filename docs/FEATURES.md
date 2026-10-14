@@ -55,7 +55,8 @@ This file describes the intended capability surface and, importantly, where each
 - no unwanted telemetry/advertising behavior;
 - explicit privilege boundaries;
 - secure handling of imported configuration;
-- local-first settings and profiles.
+- local-first settings and profiles;
+- Tor windows: private windows through the Tor network, beside ordinary windows (`docs/design/TOR.md`).
 
 ## Responsibility Classification
 
