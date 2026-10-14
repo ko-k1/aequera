@@ -150,6 +150,21 @@ shared with ML training) — per-OS guidance, not global defaults:
   known-good there. Point `RUSTC`/`CARGO` at it in the build shell
   (configure-time setting, so re-run `./mach configure` after changing it).
 
+NixOS (2026-10-14, NixOS 26.11, 16 cores: first build 29 min). `mach
+bootstrap` refuses the distro, so use Mozilla's own toolchains, run under
+`steam-run` like everything else here (`nixos-env.sh`):
+
+- add `ac_add_options --enable-bootstrap` to a local mozconfig that sources
+  `mozconfig.compiled`: on the release channel configure does not bootstrap by
+  default, and with it fetches clang, cbindgen, nasm, node, and the Debian
+  sysroot (so no NixOS headers or libraries are involved);
+- bootstrap does not fetch Rust: from `~/.mozbuild`, run
+  `<worktree>/mach artifact toolchain --from-build linux64-rust-1.95` (the
+  rustc this tree's CI uses) and put `~/.mozbuild/rustc/bin` first on `PATH`
+  in the shell that runs mach;
+- set `TMPDIR` to a short path under `/home` when the checkout path is long
+  (Python's forkserver socket path overflows `AF_UNIX`).
+
 ## Edit loop
 
 1. Edit Aequera source in `aequera/shell/firefox/` (never in the worktree:
