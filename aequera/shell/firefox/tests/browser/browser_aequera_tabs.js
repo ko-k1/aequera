@@ -90,15 +90,19 @@ add_task(async function test_rows_mirror_the_unpinned_tabs() {
 });
 
 add_task(async function test_svg_favicons_show_and_follow_the_color_scheme() {
-  await SpecialPowers.pushPrefEnv({
-    set: [
-      ["browser.tabs.remoteSVGIconDecoding", true],
-      ["ui.systemUsesDarkTheme", 0],
-    ],
-  });
-  let pushed = 1;
-  const [tab] = await openTabs(1);
+  const isDark = () => matchMedia("(prefers-color-scheme: dark)").matches;
+  let pushed = 0;
+  let tab;
   try {
+    await SpecialPowers.pushPrefEnv({
+      set: [
+        ["browser.tabs.remoteSVGIconDecoding", true],
+        ["ui.systemUsesDarkTheme", 0],
+      ],
+    });
+    pushed++;
+    await TestUtils.waitForCondition(() => !isDark(), "light scheme");
+    [tab] = await openTabs(1);
     const icon = () => rowFor(tab).querySelector(".aequera-tab-icon").getAttribute("src");
     // The form FaviconLoader hands tabbrowser for a site's SVG favicon.
     const svg = `data:image/svg+xml;base64,${btoa(
@@ -106,25 +110,34 @@ add_task(async function test_svg_favicons_show_and_follow_the_color_scheme() {
     )}`;
     gBrowser.setIcon(tab, svg);
     const light = tab.getAttribute("image");
-    ok(light.startsWith("moz-remote-image://"), "tabbrowser hands SVG favicons over as moz-remote-image");
+    ok(light.startsWith("moz-remote-image://?"), "tabbrowser hands SVG favicons over as moz-remote-image");
+    ok(light.includes("colorScheme=light"), "rendered for the light scheme");
     is(icon(), light, "the row shows it instead of the default icon");
 
-    const schemeChange = new Promise(resolve =>
-      matchMedia("(prefers-color-scheme: dark)").addEventListener("change", resolve, { once: true })
-    );
     await SpecialPowers.pushPrefEnv({ set: [["ui.systemUsesDarkTheme", 1]] });
     pushed++;
-    await schemeChange;
-    const dark = tab.getAttribute("image");
-    isnot(dark, light, "tabbrowser re-renders the icon for the dark scheme");
-    await TestUtils.waitForCondition(() => icon() == dark, "the row follows without TabAttrModified");
+    await TestUtils.waitForCondition(
+      () => tab.getAttribute("image").includes("colorScheme=dark"),
+      "tabbrowser re-renders the icon for the dark scheme"
+    );
+    is(icon(), tab.getAttribute("image"), "the row follows without TabAttrModified");
 
-    tab.setAttribute("image", "file:///etc/passwd");
-    gBrowser._tabAttrModified(tab, ["image"]);
-    is(icon(), "chrome://global/skin/icons/defaultFavicon.svg", "other schemes still fall back");
+    const DEFAULT = "chrome://global/skin/icons/defaultFavicon.svg";
+    for (const crafted of [
+      "file:///etc/passwd",
+      `moz-remote-image://?url=${encodeURIComponent("file:///etc/passwd")}`,
+      // Gecko loads the last of several urls.
+      `moz-remote-image://?url=${encodeURIComponent(svg)}&url=${encodeURIComponent("file:///etc/passwd")}`,
+    ]) {
+      tab.setAttribute("image", crafted);
+      gBrowser._tabAttrModified(tab, ["image"]);
+      is(icon(), DEFAULT, `falls back for ${crafted.slice(0, 48)}`);
+    }
   } finally {
     // Later tests measure row geometry: leave no extra row behind.
-    gBrowser.removeTab(tab, { animate: false });
+    if (tab) {
+      gBrowser.removeTab(tab, { animate: false });
+    }
     while (pushed--) {
       await SpecialPowers.popPrefEnv();
     }

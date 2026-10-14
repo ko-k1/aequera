@@ -70,6 +70,14 @@ var AequeraTabs = (() => {
   // process), plus chrome:// + resource:// which Firefox itself uses for
   // internal pages and the default icon below; everything else falls back to
   // the default icon.
+  const REMOTE_IMAGE = "moz-remote-image://?";
+  // moz-remote-image loads whatever its `url` parameter names, so only the
+  // form tabbrowser builds passes: exactly one url (Gecko takes the last of
+  // several), and that one a data:image.
+  function isRemoteDataImage(lower) {
+    const urls = new URLSearchParams(lower.slice(REMOTE_IMAGE.length)).getAll("url");
+    return urls.length == 1 && urls[0].startsWith("data:image/");
+  }
   function sanitizeIcon(raw) {
     if (typeof raw !== "string") {
       return DEFAULT_ICON;
@@ -83,7 +91,7 @@ var AequeraTabs = (() => {
       lower.startsWith("http://") ||
       lower.startsWith("https://") ||
       lower.startsWith("data:image/") ||
-      lower.startsWith("moz-remote-image://") ||
+      (lower.startsWith(REMOTE_IMAGE) && isRemoteDataImage(lower)) ||
       lower.startsWith("chrome://") ||
       lower.startsWith("resource://")
     ) {
@@ -175,6 +183,10 @@ var AequeraTabs = (() => {
       row.toggleAttribute("busy", tab.hasAttribute("busy"));
       row.toggleAttribute("soundplaying", tab.hasAttribute("soundplaying"));
       row.toggleAttribute("muted", tab.hasAttribute("muted"));
+      this.updateIcon(row, tab);
+    },
+
+    updateIcon(row, tab) {
       const image = sanitizeIcon(tab.getAttribute("image"));
       const icon = row.querySelector(".aequera-tab-icon");
       if (icon.getAttribute("src") != image) {
@@ -1906,24 +1918,26 @@ var AequeraTabs = (() => {
       const magnifyPrefs = () => this.readMagnifyPrefs();
       Services.prefs.addObserver(MAGNIFY_PREF, magnifyPrefs);
       Services.prefs.addObserver(MAGNIFY_PERCENT_PREF, magnifyPrefs);
-      // tabbrowser re-renders SVG favicons for the new color scheme by setting
-      // `image` without TabAttrModified. Resync on the next frame so this runs
-      // after its own listener whatever the order.
-      const scheme = matchMedia("(prefers-color-scheme: dark)");
-      const schemeChanged = () =>
-        requestAnimationFrame(() => {
-          for (const tab of this.tabs()) {
-            this.updateRow(tab);
+      // tabbrowser also writes `image` without TabAttrModified (it re-renders
+      // SVG favicons when the color scheme changes), so icons follow the
+      // attribute itself. Only <tab> carries `image` here: its own icon
+      // inherits it as `src`.
+      const icons = new MutationObserver(records => {
+        for (const { target } of records) {
+          const row = this.rows.get(target);
+          if (row) {
+            this.updateIcon(row, target);
           }
-        });
-      scheme.addEventListener("change", schemeChanged);
+        }
+      });
+      icons.observe(container, { subtree: true, attributeFilter: ["image"] });
       window.addEventListener(
         "unload",
         () => {
           for (const type of [...STRUCTURE_EVENTS, ...ROW_EVENTS]) {
             container.removeEventListener(type, this);
           }
-          scheme.removeEventListener("change", schemeChanged);
+          icons.disconnect();
           Services.prefs.removeObserver(MAGNIFY_PREF, magnifyPrefs);
           Services.prefs.removeObserver(MAGNIFY_PERCENT_PREF, magnifyPrefs);
           cancelAnimationFrame(this._magnify.frame);
