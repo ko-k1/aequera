@@ -35,6 +35,16 @@ function moveOntoDrawer(fraction) {
   );
 }
 
+/** Waits until the open drawer covers (x, y), then two frames for Gecko's
+ * synthesized move to reach the resting pointer. */
+async function drawerReaches({ x, y }) {
+  await TestUtils.waitForCondition(() => {
+    const drawer = toolbar().getBoundingClientRect();
+    return x >= drawer.left && x < drawer.right && y >= drawer.top && y < drawer.bottom;
+  }, "the open drawer is under the resting pointer");
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
 async function closeDrawer() {
   if (gURLBar.focused) {
     gBrowser.selectedBrowser.focus();
@@ -253,12 +263,12 @@ add_task(async function test_opening_under_a_still_pointer_is_not_hover() {
   // opens (Ctrl+L or a new tab with the mouse left there): the drawer
   // appearing under it is not the pointer moving onto it.
   await closeDrawer();
-  EventUtils.synthesizeMouse(tabbox(), tabbox().getBoundingClientRect().width / 2, 8, {
-    type: "mousemove",
-  });
+  const box = tabbox().getBoundingClientRect();
+  const rest = { x: box.left + box.width / 2, y: box.top + 8 };
+  EventUtils.synthesizeMouseAtPoint(rest.x, rest.y, { type: "mousemove" });
   gURLBar.focus();
   ok(isOpen(), "the address bar opens the drawer");
-  await wait(300); // past the wipe: the drawer is under the pointer
+  await drawerReaches(rest);
   gBrowser.selectedBrowser.focus();
   await TestUtils.waitForCondition(
     () => !isOpen(),
@@ -267,7 +277,7 @@ add_task(async function test_opening_under_a_still_pointer_is_not_hover() {
 
   // A real move onto the drawer opened that way is hover and holds it.
   gURLBar.focus();
-  await wait(300);
+  await drawerReaches(rest);
   moveOntoDrawer(0.5);
   gBrowser.selectedBrowser.focus();
   await wait(450);

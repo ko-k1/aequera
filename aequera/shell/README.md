@@ -57,9 +57,10 @@ Aequera shows `#sidebar-container` as the rail and owns what the launcher did:
 width (collapsed = Firefox's `--tab-collapsed-width`, set to the 42px token
 rail: 30px token tabs + 2 x 6px inset; expanded =
 `aequera.rail.expandedWidth`) as a plain, interruptible CSS transition;
-hover intent (`aequera.hover.openDelayMs` / `closeDelayMs`; a rail widened
-without hover may reach under a resting pointer, which hovers it only once
-it moves, presses, or scrolls); holds (keyboard focus in the rail, a context menu opened from it,
+hover intent (`aequera.hover.openDelayMs` / `closeDelayMs`; a widened rail
+the pointer is not on may come to lie under it while it rests, e.g. widened
+by the address bar, and the pointer hovers it only once it moves, presses,
+or scrolls); holds (keyboard focus in the rail, a context menu opened from it,
 address-bar focus; focus holds only while the window is active);
 pinned mode (`aequera.rail.pinned`, takes layout space); and
 `tabbrowser-tabs[expanded]`. The widened rail overlays the page and the page
@@ -387,10 +388,10 @@ from the first frame (before the wipe has revealed all of it); while open,
 the top bar stacks above the browser area, whose positioned `#browser` box
 would otherwise take every pointer event over the drawer. A menu or panel
 opened from the top bar or drawer (a bookmark's context menu, a folder)
-holds it open, but never opens it. A drawer opened by the address bar under
-a resting pointer still closes when the address bar blurs, unless that
-pointer has since moved, pressed, or scrolled. Focus holds only while the
-window is active. Firefox's own "Never" / "Only on new tab"
+holds it open, but never opens it. An open drawer that comes to lie under a
+resting pointer (opened by the address bar, a window retile) still closes
+when the address bar blurs, unless that pointer has since moved, pressed,
+or scrolled. Focus holds only while the window is active. Firefox's own "Never" / "Only on new tab"
 behave natively; customize mode turns it off.
 
 Tests: `tests/browser/browser_aequera_bookmarks_drawer.js`.

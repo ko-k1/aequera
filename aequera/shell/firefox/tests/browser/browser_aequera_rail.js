@@ -45,10 +45,14 @@ function restOnPageUnderWidenedRail() {
   EventUtils.synthesizeMouseAtPoint(x, y, { type: "mousemove" });
 }
 
-function assertPointerUnderRail() {
-  const { x, y } = restPoint();
-  const rail = railBox().getBoundingClientRect();
-  ok(x >= rail.left && x < rail.right && y >= rail.top && y < rail.bottom, "the widened rail is under the resting pointer");
+/** Waits until the rail covers (x, y), then two frames for Gecko's
+ * synthesized move to reach the resting pointer. */
+async function railReaches({ x, y }) {
+  await TestUtils.waitForCondition(() => {
+    const rail = railBox().getBoundingClientRect();
+    return x >= rail.left && x < rail.right && y >= rail.top && y < rail.bottom;
+  }, "the widened rail is under the resting pointer");
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
 async function collapse() {
@@ -278,8 +282,7 @@ add_task(async function test_widening_under_a_still_pointer_is_not_hover() {
   restOnPageUnderWidenedRail();
   gURLBar.focus();
   ok(isExpanded(), "the address bar widens the rail");
-  await wait(300); // past the width transition
-  assertPointerUnderRail();
+  await railReaches(restPoint());
   gBrowser.selectedBrowser.focus();
   await TestUtils.waitForCondition(
     isFullyCollapsed,
@@ -288,25 +291,57 @@ add_task(async function test_widening_under_a_still_pointer_is_not_hover() {
 
   // A real move onto the rail widened that way is hover and holds it.
   gURLBar.focus();
-  await wait(300);
+  await railReaches(restPoint());
   EventUtils.synthesizeMouse(container(), 100, 210, { type: "mousemove" });
   gBrowser.selectedBrowser.focus();
   await wait(450);
   ok(isExpanded(), "a move onto the rail holds it after the address bar blurs");
   await collapse();
 
-  // So is a press without any move (a touchpad tap).
+  // So is a press without any move (a touchpad tap). On a tab row the press
+  // selects that tab; put the selection back afterwards.
+  const selected = gBrowser.selectedTab;
   restOnPageUnderWidenedRail();
   gURLBar.focus();
-  await wait(300);
-  assertPointerUnderRail();
+  await railReaches(restPoint());
   const { x, y } = restPoint();
   EventUtils.synthesizeMouseAtPoint(x, y, { type: "mousedown" });
   EventUtils.synthesizeMouseAtPoint(x, y, { type: "mouseup" });
   gBrowser.selectedBrowser.focus();
   await wait(450);
   ok(isExpanded(), "a press on the rail holds it after the address bar blurs");
+  gBrowser.selectedTab = selected;
   await collapse();
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function test_rail_reaching_a_pointer_that_left_it_is_not_hover() {
+  // Widened by hover, held by the address bar, the pointer leaves for the
+  // page; then the rail grows under that resting pointer (here a wider
+  // setting; a window retile does the same). That is not hover either.
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["aequera.rail.expandOnAddressFocus", true],
+      ["aequera.rail.expandedWidth", 220],
+      ["sidebar.position_start", true],
+    ],
+  });
+  await collapse();
+  hoverRail();
+  await TestUtils.waitForCondition(isExpanded, "hover widens the rail");
+  gURLBar.focus();
+  const beyond = { x: railBox().getBoundingClientRect().left + 260, y: restPoint().y };
+  EventUtils.synthesizeMouseAtPoint(beyond.x, beyond.y, { type: "mousemove" });
+  await wait(300); // the pointer is off the rail; the address bar holds it
+  ok(isExpanded(), "held by the address bar");
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.expandedWidth", 320]] });
+  await railReaches(beyond);
+  gBrowser.selectedBrowser.focus();
+  await TestUtils.waitForCondition(
+    isFullyCollapsed,
+    "collapses once the address bar blurs, although the rail grew under the resting pointer"
+  );
+  await SpecialPowers.popPrefEnv();
   await SpecialPowers.popPrefEnv();
 });
 

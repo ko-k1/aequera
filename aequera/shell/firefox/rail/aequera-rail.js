@@ -23,9 +23,10 @@
 //     aequera.rail.expandOnAddressFocus is on (prototype unified search), a
 //     tab row being dragged (aequera-tabs.js); focus holds only in the active
 //     window (a background window keeps its focused element but shows no
-//     caret or focus ring); a rail widened without hover (the address bar)
-//     may reach under a resting pointer, which hovers it only once it moves,
-//     presses, or scrolls;
+//     caret or focus ring); a widened rail the pointer is not on may come to
+//     lie under it while it rests (address-bar focus widened it, a window
+//     retile), and the pointer hovers it only once it moves, presses, or
+//     scrolls;
 //   - pinned (aequera.rail.pinned): always expanded, taking layout space;
 //   - two states: the TARGET (:root[aequera-rail-expanded]) flips at once and
 //     drives the width, the page clip, and the drawer edge; the CONTENT
@@ -60,7 +61,7 @@ var AequeraRail = (() => {
     expanded: false,
     timer: 0,
     contentTimer: 0,
-    /** Widened without hover: mouseover is not hover until the pointer acts. */
+    /** Widened, pointer not on it: mouseover is not hover until it acts. */
     awaitingPointer: false,
     /** Popups opened from inside the rail (context menus, tab menus). */
     openPopups: new Set(),
@@ -108,36 +109,38 @@ var AequeraRail = (() => {
     update() {
       clearTimeout(this.timer);
       const expanded = this.wantsExpanded();
-      if (expanded === this.expanded) {
-        return;
+      if (expanded !== this.expanded) {
+        this.expanded = expanded;
+        ROOT.toggleAttribute("aequera-rail-expanded", expanded);
+        clearTimeout(this.contentTimer);
+        if (expanded) {
+          this.setContentExpanded(true);
+        } else {
+          // Keep the wide layout until the width transition has finished.
+          const duration = parseFloat(
+            getComputedStyle(ROOT).getPropertyValue("--aequera-motion-duration")
+          );
+          const delay = window.gReduceMotion ? 0 : duration || 0;
+          this.contentTimer = setTimeout(() => {
+            if (!this.expanded) {
+              this.setContentExpanded(false);
+            }
+          }, delay);
+        }
       }
-      this.expanded = expanded;
-      this.awaitPointer(expanded && !this.hovered);
-      ROOT.toggleAttribute("aequera-rail-expanded", expanded);
-      clearTimeout(this.contentTimer);
-      if (expanded) {
-        this.setContentExpanded(true);
-      } else {
-        // Keep the wide layout until the width transition has finished.
-        const duration = parseFloat(
-          getComputedStyle(ROOT).getPropertyValue("--aequera-motion-duration")
-        );
-        const delay = window.gReduceMotion ? 0 : duration || 0;
-        this.contentTimer = setTimeout(() => {
-          if (!this.expanded) {
-            this.setContentExpanded(false);
-          }
-        }, delay);
-      }
+      this.syncAwaitingPointer();
     },
 
-    /** Widening without hover can reach under a resting pointer, and Gecko
-     * then sends that pointer a mouseover (a synthesized move after layout),
-     * which would hold the rail open after the address bar blurs. Until the
-     * pointer moves, presses, or scrolls, mouseover is not hover; synthesized
-     * moves never reach the DOM as mousemove. The listeners exist only in
+    /** While the rail is widened over the page and the pointer is not on it,
+     * the rail can come to lie under a resting pointer (widening on address
+     * bar focus, a window retile), and Gecko then sends that pointer a
+     * mouseover (a synthesized move after layout), which would hold the rail
+     * open after the address bar blurs. So in that state mouseover is not
+     * hover; the pointer moving, pressing, or scrolling is (synthesized
+     * moves never reach the DOM as mousemove). The listeners exist only in
      * that state, so pointer moves cost nothing otherwise. */
-    awaitPointer(on) {
+    syncAwaitingPointer() {
+      const on = this.expanded && !this.hovered && !this.pinned;
       if (on === this.awaitingPointer) {
         return;
       }
@@ -152,9 +155,9 @@ var AequeraRail = (() => {
     },
 
     enter() {
-      this.awaitPointer(false);
       if (!this.hovered) {
         this.hovered = true;
+        this.syncAwaitingPointer();
         this.settle(this.delay(PREFS.openDelay, 40));
       }
     },
@@ -191,15 +194,20 @@ var AequeraRail = (() => {
       switch (event.type) {
         // mouseover/mouseout rather than the slower mouseenter/leave (Gecko
         // flags those in chrome): entering is the first over; leaving is an
-        // out whose destination is outside the rail. A mouseover after a
-        // menu closes over the rail is hover again (not awaiting then).
+        // out whose destination is outside the rail.
         case "mouseover":
           if (!this.awaitingPointer) {
             this.enter();
           }
           break;
-        // Only while awaiting the pointer (awaitPointer).
+        // Only while awaiting the pointer (syncAwaitingPointer). A motion
+        // event without motion (a platform can send one when surfaces change
+        // under the pointer) is not the pointer acting.
         case "mousemove":
+          if (event.movementX || event.movementY) {
+            this.enter();
+          }
+          break;
         case "mousedown":
         case "wheel":
           this.enter();
@@ -207,6 +215,7 @@ var AequeraRail = (() => {
         case "mouseout":
           if (!this.container.contains(event.relatedTarget)) {
             this.hovered = false;
+            this.syncAwaitingPointer();
             this.settle(this.delay(PREFS.closeDelay, 150));
           }
           break;
@@ -261,10 +270,8 @@ var AequeraRail = (() => {
         x < box.right &&
         y >= box.top &&
         y < box.bottom;
-      if (inside) {
-        this.awaitPointer(false);
-      }
       this.hovered = inside;
+      this.syncAwaitingPointer();
       this.settle(this.delay(inside ? PREFS.openDelay : PREFS.closeDelay, inside ? 40 : 150));
     },
 
