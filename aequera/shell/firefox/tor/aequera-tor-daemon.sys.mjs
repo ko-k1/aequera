@@ -3,14 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Tor windows: the Tor instance's side (docs/adr/0004-tor-windows.md).
-// Started from the instance's first window, once per process:
+// Started from the instance's first window, once per process. The instance
+// was started offline (-offline, tor-model.js launchArgs), so nothing loads
+// before this runs, and nothing ever loads if it does not run:
 //
 // 1. Enforce: the prefs that keep traffic on tor (tor-model.js, written to
-//    user.js by the ordinary instance) are locked; if one is not in force,
-//    the process goes offline and stays there ("refused").
+//    user.js by the ordinary instance) are locked and checked. If one is not
+//    in force, the process stays offline for good ("refused"): going online
+//    again (Work Offline) is undone, and every channel is sent to a socket
+//    that does not exist.
 // 2. Circuits: a proxy channel filter, applied after every other filter,
 //    gives each channel tor's SOCKS socket with credentials named after its
 //    top-level site, so each site gets its own circuits (IsolateSOCKSAuth).
+//    Then the process goes online.
 // 3. tor: started with a configuration of its own (never the system torrc),
 //    its log read for bootstrap progress and errors, stopped at quit (and
 //    exits by itself with this process: __OwningControllerProcess).
@@ -19,6 +24,7 @@
 // fail-closed state. Windows render `state` (aequera-tor.js).
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+import { randomHex, torModel } from "chrome://browser/content/aequera/tor/aequera-tor-common.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -33,27 +39,18 @@ XPCOMUtils.defineLazyServiceGetter(
   Ci.nsIProtocolProxyService,
 );
 
-const MODEL_URL = "chrome://browser/content/aequera/tor/tor-model.js";
-
 /** After every other channel filter (extensions, IP Protection, the new tab
  *  page's): whatever they chose, the result is tor's socket. */
 const FILTER_POSITION = 0xffffffff;
 
-/** tor log lines kept for the panel. */
-const LOG_LINES = 40;
+/** Where a refused instance sends every channel: nothing listens there. */
+const REFUSED_SOCKET_URL = "file:///nonexistent/aequera-tor-refused/socks";
 
-function loadModel() {
-  const scope = {};
-  Services.scriptloader.loadSubScript(MODEL_URL, scope);
-  return scope.AequeraTorModel;
-}
+/** Circuit keys kept per session; the oldest is dropped beyond this (a site
+ *  coming back after that gets new credentials: a new circuit). */
+const MAX_CIRCUIT_KEYS = 1000;
 
-function randomToken() {
-  return Services.uuid
-    .generateUUID()
-    .toString()
-    .replace(/[^0-9a-f]/g, "");
-}
+const OFFLINE_TOPIC = "network:offline-status-changed";
 
 /** The site of a URI (eTLD+1, or the host for IP addresses and the like). */
 function siteOf(uri) {
@@ -85,6 +82,29 @@ function siteOfPartitionKey(key) {
   }
 }
 
+function proxyInfo(url, username, password) {
+  return lazy.proxyService.newProxyInfoWithAuth(
+    "socks",
+    url,
+    0,
+    username,
+    password,
+    "",
+    "",
+    Ci.nsIProxyInfo.TRANSPARENT_PROXY_RESOLVES_HOST,
+    0xffffffff,
+    null,
+  );
+}
+
+/** Sends every channel nowhere: the refused instance's filter. */
+const refusalFilter = {
+  QueryInterface: ChromeUtils.generateQI(["nsIProtocolProxyChannelFilter"]),
+  applyFilter(_channel, _defaultProxyInfo, callback) {
+    callback.onProxyFilterResult(proxyInfo(REFUSED_SOCKET_URL, "refused", ""));
+  },
+};
+
 /**
  * @typedef {object} TorState
  * @property {"idle"|"starting"|"bootstrapping"|"connected"|"failed"|"refused"} status
@@ -100,18 +120,14 @@ export const AequeraTorDaemon = {
   /** @type {TorState} */
   state: { status: "idle", progress: 0, summary: "", detail: "" },
   listeners: new Set(),
-  log: [],
 
+  /** The running tor process; null while none runs or it is being stopped
+   *  on purpose (a process that is no longer this is never a failure). */
   proc: null,
-  /** Set while tor is stopped on purpose (restart, quit): not a failure. */
-  stopping: false,
   socksPath: "",
   socksUrl: "",
   /** Per-site SOCKS passwords: a new one is a new circuit for the site. */
   nonces: new Map(),
-
-  /** Test hook: replaces Subprocess.call. */
-  spawn: null,
 
   /** Whether this process is the Tor instance. */
   isInstance() {
@@ -124,13 +140,17 @@ export const AequeraTorDaemon = {
       return;
     }
     this.started = true;
-    this.model ??= loadModel();
+    this.model ??= torModel();
+    // Running, whether it may browse or not: the ordinary instance must
+    // never rewrite this profile under it.
+    this.writeMarker();
+    Services.obs.addObserver(this, "quit-application");
     if (!this.enforce()) {
+      this.refuse();
       return;
     }
     this.registerFilter();
-    Services.obs.addObserver(this, "quit-application");
-    this.writeMarker();
+    Services.io.offline = false;
     this.startTor().catch(error => this.fail(String(error?.message ?? error)));
     this.setSearchDefault().catch(error => console.error("aequera-tor: search default not set", error));
   },
@@ -176,12 +196,11 @@ export const AequeraTorDaemon = {
   },
 
   /**
-   * Lock the required prefs at the values the instance needs and check
-   * them. On any mismatch the whole process goes offline: nothing loads.
+   * Lock the required prefs at the values the instance needs and check them.
    *
-   * @returns {boolean} whether browsing may go on
+   * @returns {string[]} what is not in force (empty: browsing may go on)
    */
-  enforce() {
+  check() {
     const prefs = Services.prefs;
     this.socksPath = prefs.getStringPref(this.model.SOCKS_PATH_PREF, "");
     const pathProblem = this.model.socketPathProblem(this.socksPath);
@@ -216,19 +235,30 @@ export const AequeraTorDaemon = {
       }
       return undefined;
     };
-    const wrong = pathProblem ? ["aequera.tor.socksPath"] : this.model.checkRequired(read, this.socksUrl);
+    return pathProblem ? [`aequera.tor.socksPath (${pathProblem})`] : this.model.checkRequired(read, this.socksUrl);
+  },
+
+  /** @returns {boolean} whether browsing may go on */
+  enforce() {
+    const wrong = this.check();
     if (wrong.length) {
-      Services.io.manageOfflineStatus = false;
-      Services.io.offline = true;
       this.setState({
         status: "refused",
         summary: "This window is not configured for Tor, so it stays offline.",
         detail: `Not in force: ${wrong.join(", ")}`,
       });
-      console.error("aequera-tor: refusing to browse; prefs not in force:", wrong);
+      console.error("aequera-tor: refusing to browse; not in force:", wrong);
       return false;
     }
     return true;
+  },
+
+  /** Offline for good, and every channel sent nowhere should it go online. */
+  refuse() {
+    Services.io.manageOfflineStatus = false;
+    Services.io.offline = true;
+    lazy.proxyService.registerChannelFilter(refusalFilter, FILTER_POSITION);
+    Services.obs.addObserver(this, OFFLINE_TOPIC);
   },
 
   // nsIProtocolProxyChannelFilter
@@ -260,29 +290,21 @@ export const AequeraTorDaemon = {
     return this.model.isolationKey(facts);
   },
 
+  setNonce(key, nonce) {
+    this.nonces.delete(key);
+    this.nonces.set(key, nonce);
+    while (this.nonces.size > MAX_CIRCUIT_KEYS) {
+      this.nonces.delete(this.nonces.keys().next().value);
+    }
+  },
+
   nonceFor(key) {
     let nonce = this.nonces.get(key);
     if (!nonce) {
-      nonce = randomToken();
-      this.nonces.set(key, nonce);
+      nonce = randomHex();
+      this.setNonce(key, nonce);
     }
     return nonce;
-  },
-
-  /** tor's SOCKS proxy with the credentials of a circuit key. */
-  proxyFor(key) {
-    return lazy.proxyService.newProxyInfoWithAuth(
-      "socks",
-      this.socksUrl,
-      0,
-      key,
-      this.nonceFor(key),
-      "",
-      "",
-      Ci.nsIProxyInfo.TRANSPARENT_PROXY_RESOLVES_HOST,
-      0xffffffff,
-      null,
-    );
   },
 
   applyFilter(channel, _defaultProxyInfo, callback) {
@@ -292,13 +314,13 @@ export const AequeraTorDaemon = {
     } catch (error) {
       console.error("aequera-tor: circuit key failed", error);
     }
-    callback.onProxyFilterResult(this.proxyFor(key));
+    callback.onProxyFilterResult(proxyInfo(this.socksUrl, key, this.nonceFor(key)));
   },
 
   /** New circuits for a site: the next connections use new credentials. */
   newCircuitFor(site) {
     const key = this.model.isolationKey({ topSite: site });
-    this.nonces.set(key, randomToken());
+    this.setNonce(key, randomHex());
     return key;
   },
 
@@ -326,6 +348,10 @@ export const AequeraTorDaemon = {
 
   async startTor() {
     this.setState({ status: "starting", progress: 0, summary: "Starting Tor", detail: "" });
+    const pathProblem = this.model.socketPathProblem(this.socksPath);
+    if (pathProblem) {
+      throw new Error(`tor's socket path is ${pathProblem}`);
+    }
     const dataDir = Services.prefs.getStringPref(this.model.DATA_DIR_PREF, "");
     if (!dataDir || !PathUtils.isAbsolute(dataDir)) {
       throw new Error("no tor data directory (aequera.tor.dataDir)");
@@ -333,7 +359,7 @@ export const AequeraTorDaemon = {
     const exe = await this.torExecutable();
     await IOUtils.makeDirectory(dataDir, { permissions: 0o700 });
     await IOUtils.setPermissions(dataDir, 0o700);
-    const socketDir = PathUtils.parent(this.socksPath);
+    const socketDir = this.model.socketDir(this.socksPath);
     await IOUtils.makeDirectory(socketDir, { permissions: 0o700 });
     await IOUtils.setPermissions(socketDir, 0o700);
     await IOUtils.remove(this.socksPath, { ignoreAbsent: true });
@@ -345,22 +371,22 @@ export const AequeraTorDaemon = {
     await IOUtils.writeUTF8(torrcPath, torrc);
     await IOUtils.writeUTF8(defaultsPath, "");
 
-    const call = this.spawn ?? (options => lazy.Subprocess.call(options));
-    const proc = await call({
+    const proc = await lazy.Subprocess.call({
       command: exe,
       arguments: ["-f", torrcPath, "--defaults-torrc", defaultsPath],
       stderr: "stdout",
     });
     this.proc = proc;
     this.setState({ status: "bootstrapping", summary: "Connecting to the Tor network" });
-    this.readLog(proc);
+    const reading = this.readLog(proc);
     const { exitCode } = await proc.wait();
+    // Its last lines (the error that ended it) before the verdict.
+    await reading;
+    // Not this anymore: stopped on purpose (restart, quit).
     if (this.proc === proc) {
       this.proc = null;
-      if (!this.stopping) {
-        const reason = this.state.detail || `tor exited (code ${exitCode})`;
-        this.setState({ status: "failed", summary: "Tor stopped", detail: reason });
-      }
+      const reason = this.state.detail || `tor exited (code ${exitCode})`;
+      this.setState({ status: "failed", summary: "Tor stopped", detail: reason });
     }
   },
 
@@ -376,24 +402,25 @@ export const AequeraTorDaemon = {
         const lines = pending.split("\n");
         pending = lines.pop();
         for (const line of lines) {
-          this.onLogLine(line);
+          this.onLogLine(proc, line);
         }
       }
     } catch {
       // The pipe closed with the process.
     }
     if (pending) {
-      this.onLogLine(pending);
+      this.onLogLine(proc, pending);
     }
   },
 
-  onLogLine(line) {
-    this.log.push(line);
-    if (this.log.length > LOG_LINES) {
-      this.log.shift();
+  /** A line of `proc`'s log; only the current tor's lines change the state
+   *  (a stopped one's last words never reach a restarted session). */
+  onLogLine(proc, line) {
+    if (proc !== this.proc) {
+      return;
     }
     const entry = this.model.parseLogLine(line);
-    if (!entry || this.proc === null) {
+    if (!entry) {
       return;
     }
     if (entry.kind == "bootstrap") {
@@ -421,13 +448,9 @@ export const AequeraTorDaemon = {
   async stopTor() {
     const proc = this.proc;
     this.proc = null;
-    if (proc) {
-      this.stopping = true;
-      try {
-        await proc.kill();
-      } catch {}
-      this.stopping = false;
-    }
+    try {
+      await proc?.kill();
+    } catch {}
   },
 
   /** The ordinary instance reads this to tell a running Tor instance. */
@@ -442,21 +465,34 @@ export const AequeraTorDaemon = {
     );
   },
 
-  observe(_subject, topic) {
+  observe(_subject, topic, data) {
+    if (topic == OFFLINE_TOPIC) {
+      // Refused: Work Offline cannot bring it online.
+      if (data == "online") {
+        Services.io.offline = true;
+      }
+      return;
+    }
     if (topic != "quit-application") {
       return;
     }
     Services.obs.removeObserver(this, "quit-application");
-    lazy.proxyService.unregisterChannelFilter(this);
-    this.stopping = true;
+    if (this.state.status == "refused") {
+      Services.obs.removeObserver(this, OFFLINE_TOPIC);
+      lazy.proxyService.unregisterChannelFilter(refusalFilter);
+    } else {
+      lazy.proxyService.unregisterChannelFilter(this);
+    }
     const proc = this.proc;
     this.proc = null;
     try {
       proc?.kill();
     } catch {}
-    // Leave nothing behind but tor's data directory.
-    const socketDir = PathUtils.parent(this.socksPath);
-    IOUtils.remove(socketDir, { recursive: true, ignoreAbsent: true }).catch(() => {});
+    // Leave nothing behind but tor's data directory. Only a socket path in a
+    // directory the launcher named is ever removed (socketPathProblem).
+    if (!this.model.socketPathProblem(this.socksPath)) {
+      IOUtils.remove(this.model.socketDir(this.socksPath), { recursive: true, ignoreAbsent: true }).catch(() => {});
+    }
     IOUtils.remove(this.markerPath(), { ignoreAbsent: true }).catch(() => {});
   },
 };

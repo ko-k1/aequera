@@ -24,12 +24,43 @@ const { FileUtils: TorFileUtils } = ChromeUtils.importESModule("resource://gre/m
 const TOR_BASE = PathUtils.join(PathUtils.profileDir, "tor");
 const isMac = AppConstants.platform == "macosx";
 
+const MARKER = PathUtils.join(TOR_BASE, "running");
+
+/** A fake browser process: exits at once with `exitCode`, or (null) runs
+ *  until killed. */
 function fakeProcess(exitCode = 0) {
+  let exit = null;
+  const exited = exitCode === null ? new Promise(resolve => (exit = resolve)) : Promise.resolve({ exitCode });
   return {
     stdout: { readString: async () => "" },
-    wait: async () => ({ exitCode }),
-    kill: async () => ({ exitCode }),
+    wait: () => exited,
+    kill: async () => {
+      exit?.({ exitCode: 0 });
+      return { exitCode: 0 };
+    },
   };
+}
+
+/** spawn for a new Tor instance: it starts (writes its marker) and runs. */
+function instanceSpawn(calls) {
+  return async options => {
+    calls.push({ ...options, markerAtSpawn: await IOUtils.exists(MARKER) });
+    await IOUtils.writeUTF8(MARKER, "4242");
+    return fakeProcess(null);
+  };
+}
+
+async function resetLauncher() {
+  await AequeraTorLauncher.child?.kill();
+  AequeraTorLauncher.child = null;
+  AequeraTorLauncher.spawn = null;
+  AequeraTorLauncher.processAlive = null;
+  await IOUtils.remove(MARKER, { ignoreAbsent: true });
+}
+
+async function removeSocketDirOf(profileDir) {
+  const prefs = readUserJs(await IOUtils.readUTF8(PathUtils.join(profileDir, "user.js")));
+  await IOUtils.remove(PathUtils.parent(prefs.get("aequera.tor.socksPath")), { recursive: true, ignoreAbsent: true });
 }
 
 /** Reads user.js text (JSON literals, tor-model.js userJs) into a Map; every
@@ -48,8 +79,7 @@ function readUserJs(text) {
 }
 
 registerCleanupFunction(async () => {
-  AequeraTorLauncher.spawn = null;
-  AequeraTorLauncher.child = null;
+  await resetLauncher();
   await IOUtils.remove(TOR_BASE, { recursive: true, ignoreAbsent: true });
 });
 
@@ -106,15 +136,11 @@ add_task(async function test_link_context_menu() {
 
 add_task(async function test_launch_writes_a_fresh_profile() {
   const calls = [];
-  AequeraTorLauncher.spawn = async options => {
-    calls.push(options);
-    return fakeProcess();
-  };
+  AequeraTorLauncher.spawn = instanceSpawn(calls);
   const profileDir = PathUtils.join(TOR_BASE, "profile");
 
   // Something left from an earlier session: removed, with the socket
-  // directory of a session that did not quit cleanly. A directory the
-  // launcher does not name is never touched.
+  // directory of a session that did not quit cleanly.
   await IOUtils.makeDirectory(profileDir);
   await IOUtils.writeUTF8(PathUtils.join(profileDir, "leftover"), "x");
   const oldSocketDir = PathUtils.join(PathUtils.tempDir, "aequera-tor-0123abcd");
@@ -130,12 +156,15 @@ add_task(async function test_launch_writes_a_fresh_profile() {
   is(command, Services.dirsvc.get("XREExeF", Ci.nsIFile).path, "this browser's own binary");
   const profileAt = args.indexOf("-profile");
   is(args[profileAt + 1], profileDir, "the Tor profile");
+  ok(args.includes("-offline"), "starts offline: online only once its checks pass");
   ok(args.includes("-private-window"), "a private window");
   is(args.at(-1), "https://example.com/", "with the link");
   ok(environmentAppend, "environment inherited");
   Assert.strictEqual(environment.XRE_PROFILE_PATH, null, "a restart's profile variable is removed");
+  Assert.strictEqual(environment.MOZ_NEW_INSTANCE, null, "remoting stays on for later windows");
   Assert.strictEqual(environment.MOZ_MARIONETTE, null, "automation is not inherited");
   Assert.strictEqual(environment.MOZ_REMOTE_ALLOW_SYSTEM_ACCESS, null, "nor system access for it");
+  ok(AequeraTorLauncher.child, "the new instance is tracked");
 
   ok(!(await IOUtils.exists(PathUtils.join(profileDir, "leftover"))), "old profile removed");
   ok(!(await IOUtils.exists(oldSocketDir)), "the crashed session's socket directory removed");
@@ -148,17 +177,18 @@ add_task(async function test_launch_writes_a_fresh_profile() {
   is(prefs.get("aequera.tor.dataDir"), PathUtils.join(TOR_BASE, "data"), "tor's data kept beside the profile");
 
   const socksPath = prefs.get("aequera.tor.socksPath");
-  ok(socksPath.endsWith("/socks"), "a socket path");
+  is(AequeraTorModel.socketPathProblem(socksPath), null, "a socket in a launcher-named directory");
   is(prefs.get("network.proxy.socks"), Services.io.newFileURI(new TorFileUtils.File(socksPath)).spec, "SOCKS at that socket");
   const socketDir = PathUtils.parent(socksPath);
   is((await IOUtils.stat(socketDir)).permissions & 0o777, 0o700, "socket directory private to the user");
   ok(!(await IOUtils.exists(socksPath)), "nothing listens before tor");
   is((await IOUtils.stat(PathUtils.join(TOR_BASE, "data"))).permissions & 0o777, 0o700, "tor data private");
   await IOUtils.remove(socketDir, { recursive: true });
+  await resetLauncher();
 });
 
 add_task(async function test_launch_never_removes_other_directories() {
-  AequeraTorLauncher.spawn = async () => fakeProcess();
+  AequeraTorLauncher.spawn = instanceSpawn([]);
   const profileDir = PathUtils.join(TOR_BASE, "profile");
   const notOurs = PathUtils.join(PathUtils.tempDir, "aequera-tor-test-not-ours");
   await IOUtils.makeDirectory(notOurs);
@@ -171,28 +201,82 @@ add_task(async function test_launch_never_removes_other_directories() {
   await AequeraTorLauncher.openWindow();
   ok(await IOUtils.exists(PathUtils.join(notOurs, "keep")), "a directory the launcher did not name stays");
   await IOUtils.remove(notOurs, { recursive: true });
-  const prefs = readUserJs(await IOUtils.readUTF8(PathUtils.join(profileDir, "user.js")));
-  await IOUtils.remove(PathUtils.parent(prefs.get("aequera.tor.socksPath")), { recursive: true });
+  await removeSocketDirOf(profileDir);
+  await resetLauncher();
 });
 
-add_task(async function test_launch_while_running_keeps_the_profile() {
+add_task(async function test_launch_while_running_hands_off() {
   const calls = [];
+  const asked = [];
+  AequeraTorLauncher.processAlive = async (pid, profile) => {
+    asked.push([pid, profile]);
+    return true;
+  };
   AequeraTorLauncher.spawn = async options => {
     calls.push(options);
-    return fakeProcess();
+    return fakeProcess(0);
   };
   const profileDir = PathUtils.join(TOR_BASE, "profile");
   await IOUtils.makeDirectory(profileDir);
   await IOUtils.writeUTF8(PathUtils.join(profileDir, "in-use"), "x");
-  // The running instance's marker.
-  await IOUtils.writeUTF8(PathUtils.join(TOR_BASE, "running"), "1234");
+  await IOUtils.writeUTF8(MARKER, "1234");
 
   await AequeraTorLauncher.openWindow();
+  Assert.deepEqual(asked, [[1234, profileDir]], "the marker's pid is checked against the profile");
   is(calls.length, 1, "a remoting client started");
   ok(await IOUtils.exists(PathUtils.join(profileDir, "in-use")), "the running instance's profile is untouched");
+  ok(!calls[0].arguments.includes("-offline"), "a handoff carries no startup flag");
   ok(!calls[0].arguments.some(a => a.startsWith("http")), "no URL");
   is(AequeraTorLauncher.child, null, "a remoting client is not the instance");
-  await IOUtils.remove(PathUtils.join(TOR_BASE, "running"));
+
+  // A handoff that failed is an error, not a silent no-op.
+  AequeraTorLauncher.spawn = async () => fakeProcess(3);
+  await Assert.rejects(AequeraTorLauncher.openWindow(), /did not take the window \(exit 3\)/);
+  await resetLauncher();
+  await IOUtils.remove(profileDir, { recursive: true });
+});
+
+add_task(async function test_stale_marker_gets_a_fresh_profile() {
+  // A crashed instance's marker: its pid no longer runs the profile.
+  AequeraTorLauncher.processAlive = async () => false;
+  const calls = [];
+  AequeraTorLauncher.spawn = instanceSpawn(calls);
+  const profileDir = PathUtils.join(TOR_BASE, "profile");
+  await IOUtils.makeDirectory(profileDir);
+  await IOUtils.writeUTF8(PathUtils.join(profileDir, "crashed-session"), "x");
+  await IOUtils.writeUTF8(MARKER, "999999");
+
+  await AequeraTorLauncher.openWindow();
+  ok(!calls[0].markerAtSpawn, "the stale marker is gone before the new instance starts");
+  ok(calls[0].arguments.includes("-offline"), "a new instance, not a handoff");
+  ok(!(await IOUtils.exists(PathUtils.join(profileDir, "crashed-session"))), "the crashed session's profile is gone");
+  await removeSocketDirOf(profileDir);
+  await resetLauncher();
+});
+
+add_task(async function test_early_exit_is_an_error() {
+  // Exits before it ever writes its marker (startup failure, bad profile).
+  AequeraTorLauncher.spawn = async () => fakeProcess(1);
+  await Assert.rejects(AequeraTorLauncher.openWindow(), /exited before it started \(exit 1\)/);
+  is(AequeraTorLauncher.child, null, "nothing tracked");
+  await removeSocketDirOf(PathUtils.join(TOR_BASE, "profile"));
+  await resetLauncher();
+});
+
+add_task(async function test_process_liveness() {
+  // A real process whose command line names a profile path ($0 of sh -c).
+  const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+  const profile = PathUtils.join(PathUtils.tempDir, "aequera-tor-liveness-profile");
+  // `read` is a shell builtin: the shell itself waits on its stdin pipe.
+  const proc = await Subprocess.call({ command: "/bin/sh", arguments: ["-c", "read line", profile] });
+  try {
+    ok(await AequeraTorLauncher.processRunsProfile(proc.pid, profile), "a live process running that profile");
+    ok(!(await AequeraTorLauncher.processRunsProfile(proc.pid, `${profile}-other`)), "the same process, another profile");
+  } finally {
+    await proc.kill();
+  }
+  ok(!(await AequeraTorLauncher.processRunsProfile(proc.pid, profile)), "gone once it exited");
+  ok(!(await AequeraTorLauncher.processRunsProfile(2 ** 30 + 7, profile)), "no such process");
 });
 
 add_task(async function test_launch_refuses_non_web_urls() {
@@ -333,7 +417,7 @@ async function withDaemon(executable, run) {
     ],
   });
   daemon.model = AequeraTorModel;
-  daemon.socksPath = PathUtils.join(base, "sock", "socks");
+  daemon.socksPath = AequeraTorModel.newSocketPath(base, "0badc0de");
   try {
     await run(base);
   } finally {
@@ -400,6 +484,71 @@ add_task(async function test_tor_missing_is_reported() {
   await withDaemon("/nonexistent/tor", async () => {
     await Assert.rejects(AequeraTorDaemon.startTor(), /tor not found at \/nonexistent\/tor/);
   });
+});
+
+add_task(async function test_tor_refuses_a_socket_outside_its_directory() {
+  const tor = await fakeTor("never", "exit 0");
+  await withDaemon(tor.path, async base => {
+    // A socket path the launcher would never write: nothing is created,
+    // locked down, or (at quit) removed there.
+    const elsewhere = PathUtils.join(base, "elsewhere");
+    AequeraTorDaemon.socksPath = PathUtils.join(elsewhere, "socks");
+    await Assert.rejects(AequeraTorDaemon.startTor(), /socket path is not socks in a directory named aequera-tor-/);
+    ok(!(await IOUtils.exists(elsewhere)), "no directory made there");
+    ok(!(await IOUtils.exists(PathUtils.join(tor.dir, "args"))), "tor never started");
+  });
+  await IOUtils.remove(tor.dir, { recursive: true });
+});
+
+add_task(async function test_restart_ignores_the_old_tor() {
+  // The old tor keeps talking after it was replaced: none of it may reach
+  // the new session's state.
+  const daemon = AequeraTorDaemon;
+  const saved = { model: daemon.model, proc: daemon.proc, state: daemon.state };
+  daemon.model = AequeraTorModel;
+  const oldProc = {};
+  const newProc = {};
+  daemon.proc = newProc;
+  daemon.state = { status: "bootstrapping", progress: 30, summary: "x", detail: "" };
+  try {
+    daemon.onLogLine(oldProc, "Oct 14 18:00:00.000 [err] Old tor dying");
+    daemon.onLogLine(oldProc, "Oct 14 18:00:00.000 [notice] Bootstrapped 100% (done): Done");
+    is(daemon.state.detail, "", "no stale error");
+    is(daemon.state.status, "bootstrapping", "no stale progress");
+    daemon.onLogLine(newProc, "Oct 14 18:00:00.000 [notice] Bootstrapped 50% (loading_descriptors): Loading relay descriptors");
+    is(daemon.state.progress, 50, "the current tor's lines count");
+  } finally {
+    Object.assign(daemon, saved);
+  }
+});
+
+add_task(async function test_refused_stays_offline() {
+  // A refused instance re-asserts offline when something turns it online
+  // (Work Offline). Restored at once: this test browser needs the network.
+  const wasOffline = Services.io.offline;
+  try {
+    Services.io.offline = false;
+    AequeraTorDaemon.observe(null, "network:offline-status-changed", "online");
+    ok(Services.io.offline, "back offline");
+  } finally {
+    Services.io.offline = wasOffline;
+  }
+});
+
+add_task(async function test_circuit_keys_are_bounded() {
+  const daemon = AequeraTorDaemon;
+  const saved = daemon.nonces;
+  daemon.nonces = new Map();
+  try {
+    for (let i = 0; i < 1005; i++) {
+      daemon.nonceFor(`site${i}.example`);
+    }
+    is(daemon.nonces.size, 1000, "at most 1000 sites kept");
+    ok(!daemon.nonces.has("site0.example"), "the oldest dropped first");
+    ok(daemon.nonces.has("site1004.example"), "the newest kept");
+  } finally {
+    daemon.nonces = saved;
+  }
 });
 
 add_task(async function test_search_default() {

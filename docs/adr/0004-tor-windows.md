@@ -27,6 +27,12 @@ Tor.
   (`network.proxy.failover_direct`, `network.proxy.allow_bypass` off).
   Before tor is up, the socket does not exist and every load fails. That
   is the fail-closed state, never a direct connection.
+- **Offline until checked.** The instance starts with Firefox's `-offline`
+  and goes online only after it has locked and checked its prefs and
+  registered its circuit filter. If that code never runs (a script that
+  fails to load after an upstream change), the instance stays offline. If
+  a check fails, it stays offline for good ("refused"): going online again
+  is undone, and every channel is sent to a socket that does not exist.
 - **Per-site circuits.** A channel filter gives each channel SOCKS
   credentials named after its top-level site, and tor's default
   `IsolateSOCKSAuth` gives each site its own circuits. "New circuit for

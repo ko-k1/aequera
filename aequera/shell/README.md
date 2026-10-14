@@ -618,8 +618,9 @@ locked. Linux and macOS (`aequera.tor.enabled`; tor from
 | File | Role |
 |---|---|
 | `tor-model.js` | Pure model: the Tor instance's prefs with reasons (which are required), their check, `user.js` and torrc text, tor log parsing, circuit keys, launch arguments. Classic script + CommonJS, also loaded by the modules; node tests: `node --test aequera/shell/firefox/tor/tor-model.test.mjs` |
-| `aequera-tor-launch.sys.mjs` | Ordinary instance: writes the fresh profile and the socket directory, starts the Tor instance, or hands the command line to the running one (remoting) |
-| `aequera-tor-daemon.sys.mjs` | Tor instance: locks and checks the required prefs (offline if one is wrong), the per-site circuit filter (last position, SOCKS credentials per site), tor's process and log, the session's search engine |
+| `aequera-tor-launch.sys.mjs` | Ordinary instance: writes the fresh profile and the socket directory, starts the Tor instance offline, or hands the command line to the running one (remoting; the marker's pid is checked, a crashed instance's ignored); reports failures |
+| `aequera-tor-daemon.sys.mjs` | Tor instance: locks and checks the required prefs, then goes online (refused: stays offline for good), the per-site circuit filter (last position, SOCKS credentials per site), tor's process and log, the session's search engine |
+| `aequera-tor-common.sys.mjs` | What both modules share: the model, random tokens |
 | `aequera-tor.js` | Window script, loaded first: entry points (app and File menus, Alt+Shift+N / Option+Command+N, link context menu); in the Tor instance, the Tor button and panel, failure notifications, reloading tabs that failed while connecting |
 | `aequera-tor.css`, `tor.svg` | The Tor button (state label, violet accent of the private page) and its panel |
 

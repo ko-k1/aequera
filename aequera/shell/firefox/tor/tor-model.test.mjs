@@ -11,6 +11,8 @@ const {
   UNKNOWN_SITE,
   PREFS,
   socketPathProblem,
+  socketDir,
+  newSocketPath,
   instancePrefs,
   requiredNames,
   checkRequired,
@@ -65,13 +67,26 @@ test("socket paths: absolute, no control characters, short enough for sun_path",
   assert.equal(socketPathProblem(SOCKET), null);
   assert.match(socketPathProblem("relative/socks"), /absolute/);
   assert.match(socketPathProblem("/tmp/a\nb"), /control/);
-  const long = "/" + "a".repeat(MAX_SOCKET_PATH_BYTES);
+  const tail = "/aequera-tor-ab12cd34/socks";
+  const long = "/" + "a".repeat(MAX_SOCKET_PATH_BYTES - tail.length) + tail;
   assert.match(socketPathProblem(long), /longer/);
-  const exact = "/" + "a".repeat(MAX_SOCKET_PATH_BYTES - 1);
+  const exact = "/" + "a".repeat(MAX_SOCKET_PATH_BYTES - tail.length - 1) + tail;
+  assert.equal(exact.length, MAX_SOCKET_PATH_BYTES);
   assert.equal(socketPathProblem(exact), null, "exactly the limit is fine");
   // Multi-byte characters count in bytes, as sun_path does.
-  const wide = "/" + "é".repeat(MAX_SOCKET_PATH_BYTES / 2);
+  const wide = "/" + "é".repeat(MAX_SOCKET_PATH_BYTES / 2) + tail;
   assert.match(socketPathProblem(wide), /longer/);
+});
+
+test("socket paths: only `socks` in a launcher-named directory (the one quit removes)", () => {
+  for (const path of ["/tmp/socks", "/home/u/socks", "/run/user/1000/aequera-tor-ab12cd34/other", "/run/user/1000/aequera-tor-AB12CD34/socks", "/run/user/1000/aequera-tor-ab12cd3/socks", "/aequera-tor-ab12cd34x/socks"]) {
+    assert.match(socketPathProblem(path), /aequera-tor-/, path);
+  }
+  assert.match(socketPathProblem("/run/../aequera-tor-ab12cd34/socks"), /normalized/);
+  assert.equal(socketDir(SOCKET), "/run/user/1000/aequera-tor-ab12cd34");
+  assert.equal(newSocketPath("/run/user/1000/", "0123abcd"), "/run/user/1000/aequera-tor-0123abcd/socks");
+  assert.equal(socketPathProblem(newSocketPath("/tmp", "0123abcd")), null);
+  assert.throws(() => newSocketPath("/tmp", "xyz"), /8 hex/);
 });
 
 test("instance prefs carry the socket and every listed pref", () => {
@@ -206,6 +221,11 @@ test("launch arguments: identity ini, profile, private window, optional URL", ()
     "-private-window",
     "https://e.org/",
   ]);
+  assert.deepEqual(
+    launchArgs({ profileDir: "/p", start: true }),
+    ["-profile", "/p", "-offline", "-private-window"],
+    "a new instance starts offline (fail closed until its checks pass)"
+  );
 });
 
 test("only web URLs are handed to a Tor window", () => {

@@ -29,13 +29,13 @@ Profiles: any two new directories; absolute paths.
    ```
 
 2. Write the Tor profile with the launcher's own code, start the Tor instance
-   on it the way the launcher does (`-private-window`), plus Marionette, and
-   run the check:
+   on it the way the launcher does (`-offline -private-window`: it goes
+   online only once its checks pass), plus Marionette, and run the check:
 
    ```sh
    TOR_PROFILE=$(node tests/security/tor/prepare.cjs)
    bash tools/build/aequera-run.sh --persistent -profile "$TOR_PROFILE" \
-     -private-window --headless -marionette -remote-allow-system-access &
+     -offline -private-window --headless -marionette -remote-allow-system-access &
    node tests/security/tor/live-check.cjs
    ```
 
@@ -59,4 +59,6 @@ cache stays in `<main profile>/tor/data`.
 ## Last run
 
 2026-10-14, Linux (NixOS, steam-run), tor 0.4.9.14: live check 15/15 and
-handoff passed (`docs/design/TOR.md`, Verification).
+handoff passed, before and after the code review fixes. Crash recovery,
+"checks never run" and refusal were checked by hand (`docs/design/TOR.md`,
+Verification).

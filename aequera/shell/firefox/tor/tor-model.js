@@ -30,6 +30,12 @@ var AequeraTorModel = (() => {
    *  refuses longer paths (nsSOCKSIOLayer SetLocalProxyPath). */
   const MAX_SOCKET_PATH_BYTES = 100;
 
+  /** The socket's directory as the launcher names it: a directory of its
+   *  own, the only kind the instance creates, locks down (0700), and removes
+   *  on quit; a socket anywhere else is refused (socketPathProblem). */
+  const SOCKET_DIR_PATTERN = /^aequera-tor-[0-9a-f]{8}$/;
+  const SOCKET_NAME = "socks";
+
   /** The circuit key of channels with no site (browser requests). */
   const UNKNOWN_SITE = "--unknown--";
 
@@ -131,7 +137,27 @@ var AequeraTorModel = (() => {
     if (utf8Length(path) > MAX_SOCKET_PATH_BYTES) {
       return `longer than ${MAX_SOCKET_PATH_BYTES} bytes`;
     }
+    const parts = path.split("/");
+    if (parts.at(-1) != SOCKET_NAME || !SOCKET_DIR_PATTERN.test(parts.at(-2) ?? "") || parts.length < 3) {
+      return `not ${SOCKET_NAME} in a directory named aequera-tor-<8 hex digits>`;
+    }
+    if (parts.includes("..") || parts.includes(".")) {
+      return "not a normalized path";
+    }
     return null;
+  }
+
+  /** The directory of a socket path socketPathProblem accepts. */
+  function socketDir(path) {
+    return path.slice(0, path.lastIndexOf("/"));
+  }
+
+  /** A new socket path under `root` with a random directory name. */
+  function newSocketPath(root, hex8) {
+    if (!/^[0-9a-f]{8}$/.test(hex8)) {
+      throw new Error("socket directory name needs 8 hex digits");
+    }
+    return `${root.replace(/\/+$/, "")}/aequera-tor-${hex8}/${SOCKET_NAME}`;
   }
 
   /**
@@ -296,17 +322,25 @@ var AequeraTorModel = (() => {
   }
 
   /**
-   * The browser's command line for a Tor window.
+   * The browser's command line for a Tor window. A new instance (`start`)
+   * starts offline (Firefox's -offline: before any window, nothing can load)
+   * and goes online only once its checks pass (aequera-tor-daemon.sys.mjs),
+   * so an instance whose checks never run stays offline. A running instance
+   * gets the command line through remoting, where -offline means nothing.
    *
-   * @param {{ appIni?: string|null, profileDir: string, url?: string|null }} options
+   * @param {{ appIni?: string|null, profileDir: string, url?: string|null, start?: boolean }} options
    * @returns {string[]}
    */
-  function launchArgs({ appIni = null, profileDir, url = null }) {
+  function launchArgs({ appIni = null, profileDir, url = null, start = false }) {
     const args = [];
     if (appIni) {
       args.push("-app", appIni);
     }
-    args.push("-profile", profileDir, "-private-window");
+    args.push("-profile", profileDir);
+    if (start) {
+      args.push("-offline");
+    }
+    args.push("-private-window");
     if (url) {
       args.push(url);
     }
@@ -331,6 +365,8 @@ var AequeraTorModel = (() => {
     UNKNOWN_SITE,
     PREFS,
     socketPathProblem,
+    socketDir,
+    newSocketPath,
     instancePrefs,
     requiredNames,
     checkRequired,

@@ -35,6 +35,7 @@ browser.jar:
     content/browser/aequera/tor/tor-model.js                   (tor/tor-model.js)
     content/browser/aequera/tor/aequera-tor.js                 (tor/aequera-tor.js)
     content/browser/aequera/tor/aequera-tor.css                (tor/aequera-tor.css)
+    content/browser/aequera/tor/aequera-tor-common.sys.mjs     (tor/aequera-tor-common.sys.mjs)
     content/browser/aequera/tor/aequera-tor-launch.sys.mjs     (tor/aequera-tor-launch.sys.mjs)
     content/browser/aequera/tor/aequera-tor-daemon.sys.mjs     (tor/aequera-tor-daemon.sys.mjs)
     content/browser/aequera/tor/tor.svg                        (tor/tor.svg)

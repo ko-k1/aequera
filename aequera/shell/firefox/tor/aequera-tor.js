@@ -29,7 +29,9 @@ var AequeraTor = (() => {
   );
   const KEY_ID = "aequera-key-tor-window";
   const NOTIFICATION = "aequera-tor-status";
-  const PROXY_ERRORS = ["proxyConnectFailure", "proxyResolveFailure"];
+  // Loads before tor listened (proxy errors), or before the instance went
+  // online (it starts offline: netOffline).
+  const PROXY_ERRORS = ["proxyConnectFailure", "proxyResolveFailure", "netOffline"];
   const isMac = AppConstants.platform == "macosx";
 
   const tor = {

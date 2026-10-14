@@ -58,20 +58,28 @@ ordinary instance (profile P)                Tor instance (profile P/tor/profile
 ```
 
 - **Two instances.** The ordinary instance writes the Tor profile and
-  starts the same binary on it (`-app` identity ini, `-profile`,
-  `-private-window`). When the Tor instance is already running (its marker
-  `P/tor/running` exists), the same command line goes to it through
-  Firefox's per-profile remoting. The child environment drops the
-  variables that pick a profile ahead of `-profile` and those that turn on
-  automation (Marionette, Remote Agent).
+  starts the same binary on it (`-app` identity ini, `-profile`, `-offline`,
+  `-private-window`). The Tor instance writes its pid to the marker
+  `P/tor/running` as soon as it starts. While the process the marker names
+  is alive and runs that profile (`/proc` on Linux, `ps` on macOS), the
+  command line (without `-offline`) goes to it through Firefox's
+  per-profile remoting. A crashed instance's marker is stale and is
+  ignored. The child environment drops the variables that pick a profile
+  ahead of `-profile` or turn remoting off (`MOZ_NEW_INSTANCE`), and those
+  that turn on automation (Marionette, Remote Agent).
+- **Errors are shown.** A new instance that exits before it starts, or a
+  handoff the running instance did not take, is reported in the window
+  that asked ("Could not open a Tor window"). The launcher never waits on
+  a child longer than its start (20 s) or a handoff (15 s).
 - **Fresh profile.** The Tor profile is removed and rewritten whenever no
-  Tor instance runs, with the socket directory of a session that crashed
-  (one named `aequera-tor-*` by the launcher, never another). tor's data directory beside it is kept: guards and
-  the directory cache, so later starts connect in seconds (2.5 s measured,
-  10.5 s the first time).
+  Tor instance runs, together with what a crashed session left: its marker
+  and its socket directory. tor's data directory beside it is kept: guards
+  and the directory cache, so later starts connect in seconds (2.5 s
+  measured, 10.5 s the first time).
 - **Load order.** `tor/aequera-tor.js` is the first window script. In the
-  Tor instance it locks the prefs and starts tor before any other feature
-  runs. Everything that needs markup waits for `load`.
+  Tor instance it locks the prefs, registers the circuit filter, and only
+  then takes the instance online and starts tor. Everything that needs
+  markup waits for `load`.
 
 ## Network model
 
@@ -81,9 +89,12 @@ Every pref of the Tor instance, with its reason, is in `tor/tor-model.js`
 (`PREFS`). They are written to the profile's `user.js`, so they apply before
 any network activity. The **required** ones keep traffic on Tor. At the
 first window the instance sets each one on the default branch, locks it,
-and checks it (`checkRequired`). If any is not in force, the process goes
-offline and stays there ("refused"). A locked pref ignores writes (about:config,
-add-ons), so a tampered `user.js` value is overridden, not obeyed.
+and checks it (`checkRequired`), with the socket path (it must be `socks`
+in a directory named `aequera-tor-<8 hex>`: the only kind the instance
+creates, locks down, and removes). If any is not in force, the instance
+stays offline ("refused"; see Fail closed). A locked pref ignores writes
+(about:config, add-ons), so a tampered `user.js` value is overridden, not
+obeyed.
 
 | Required | Why |
 |---|---|
@@ -130,10 +141,18 @@ of other schemes name browser pages, never a site: the JSON viewer's is
 
 ### Fail closed
 
-Before tor listens, the socket does not exist, and loads fail with
-`proxyConnectFailure`. That is the same when tor stops. Nothing falls back
-to a direct connection. A failed `tor` shows the notification with "Restart
-Tor".
+- **Until checked:** the instance starts offline (`-offline`) and goes online
+  only after the checks pass and the circuit filter is registered. If that
+  code never runs, nothing loads (`netOffline`).
+- **Refused:** a failed check keeps it offline. Turning it online (File >
+  Work Offline) is undone at once, and a filter sends every channel to a
+  socket that does not exist, so even an online state loads nothing.
+- **Before tor listens, or after it stops:** the socket does not exist, and
+  loads fail with `proxyConnectFailure`. A failed `tor` shows the
+  notification with "Restart Tor".
+
+Nothing ever falls back to a direct connection. Tabs that failed with
+`netOffline` or a proxy error reload once tor is connected.
 
 ## tor
 
@@ -145,7 +164,8 @@ Tor".
   `ControlPort 0`, `ClientOnly 1`, `__OwningControllerProcess <pid>` (tor exits
   with the instance), `AvoidDiskWrites 1`, `Log notice stdout`.
 - Bootstrap progress and errors come from tor's log (`parseLogLine`); there
-  is no control port in slice 1.
+  is no control port in slice 1. Only the current tor's lines count: after
+  "Restart Tor", the stopped one's last lines never reach the new session.
 - On quit: the filter is unregistered, tor is killed, and the socket
   directory and the marker are removed.
 
@@ -201,6 +221,24 @@ slice).
   marker were removed, and the directory cache was kept. Headless Firefox
   never acts as a remoting client (`nsAppRunner`), so that handoff can be
   checked only with a window system.
+- Failure paths, checked by hand the same day (after the code review fixes;
+  the live check and handoff passed again):
+  - **Crash.** The Tor instance was killed with SIGKILL, so its marker stayed.
+    "New Tor window" saw the marker's pid was gone and started a fresh
+    instance in 0.7 s, offline until checked. Its tor took over the data
+    directory once the old tor (owned by the dead process) exited, and
+    answered `IsTor: true` on its socket.
+  - **Checks never run** (simulated with `aequera.tor.instance` false): the
+    instance stayed offline (`netOffline`) and started no tor.
+  - **Refused** (socket path `/tmp/socks`): the instance stayed offline,
+    turning it online was undone, nothing loaded, no tor started, and `/tmp`
+    was untouched (mode 1777, present after quit).
+
+  The liveness check reads `/proc/<pid>/stat` and `cmdline` with
+  `maxBytes`. procfs reports a size of 0, and IOUtils otherwise reads
+  nothing. The first version of this check passed with a stub in the
+  browser test, then failed in the live handoff. The browser test now runs
+  it against a real child process.
 
 ### On each upstream update
 
