@@ -196,8 +196,10 @@ pref("widget.wayland.background-blur.enabled", true);
 // menus, Alt+Shift+N; Option+Command+N on macOS) and "Open Link in Tor
 // Window" start a second Aequera instance on a throwaway private profile
 // whose every connection goes through tor (tor/). Off removes the entry
-// points. tor is found as aequera.tor.executable (an absolute path) or, when
-// empty, as `tor` on PATH; it is never downloaded. Linux and macOS only.
+// points. tor: aequera.tor.executable (an absolute path) when set, else the
+// tor bundled into the build (<app>/tor: the Tor Project's expert bundle,
+// tools/tor), else `tor` on PATH. The browser never downloads it. Linux and
+// macOS only.
 // The prefs of the Tor instance itself are in tor/tor-model.js, not here:
 // they are written to its own profile and locked there.
 pref("aequera.tor.enabled", true);

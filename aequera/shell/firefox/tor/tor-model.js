@@ -245,11 +245,20 @@ var AequeraTorModel = (() => {
    * tor's configuration (torrc text). tor reads only this file
    * (`-f`, with an empty `--defaults-torrc`), never the system torrc.
    *
-   * @param {{ dataDir: string, socksPath: string, ownerPid: number }} options
+   * The bundled tor (the Tor Project's expert bundle, tools/tor) brings its
+   * own GeoIP databases; tor otherwise looks for them in system paths.
+   *
+   * @param {{ dataDir: string, socksPath: string, ownerPid: number,
+   *           geoipFile?: string|null, geoip6File?: string|null }} options
    */
-  function torrc({ dataDir, socksPath, ownerPid }) {
+  function torrc({ dataDir, socksPath, ownerPid, geoipFile = null, geoip6File = null }) {
     if (!isAbsolutePosix(dataDir)) {
       throw new Error("tor data directory must be an absolute path");
+    }
+    for (const file of [geoipFile, geoip6File]) {
+      if (file !== null && !isAbsolutePosix(file)) {
+        throw new Error("GeoIP files must be absolute paths");
+      }
     }
     const problem = socketPathProblem(socksPath);
     if (problem) {
@@ -271,6 +280,8 @@ var AequeraTorModel = (() => {
       `__OwningControllerProcess ${ownerPid}`,
       "AvoidDiskWrites 1",
       "Log notice stdout",
+      ...(geoipFile ? [`GeoIPFile ${torQuote(geoipFile)}`] : []),
+      ...(geoip6File ? [`GeoIPv6File ${torQuote(geoip6File)}`] : []),
       "",
     ].join("\n");
   }

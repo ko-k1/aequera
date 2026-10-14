@@ -37,11 +37,16 @@ Tor.
   credentials named after its top-level site, and tor's default
   `IsolateSOCKSAuth` gives each site its own circuits. "New circuit for
   this site" changes that site's password and reloads it.
-- **tor, not Arti; found, not fetched.** The daemon is C tor (the Tor
-  Project's reference client). It is found as `aequera.tor.executable` or as
-  `tor` on `PATH`, and is never downloaded. Where it is missing, the Tor
-  window explains that. Bundling tor with release builds is a packaging
-  slice of its own.
+- **tor, not Arti; Tor Browser's own tor, bundled.** The daemon is C tor
+  (the Tor Project's reference client), as the Tor Project ships it in the
+  **tor expert bundle**: the same tor, libraries, and pluggable transports
+  as Tor Browser. A build carries it as `<app>/tor`. It is pinned by
+  SHA-256 in `upstream/manifests/tor-expert-bundle.lock`; the pins come
+  only from a release's checksum list whose signature verifies with the Tor
+  Browser Developers key (`tools/tor`). It is fetched at build time, never
+  by the browser. The Tor instance runs `aequera.tor.executable` when set,
+  else the bundled tor, else `tor` on `PATH`. Where none is found, the Tor
+  window explains that. (Amended 2026-10-14: first "found, not fetched".)
 - **No Firefox patch.** All of this is Aequera shell source
   (`aequera/shell/firefox/tor`): window script, two modules, a pure model.
 
@@ -136,4 +141,17 @@ Arti's RPC and security parity are stable.
 ### Download tor on first use (Brave's component updater)
 
 A silent binary download and an update channel of its own, against
-`docs/RESTRICTIONS.md`. Bundling is planned as a release packaging slice.
+`docs/RESTRICTIONS.md`. The expert bundle is fetched when Aequera is built
+instead, pinned and signature-checked, and updated with Aequera.
+
+### Build tor from source in the Aequera build
+
+A C build of tor, libevent, and OpenSSL, and the Go builds of the
+transports, would duplicate Tor Browser's reproducible build. The expert
+bundle is that build's output, signed by the same developers.
+
+### Require a system tor
+
+Distribution packages lag Tor Browser's tor, are absent on macOS, and are
+one more install step before a Tor window works. A system tor still works:
+on `PATH`, or named by `aequera.tor.executable`.

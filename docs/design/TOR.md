@@ -156,9 +156,14 @@ Nothing ever falls back to a direct connection. Tabs that failed with
 
 ## tor
 
-- Found as `aequera.tor.executable` (copied from the ordinary profile) or
-  as `tor` on `PATH`. It is never downloaded. Missing: "Tor offline" with the
-  reason.
+- Which tor: `aequera.tor.executable` (copied from the ordinary profile)
+  when set; else the bundled tor, `<app>/tor/tor`, the Tor Project's tor
+  expert bundle (Tor Browser's tor). A build gets it from
+  `tools/tor/fetch-bundle.sh`, pinned and signature-checked
+  (`tools/tor/README.md`). It is run with its own libraries
+  (`LD_LIBRARY_PATH`, as Tor Browser does) and its own GeoIP databases. Else
+  `tor` on `PATH`. The browser never downloads tor. If none is found, the
+  window says "Tor offline" with the reason.
 - Configuration `P/tor/torrc`, read alone (`-f`, empty `--defaults-torrc`):
   `DataDirectory`, `SocksPort unix:"<socket>" IsolateSOCKSAuth`,
   `ControlPort 0`, `ClientOnly 1`, `__OwningControllerProcess <pid>` (tor exits
@@ -174,7 +179,7 @@ Nothing ever falls back to a direct connection. Tabs that failed with
 | Pref | Profile | Default | Effect |
 |---|---|---|---|
 | `aequera.tor.enabled` | ordinary | true | Off: no entry points |
-| `aequera.tor.executable` | ordinary | "" | tor's absolute path; empty: `tor` on PATH |
+| `aequera.tor.executable` | ordinary | "" | tor's absolute path; empty: the bundled tor, else `tor` on PATH |
 | `aequera.tor.searchEngine` | Tor (`user.js`) | DuckDuckGo | The session's search engine; empty keeps Firefox's |
 
 ## What it protects, and what not
@@ -254,6 +259,6 @@ Re-check what can route around the proxy: new prefs in
 | 1 Tor windows | Two instances, required prefs locked, per-site circuits, tor child, Tor button and panel, entry points, DuckDuckGo | done (Linux; macOS unverified) |
 | 2 Onion-Location | Ordinary windows: the address bar offers ".onion available" for sites that send `Onion-Location`; `.onion` links open in a Tor window | design |
 | 3 Bridges | Settings for built-in bridges (obfs4, Snowflake) and custom bridge lines; pluggable transports found like tor | design |
-| 4 Packaging | tor (and transports) bundled with release builds, signature-checked, updated with Aequera | design |
+| 4 Packaging | tor (and transports) bundled, signature-checked, updated with Aequera | builds: done (`tools/tor`, Tor Browser 15.0.25's expert bundle; Linux verified, macOS pinned); release installers: design |
 | 5 Windows | A loopback TCP port in place of the Unix socket, with its own review | design |
 | 6 Tor page | The Tor window's private browsing page says it is a Tor window and shows the connection | design |

@@ -163,6 +163,21 @@ test("torrc: own data dir, unix SOCKS socket with SOCKS-auth isolation, owner, n
   assert.throws(() => torrc({ dataDir: "rel", socksPath: SOCKET, ownerPid: 1 }), /absolute/);
   assert.throws(() => torrc({ dataDir: "/d", socksPath: "x", ownerPid: 1 }), /socket path/);
   assert.throws(() => torrc({ dataDir: "/d", socksPath: SOCKET, ownerPid: 0 }), /pid/);
+  assert.ok(!/GeoIP/.test(text), "no GeoIP lines without a bundle");
+});
+
+test("torrc: the bundled tor's GeoIP databases", () => {
+  const text = torrc({
+    dataDir: "/d",
+    socksPath: SOCKET,
+    ownerPid: 1,
+    geoipFile: "/app/tor/geoip",
+    geoip6File: "/app/tor/geoip6",
+  });
+  const lines = text.split("\n");
+  assert.ok(lines.includes('GeoIPFile "/app/tor/geoip"'));
+  assert.ok(lines.includes('GeoIPv6File "/app/tor/geoip6"'));
+  assert.throws(() => torrc({ dataDir: "/d", socksPath: SOCKET, ownerPid: 1, geoipFile: "geoip" }), /absolute/);
 });
 
 test("torQuote escapes quotes and backslashes and refuses newlines", () => {

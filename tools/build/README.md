@@ -68,9 +68,15 @@ and branding). Then follow the section for your OS
 ```sh
 cd worktree/firefox
 ./mach build
+bash ../../tools/tor/fetch-bundle.sh                 # once per objdir: the tor for Tor windows
 bash ../../tools/build/aequera-run.sh               # throwaway dev profile
 bash ../../tools/build/aequera-run.sh --persistent  # real Aequera profile
 ```
+
+`fetch-bundle.sh` puts the Tor Project's tor expert bundle (pinned,
+signature-checked; `tools/tor/README.md`) into the build as `dist/bin/tor`.
+`mach build` keeps it, and a clobber removes it. The launchers say when it
+is missing.
 
 Build output goes to `obj/<worktree>/artifact` (or `compiled`) at the repo
 root, not inside `worktree/firefox`: recreating the worktree on a new

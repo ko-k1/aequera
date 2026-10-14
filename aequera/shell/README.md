@@ -612,8 +612,9 @@ Private windows whose traffic goes through Tor, beside ordinary windows
 A Tor window belongs to a second Aequera process on a throwaway profile
 (`<profile>/tor/profile`), with Firefox's global SOCKS proxy on a tor daemon
 that instance runs: no local DNS, no direct fallback, and the network prefs
-locked. Linux and macOS (`aequera.tor.enabled`; tor from
-`aequera.tor.executable` or `PATH`, never downloaded).
+locked. Linux and macOS (`aequera.tor.enabled`). tor: `aequera.tor.executable`,
+else the bundled Tor Browser tor (`<app>/tor`, `tools/tor/fetch-bundle.sh`),
+else `PATH`; the browser never downloads it.
 
 | File | Role |
 |---|---|

@@ -23,6 +23,7 @@
 // Until tor listens, its socket does not exist and every load fails: the
 // fail-closed state. Windows render `state` (aequera-tor.js).
 
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { randomHex, torModel } from "chrome://browser/content/aequera/tor/aequera-tor-common.sys.mjs";
 
@@ -331,18 +332,37 @@ export const AequeraTorDaemon = {
 
   // tor
 
-  async torExecutable() {
+  /** Where a build carries the Tor Project's tor expert bundle
+   *  (tools/tor/fetch-bundle.sh): <app>/tor. */
+  bundleDir() {
+    return PathUtils.join(Services.dirsvc.get("GreD", Ci.nsIFile).path, "tor");
+  },
+
+  /**
+   * The tor to run: aequera.tor.executable when set (the user's choice),
+   * else the bundled tor (a directory with the bundle's marker file), else
+   * `tor` on PATH.
+   *
+   * @returns {Promise<{ path: string, bundle: string|null }>} bundle: the
+   *   bundle directory (its libraries and GeoIP files), for the bundled tor
+   */
+  async findTor() {
     const configured = Services.prefs.getStringPref(this.model.EXECUTABLE_PREF, "");
     if (configured) {
       if (!PathUtils.isAbsolute(configured) || !(await IOUtils.exists(configured))) {
         throw new Error(`tor not found at ${configured} (aequera.tor.executable)`);
       }
-      return configured;
+      return { path: configured, bundle: null };
+    }
+    const bundle = this.bundleDir();
+    const bundled = PathUtils.join(bundle, "tor");
+    if ((await IOUtils.exists(PathUtils.join(bundle, "aequera-tor-bundle.json"))) && (await IOUtils.exists(bundled))) {
+      return { path: bundled, bundle };
     }
     try {
-      return await lazy.Subprocess.pathSearch("tor");
+      return { path: await lazy.Subprocess.pathSearch("tor"), bundle: null };
     } catch {
-      throw new Error("tor is not installed (not on PATH; or set aequera.tor.executable)");
+      throw new Error("tor not found: this build has no bundled tor and none is on PATH (or set aequera.tor.executable)");
     }
   },
 
@@ -356,7 +376,7 @@ export const AequeraTorDaemon = {
     if (!dataDir || !PathUtils.isAbsolute(dataDir)) {
       throw new Error("no tor data directory (aequera.tor.dataDir)");
     }
-    const exe = await this.torExecutable();
+    const tor = await this.findTor();
     await IOUtils.makeDirectory(dataDir, { permissions: 0o700 });
     await IOUtils.setPermissions(dataDir, 0o700);
     const socketDir = this.model.socketDir(this.socksPath);
@@ -367,15 +387,34 @@ export const AequeraTorDaemon = {
     const configDir = PathUtils.parent(dataDir);
     const torrcPath = PathUtils.join(configDir, "torrc");
     const defaultsPath = PathUtils.join(configDir, "torrc-defaults");
-    const torrc = this.model.torrc({ dataDir, socksPath: this.socksPath, ownerPid: Services.appinfo.processID });
+    // The bundled tor's GeoIP databases, when it brings them.
+    const bundleFile = async name => {
+      const path = tor.bundle && PathUtils.join(tor.bundle, name);
+      return path && (await IOUtils.exists(path)) ? path : null;
+    };
+    const torrc = this.model.torrc({
+      dataDir,
+      socksPath: this.socksPath,
+      ownerPid: Services.appinfo.processID,
+      geoipFile: await bundleFile("geoip"),
+      geoip6File: await bundleFile("geoip6"),
+    });
     await IOUtils.writeUTF8(torrcPath, torrc);
     await IOUtils.writeUTF8(defaultsPath, "");
 
-    const proc = await lazy.Subprocess.call({
-      command: exe,
+    const options = {
+      command: tor.path,
       arguments: ["-f", torrcPath, "--defaults-torrc", defaultsPath],
       stderr: "stdout",
-    });
+    };
+    if (tor.bundle) {
+      // The expert bundle's tor has no RPATH: its libevent and OpenSSL sit
+      // beside it, found as Tor Browser finds them.
+      const name = AppConstants.platform == "macosx" ? "DYLD_LIBRARY_PATH" : "LD_LIBRARY_PATH";
+      options.environment = { [name]: tor.bundle };
+      options.environmentAppend = true;
+    }
+    const proc = await lazy.Subprocess.call(options);
     this.proc = proc;
     this.setState({ status: "bootstrapping", summary: "Connecting to the Tor network" });
     const reading = this.readLog(proc);

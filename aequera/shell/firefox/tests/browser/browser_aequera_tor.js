@@ -486,6 +486,83 @@ add_task(async function test_tor_missing_is_reported() {
   });
 });
 
+/** A fake expert bundle (tools/tor/fetch-bundle.sh layout): its tor records
+ *  its library path and arguments, connects, and runs until killed. */
+async function fakeBundle({ marker = true } = {}) {
+  const dir = PathUtils.join(PathUtils.tempDir, "aequera-tor-test-bundle");
+  await IOUtils.makeDirectory(dir);
+  const tor = PathUtils.join(dir, "tor");
+  await IOUtils.writeUTF8(
+    tor,
+    [
+      "#!/bin/sh",
+      `echo "$LD_LIBRARY_PATH$DYLD_LIBRARY_PATH" > "${dir}/libpath"`,
+      `echo "$@" > "${dir}/args"`,
+      'echo "Oct 14 18:00:01.000 [notice] Bootstrapped 100% (done): Done"',
+      "exec sleep 600",
+    ].join("\n") + "\n",
+  );
+  await IOUtils.setPermissions(tor, 0o755);
+  await IOUtils.writeUTF8(PathUtils.join(dir, "geoip"), "");
+  await IOUtils.writeUTF8(PathUtils.join(dir, "geoip6"), "");
+  if (marker) {
+    await IOUtils.writeUTF8(PathUtils.join(dir, "aequera-tor-bundle.json"), "{}");
+  }
+  return { dir, tor };
+}
+
+add_task(async function test_bundled_tor_is_found_and_run_with_its_libraries() {
+  const bundle = await fakeBundle();
+  const saved = AequeraTorDaemon.bundleDir;
+  AequeraTorDaemon.bundleDir = () => bundle.dir;
+  try {
+    await withDaemon("", async base => {
+      Assert.deepEqual(await AequeraTorDaemon.findTor(), { path: bundle.tor, bundle: bundle.dir }, "the bundle, before PATH");
+      const connected = waitForStatus("connected");
+      AequeraTorDaemon.startTor();
+      await connected;
+      await TestUtils.waitForCondition(() => IOUtils.exists(PathUtils.join(bundle.dir, "libpath")), "tor ran");
+      is((await IOUtils.readUTF8(PathUtils.join(bundle.dir, "libpath"))).trim(), bundle.dir, "with the bundle's libraries");
+      const torrc = await IOUtils.readUTF8(PathUtils.join(base, "torrc"));
+      ok(torrc.includes(`GeoIPFile "${PathUtils.join(bundle.dir, "geoip")}"`), "the bundle's GeoIP database");
+      ok(torrc.includes(`GeoIPv6File "${PathUtils.join(bundle.dir, "geoip6")}"`), "and its IPv6 one");
+    });
+
+    // The user's choice wins over the bundle.
+    const other = await fakeTor("chosen", "exit 0");
+    await withDaemon(other.path, async () => {
+      Assert.deepEqual(await AequeraTorDaemon.findTor(), { path: other.path, bundle: null }, "aequera.tor.executable first");
+    });
+    await IOUtils.remove(other.dir, { recursive: true });
+  } finally {
+    AequeraTorDaemon.bundleDir = saved;
+    await IOUtils.remove(bundle.dir, { recursive: true });
+  }
+});
+
+add_task(async function test_a_directory_without_the_marker_is_no_bundle() {
+  const bundle = await fakeBundle({ marker: false });
+  const saved = AequeraTorDaemon.bundleDir;
+  AequeraTorDaemon.bundleDir = () => bundle.dir;
+  try {
+    await withDaemon("", async () => {
+      let found = null;
+      try {
+        found = await AequeraTorDaemon.findTor();
+      } catch (error) {
+        ok(/no bundled tor/.test(error.message), `none bundled: ${error.message}`);
+      }
+      if (found) {
+        isnot(found.path, bundle.tor, "a stray tor without the marker is never run");
+        is(found.bundle, null, "found on PATH instead");
+      }
+    });
+  } finally {
+    AequeraTorDaemon.bundleDir = saved;
+    await IOUtils.remove(bundle.dir, { recursive: true });
+  }
+});
+
 add_task(async function test_tor_refuses_a_socket_outside_its_directory() {
   const tor = await fakeTor("never", "exit 0");
   await withDaemon(tor.path, async base => {

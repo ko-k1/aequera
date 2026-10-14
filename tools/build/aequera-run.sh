@@ -145,6 +145,12 @@ else
 fi
 INI_NATIVE="$(to_native "$INI")"
 
+# Tor windows run the tor bundled into the build (tools/tor/fetch-bundle.sh);
+# without it they use tor from PATH or aequera.tor.executable.
+if [ ! -f "$BIN/tor/aequera-tor-bundle.json" ]; then
+  echo "aequera-run: no bundled tor in $BIN/tor; for Tor windows: bash tools/tor/fetch-bundle.sh" >&2
+fi
+
 if [ "${1:-}" = "--persistent" ]; then
   shift
   exec "$EXE" -app "$INI_NATIVE" -no-remote -purgecaches "$@"
