@@ -7,11 +7,13 @@
 // was started offline (-offline, tor-model.js launchArgs), so nothing loads
 // before this runs, and nothing ever loads if it does not run:
 //
-// 1. Enforce: the prefs that keep traffic on tor (tor-model.js, written to
-//    user.js by the ordinary instance) are locked and checked. If one is not
-//    in force, the process stays offline for good ("refused"): going online
-//    again (Work Offline) is undone, and every channel is sent to a socket
-//    that does not exist.
+// 1. Enforce: the running-session marker is written, and the prefs that keep
+//    traffic on tor (tor-model.js, written to user.js by the ordinary
+//    instance) are locked and checked: each must have its value and be
+//    locked. If the marker cannot be written or a pref is not in force, the
+//    process stays offline for good ("refused"): going online again (Work
+//    Offline) is undone, and every channel is sent to a socket that does not
+//    exist.
 // 2. Circuits: a proxy channel filter, applied after every other filter,
 //    gives each channel tor's SOCKS socket with credentials named after its
 //    top-level site, so each site gets its own circuits (IsolateSOCKSAuth).
@@ -25,7 +27,13 @@
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-import { randomHex, torModel } from "chrome://browser/content/aequera/tor/aequera-tor-common.sys.mjs";
+import {
+  randomHex,
+  readPref,
+  removeSocketDir,
+  torModel,
+  writePref,
+} from "chrome://browser/content/aequera/tor/aequera-tor-common.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -112,14 +120,17 @@ const refusalFilter = {
  * @property {number} progress     bootstrap percent
  * @property {string} summary      tor's bootstrap summary, or the failure
  * @property {string} detail       last warning or error from tor
+ * @property {string[]} warnings   what works differently than promised (shown)
  */
 
 export const AequeraTorDaemon = {
   model: null,
   started: false,
+  /** The startup in progress or done (ensureStarted). */
+  ready: null,
 
   /** @type {TorState} */
-  state: { status: "idle", progress: 0, summary: "", detail: "" },
+  state: { status: "idle", progress: 0, summary: "", detail: "", warnings: [] },
   listeners: new Set(),
 
   /** The running tor process; null while none runs or it is being stopped
@@ -130,47 +141,85 @@ export const AequeraTorDaemon = {
   /** Per-site SOCKS passwords: a new one is a new circuit for the site. */
   nonces: new Map(),
 
-  /** Whether this process is the Tor instance. */
-  isInstance() {
-    return Services.prefs.getBoolPref("aequera.tor.instance", false);
+  /** Test hook: { prefs, io, proxy, obs } in place of Firefox's services. */
+  services: null,
+
+  svc() {
+    return this.services ?? { prefs: Services.prefs, io: Services.io, proxy: lazy.proxyService, obs: Services.obs };
   },
 
-  /** Start everything once per process. Safe to call from every window. */
+  /** Whether this process is the Tor instance. */
+  isInstance() {
+    this.model ??= torModel();
+    return this.svc().prefs.getBoolPref(this.model.INSTANCE_PREF, false);
+  },
+
+  /**
+   * Start everything once per process. Safe to call from every window.
+   * Returns the startup (also kept as `ready`).
+   */
   ensureStarted() {
     if (this.started || !this.isInstance()) {
-      return;
+      return this.ready;
     }
     this.started = true;
     this.model ??= torModel();
-    // Running, whether it may browse or not: the ordinary instance must
-    // never rewrite this profile under it.
-    this.writeMarker();
-    Services.obs.addObserver(this, "quit-application");
-    if (!this.enforce()) {
+    this.ready = this.startup();
+    return this.ready;
+  },
+
+  /**
+   * The instance is offline until this has checked everything (it was
+   * started with -offline). Order: the marker (the ordinary instance must
+   * never rewrite this profile under it), the locked and checked prefs, the
+   * circuit filter; only then online, and tor.
+   */
+  async startup() {
+    const { io, obs } = this.svc();
+    obs.addObserver(this, "quit-application");
+    const wrong = [];
+    try {
+      await this.writeMarker();
+    } catch (error) {
+      console.error("aequera-tor: cannot write the running-session marker", error);
+      wrong.push(`the running-session marker (${error?.message ?? error})`);
+    }
+    if (!this.enforce(wrong)) {
       this.refuse();
       return;
     }
     this.registerFilter();
-    Services.io.offline = false;
+    io.offline = false;
     this.startTor().catch(error => this.fail(String(error?.message ?? error)));
-    this.setSearchDefault().catch(error => console.error("aequera-tor: search default not set", error));
+    this.setSearchDefault().catch(error => this.warn(`The search engine could not be set: ${error?.message ?? error}`));
+  },
+
+  /** Record something the user should know (Tor panel, notification). */
+  warn(message) {
+    console.warn("aequera-tor:", message);
+    this.setState({ warnings: [...this.state.warnings, message] });
   },
 
   /**
    * The session's search engine (tor-model.js searchEngine: by default
    * DuckDuckGo's onion service, added as a user engine), for normal and
-   * private use alike (every window is private). It falls back to the
-   * built-in DuckDuckGo, then to Firefox's default.
+   * private use alike (every window is private). If the onion engine cannot
+   * be added, the built-in DuckDuckGo is used and the user is told (its
+   * searches leave through an exit relay).
    */
   async setSearchDefault() {
-    const prefs = Services.prefs;
+    const prefs = this.svc().prefs;
     this.model ??= torModel();
+    const name = prefs.getStringPref(this.model.SEARCH_ENGINE_PREF, "");
     const wanted = this.model.searchEngine({
-      name: prefs.getStringPref("aequera.tor.searchEngine", ""),
-      url: prefs.getStringPref("aequera.tor.searchURL", ""),
-      suggestUrl: prefs.getStringPref("aequera.tor.searchSuggestURL", ""),
+      name,
+      url: prefs.getStringPref(this.model.SEARCH_URL_PREF, ""),
+      suggestUrl: prefs.getStringPref(this.model.SEARCH_SUGGEST_URL_PREF, ""),
     });
     if (!wanted) {
+      if (name.trim()) {
+        this.warn(`The Tor search engine "${name}" has no valid search URL; searches use Firefox's default engine.`);
+      }
       return;
     }
     const search = lazy.SearchService;
@@ -183,10 +232,16 @@ export const AequeraTorDaemon = {
         console.error(`aequera-tor: cannot add the ${wanted.name} search engine`, error);
       }
     }
-    engine ??= search.getEngineByName("DuckDuckGo");
     if (!engine) {
-      console.warn(`aequera-tor: no search engine named ${wanted.name}`);
-      return;
+      engine = search.getEngineByName("DuckDuckGo");
+      this.warn(
+        engine
+          ? `${wanted.name} could not be set up; searches use DuckDuckGo through a Tor exit relay.`
+          : `${wanted.name} could not be set up; searches use Firefox's default engine.`,
+      );
+      if (!engine) {
+        return;
+      }
     }
     const reason = search.CHANGE_REASON.UNKNOWN;
     await search.setDefault(engine, reason);
@@ -196,33 +251,47 @@ export const AequeraTorDaemon = {
   /** The session's security level (tor-model.js SECURITY_LEVELS). */
   securityLevel() {
     this.model ??= torModel();
-    return this.model.securityLevel(Services.prefs.getStringPref(this.model.SECURITY_LEVEL_PREF, ""));
+    return this.model.securityLevel(this.svc().prefs.getStringPref(this.model.SECURITY_LEVEL_PREF, ""));
   },
 
   /**
    * Switch the security level: its prefs now (pages loaded from now on
    * follow them; the JavaScript engine's in new content processes), and
    * remembered for the next Tor session in <profile>/tor/settings.json (the
-   * Tor profile itself is thrown away).
+   * Tor profile itself is thrown away). All or nothing: a pref that cannot
+   * be set puts every pref back and rejects. Not remembered: applied, and
+   * the user is told.
    *
    * @param {string} level  "standard" | "safer" | "safest"
    */
   async setSecurityLevel(level) {
     this.model ??= torModel();
-    level = this.model.securityLevel(level);
-    const prefs = Services.prefs;
-    for (const [name, value] of this.model.securityLevelPrefs(level)) {
-      if (typeof value == "boolean") {
-        prefs.setBoolPref(name, value);
-      } else {
-        prefs.setIntPref(name, value);
+    if (this.model.securityLevel(level, null) === null) {
+      throw new Error(`unknown security level: ${level}`);
+    }
+    const prefs = this.svc().prefs;
+    const levelPrefs = this.model.securityLevelPrefs(level);
+    const before = levelPrefs.map(([name]) => [name, prefs.prefHasUserValue(name), readPref(name, prefs)]);
+    try {
+      for (const [name, value] of levelPrefs) {
+        writePref(name, value, prefs);
       }
+    } catch (error) {
+      for (const [name, hadUserValue, value] of before) {
+        if (hadUserValue) {
+          writePref(name, value, prefs);
+        } else {
+          prefs.clearUserPref(name);
+        }
+      }
+      throw error;
     }
     prefs.setStringPref(this.model.SECURITY_LEVEL_PREF, level);
     try {
       await IOUtils.writeJSON(this.settingsPath(), { securityLevel: level });
     } catch (error) {
-      console.error("aequera-tor: cannot remember the security level", error);
+      this.warn(`The security level applies now but could not be remembered for the next Tor session (${error?.message ?? error}).`);
+      return;
     }
     this.setState({});
   },
@@ -255,51 +324,47 @@ export const AequeraTorDaemon = {
   },
 
   /**
-   * Lock the required prefs at the values the instance needs and check them.
+   * Lock the required prefs at the values the instance needs and check them:
+   * each must have its value and be locked (a lock that failed counts as
+   * not in force).
    *
    * @returns {string[]} what is not in force (empty: browsing may go on)
    */
   check() {
-    const prefs = Services.prefs;
+    const { prefs, io } = this.svc();
     this.socksPath = prefs.getStringPref(this.model.SOCKS_PATH_PREF, "");
     const pathProblem = this.model.socketPathProblem(this.socksPath);
-    if (!pathProblem) {
-      this.socksUrl = Services.io.newFileURI(new lazy.FileUtils.File(this.socksPath)).spec;
+    if (pathProblem) {
+      return [`aequera.tor.socksPath (${pathProblem})`];
     }
-    const wanted = new Map(this.model.instancePrefs({ socksPath: this.socksPath, socksUrl: this.socksUrl || "file:///" }));
+    this.socksUrl = io.newFileURI(new lazy.FileUtils.File(this.socksPath)).spec;
+    const wanted = new Map(
+      this.model.instancePrefs({ socksPath: this.socksPath, socksUrl: this.socksUrl, level: this.securityLevel() }),
+    );
     const defaults = prefs.getDefaultBranch("");
+    const failed = new Set();
     for (const name of this.model.requiredNames()) {
-      const value = wanted.get(name);
       try {
-        if (typeof value == "boolean") {
-          defaults.setBoolPref(name, value);
-        } else if (typeof value == "number") {
-          defaults.setIntPref(name, value);
-        } else {
-          defaults.setStringPref(name, value);
-        }
+        writePref(name, wanted.get(name), defaults);
         prefs.lockPref(name);
       } catch (error) {
         console.error("aequera-tor: cannot lock", name, error);
+        failed.add(name);
       }
     }
-    const read = name => {
-      switch (prefs.getPrefType(name)) {
-        case prefs.PREF_BOOL:
-          return prefs.getBoolPref(name);
-        case prefs.PREF_INT:
-          return prefs.getIntPref(name);
-        case prefs.PREF_STRING:
-          return prefs.getStringPref(name);
-      }
-      return undefined;
-    };
-    return pathProblem ? [`aequera.tor.socksPath (${pathProblem})`] : this.model.checkRequired(read, this.socksUrl);
+    return this.model.checkRequired(
+      name => readPref(name, prefs),
+      wanted,
+      name => !failed.has(name) && prefs.prefIsLocked(name),
+    );
   },
 
-  /** @returns {boolean} whether browsing may go on */
-  enforce() {
-    const wrong = this.check();
+  /**
+   * @param {string[]} [alsoWrong]  problems found before the prefs
+   * @returns {boolean} whether browsing may go on
+   */
+  enforce(alsoWrong = []) {
+    const wrong = [...alsoWrong, ...this.check()];
     if (wrong.length) {
       this.setState({
         status: "refused",
@@ -314,18 +379,22 @@ export const AequeraTorDaemon = {
 
   /** Offline for good, and every channel sent nowhere should it go online. */
   refuse() {
-    Services.io.manageOfflineStatus = false;
-    Services.io.offline = true;
-    lazy.proxyService.registerChannelFilter(refusalFilter, FILTER_POSITION);
-    Services.obs.addObserver(this, OFFLINE_TOPIC);
+    const { io, proxy, obs } = this.svc();
+    io.manageOfflineStatus = false;
+    io.offline = true;
+    proxy.registerChannelFilter(refusalFilter, FILTER_POSITION);
+    obs.addObserver(this, OFFLINE_TOPIC);
   },
+
+  /** The filter a refused instance sends every channel through. */
+  refusalFilter,
 
   // nsIProtocolProxyChannelFilter
 
   QueryInterface: ChromeUtils.generateQI(["nsIProtocolProxyChannelFilter", "nsIObserver"]),
 
   registerFilter() {
-    lazy.proxyService.registerChannelFilter(this, FILTER_POSITION);
+    this.svc().proxy.registerChannelFilter(this, FILTER_POSITION);
   },
 
   /** The circuit key of a channel (tor-model.js isolationKey). */
@@ -533,9 +602,10 @@ export const AequeraTorDaemon = {
     }
   },
 
-  /** Stop tor and start it again (from a failed state). */
+  /** Start tor again, only after it failed (never a second tor beside a
+   *  running or starting one, never in a refused instance). */
   async restart() {
-    if (!this.started || this.state.status == "refused") {
+    if (!this.started || this.state.status != "failed") {
       return;
     }
     await this.stopTor();
@@ -556,40 +626,42 @@ export const AequeraTorDaemon = {
     return PathUtils.join(PathUtils.parent(PathUtils.profileDir), "running");
   },
 
+  /** Write the marker (this process's pid); rejects when it cannot. */
   writeMarker() {
-    IOUtils.writeUTF8(this.markerPath(), String(Services.appinfo.processID)).catch(error =>
-      console.error("aequera-tor: cannot write marker", error),
-    );
+    return IOUtils.writeUTF8(this.markerPath(), String(Services.appinfo.processID));
   },
 
   observe(_subject, topic, data) {
+    const { io, proxy, obs } = this.svc();
     if (topic == OFFLINE_TOPIC) {
       // Refused: Work Offline cannot bring it online.
       if (data == "online") {
-        Services.io.offline = true;
+        io.offline = true;
       }
       return;
     }
     if (topic != "quit-application") {
       return;
     }
-    Services.obs.removeObserver(this, "quit-application");
-    if (this.state.status == "refused") {
-      Services.obs.removeObserver(this, OFFLINE_TOPIC);
-      lazy.proxyService.unregisterChannelFilter(refusalFilter);
-    } else {
-      lazy.proxyService.unregisterChannelFilter(this);
+    obs.removeObserver(this, "quit-application");
+    try {
+      if (this.state.status == "refused") {
+        obs.removeObserver(this, OFFLINE_TOPIC);
+        proxy.unregisterChannelFilter(refusalFilter);
+      } else {
+        proxy.unregisterChannelFilter(this);
+      }
+    } catch (error) {
+      console.error("aequera-tor: cannot unregister at quit", error);
     }
     const proc = this.proc;
     this.proc = null;
     try {
-      proc?.kill();
+      proc?.kill()?.catch?.(() => {});
     } catch {}
     // Leave nothing behind but tor's data directory. Only a socket path in a
-    // directory the launcher named is ever removed (socketPathProblem).
-    if (!this.model.socketPathProblem(this.socksPath)) {
-      IOUtils.remove(this.model.socketDir(this.socksPath), { recursive: true, ignoreAbsent: true }).catch(() => {});
-    }
+    // directory the launcher named is ever removed (removeSocketDir).
+    removeSocketDir(this.model, this.socksPath).catch(() => {});
     IOUtils.remove(this.markerPath(), { ignoreAbsent: true }).catch(() => {});
   },
 };

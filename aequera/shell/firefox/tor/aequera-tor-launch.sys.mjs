@@ -10,7 +10,7 @@
 // instance receives instead).
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-import { randomHex, torModel } from "chrome://browser/content/aequera/tor/aequera-tor-common.sys.mjs";
+import { randomHex, removeSocketDir, torModel } from "chrome://browser/content/aequera/tor/aequera-tor-common.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -83,6 +83,9 @@ export const AequeraTorLauncher = {
   /** Test hooks: replace Subprocess.call, and the liveness of a marker's pid. */
   spawn: null,
   processAlive: null,
+  /** How long a new instance and a handoff may take (tests shorten them). */
+  startWaitMs: START_WAIT_MS,
+  handoffWaitMs: HANDOFF_WAIT_MS,
 
   /**
    * Why Tor windows cannot be opened from here, or null.
@@ -98,7 +101,7 @@ export const AequeraTorLauncher = {
       // pipe, which tor does not offer (ADR 0004).
       return "platform";
     }
-    if (Services.prefs.getBoolPref("aequera.tor.instance", false)) {
+    if (Services.prefs.getBoolPref(torModel().INSTANCE_PREF, false)) {
       // Already the Tor instance: its own windows are Tor windows.
       return "instance";
     }
@@ -134,7 +137,9 @@ export const AequeraTorLauncher = {
     }
 
     const exe = Services.dirsvc.get("XREExeF", Ci.nsIFile).path;
-    const args = this.model.launchArgs({ appIni: await this.appIni(), profileDir: paths.profile, url, start: !running });
+    // Always -offline (launchArgs): if `running` was wrong and this process
+    // becomes the instance, it stays offline until its own checks pass.
+    const args = this.model.launchArgs({ appIni: await this.appIni(), profileDir: paths.profile, url });
     const environment = Object.fromEntries(STRIPPED_ENV.map(name => [name, null]));
     const call = this.spawn ?? (options => lazy.Subprocess.call(options));
     const proc = await call({ command: exe, arguments: args, environment, environmentAppend: true, stderr: "stdout" });
@@ -147,10 +152,11 @@ export const AequeraTorLauncher = {
     }
     // A remoting client: it hands the command line to the running instance
     // and exits. Never waited on longer than that.
-    const exitCode = await exitWithin(proc, HANDOFF_WAIT_MS);
+    const exitCode = await exitWithin(proc, this.handoffWaitMs);
     if (exitCode === null) {
-      console.warn("aequera-tor: the handoff did not finish; that process runs as the Tor instance");
+      // It became an instance itself (offline until its checks pass).
       this.adopt(proc);
+      throw new Error("aequera-tor: the running Tor instance did not answer; a new one started in its place");
     } else if (exitCode !== 0) {
       throw new Error(`aequera-tor: the running Tor instance did not take the window (exit ${exitCode})`);
     }
@@ -183,8 +189,14 @@ export const AequeraTorLauncher = {
     let pid;
     try {
       pid = Number((await IOUtils.readUTF8(paths.marker)).trim());
-    } catch {
-      return false;
+    } catch (error) {
+      // No marker: no instance. A marker that cannot be read: unknown, so
+      // assumed running (its profile is never rewritten on a guess).
+      if (error?.name == "NotFoundError") {
+        return false;
+      }
+      console.error("aequera-tor: cannot read the running-session marker", error);
+      return true;
     }
     if (!Number.isInteger(pid) || pid <= 0) {
       return false;
@@ -252,7 +264,8 @@ export const AequeraTorLauncher = {
 
   /**
    * Wait until the new instance is up (its marker). Rejects if it exited
-   * first; still starting after START_WAIT_MS, it is left to come up.
+   * first, or if it is not up after startWaitMs (it stays this session's
+   * child, and offline).
    */
   async waitForStart(paths, proc) {
     let exitCode;
@@ -260,7 +273,7 @@ export const AequeraTorLauncher = {
       result => (exitCode = result.exitCode),
       () => (exitCode = -1),
     );
-    const deadline = Date.now() + START_WAIT_MS;
+    const deadline = Date.now() + this.startWaitMs;
     while (Date.now() < deadline) {
       if (await IOUtils.exists(paths.marker)) {
         return;
@@ -270,7 +283,9 @@ export const AequeraTorLauncher = {
       }
       await sleep(100);
     }
-    console.warn("aequera-tor: the Tor instance is still starting");
+    // Still running but no marker: it is not working as a Tor instance (it
+    // stays offline, -offline). Kept as this session's child; the user is told.
+    throw new Error(`aequera-tor: the Tor window did not start within ${this.startWaitMs / 1000} s`);
   },
 
   /**
@@ -310,15 +325,27 @@ export const AequeraTorLauncher = {
   /**
    * The security level the last Tor session chose (the Tor instance keeps
    * it in <profile>/tor/settings.json, beside its throwaway profile).
-   * Missing or unreadable: Standard.
+   * Nothing remembered: Standard; unreadable or unknown: Safest (never a
+   * silent Standard).
    */
   async rememberedSecurityLevel(paths) {
+    let settings;
     try {
-      const settings = await IOUtils.readJSON(PathUtils.join(paths.base, "settings.json"));
-      return this.model.securityLevel(settings?.securityLevel);
-    } catch {
-      return "standard";
+      settings = await IOUtils.readJSON(PathUtils.join(paths.base, "settings.json"));
+    } catch (error) {
+      if (error?.name == "NotFoundError") {
+        return "standard";
+      }
+      // Unreadable or not JSON: the strictest, never a silent Standard.
+      console.error("aequera-tor: cannot read the remembered security level", error);
+      return "safest";
     }
+    const level = this.model.securityLevel(settings?.securityLevel, null);
+    if (level === null) {
+      console.error("aequera-tor: unknown remembered security level", settings?.securityLevel);
+      return "safest";
+    }
+    return level;
   },
 
   /**
@@ -333,11 +360,8 @@ export const AequeraTorLauncher = {
     } catch {
       return;
     }
-    const m = /^user_pref\("aequera\.tor\.socksPath", ("(?:[^"\\]|\\.)*")\);$/m.exec(text);
-    const socksPath = m ? JSON.parse(m[1]) : "";
-    if (!this.model.socketPathProblem(socksPath)) {
-      await IOUtils.remove(this.model.socketDir(socksPath), { recursive: true, ignoreAbsent: true });
-    }
+    const socksPath = this.model.parseUserJs(text).get(this.model.SOCKS_PATH_PREF);
+    await removeSocketDir(this.model, typeof socksPath == "string" ? socksPath : "");
   },
 
   /**

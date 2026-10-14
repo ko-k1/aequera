@@ -20,6 +20,9 @@ const { AequeraTorDaemon } = ChromeUtils.importESModule(
 );
 // NetUtil is a global of the test scope already; FileUtils may be too.
 const { FileUtils: TorFileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
+const { readPref, writePref } = ChromeUtils.importESModule(
+  "chrome://browser/content/aequera/tor/aequera-tor-common.sys.mjs",
+);
 
 const TOR_BASE = PathUtils.join(PathUtils.profileDir, "tor");
 const isMac = AppConstants.platform == "macosx";
@@ -63,18 +66,12 @@ async function removeSocketDirOf(profileDir) {
   await IOUtils.remove(PathUtils.parent(prefs.get("aequera.tor.socksPath")), { recursive: true, ignoreAbsent: true });
 }
 
-/** Reads user.js text (JSON literals, tor-model.js userJs) into a Map; every
- *  line is a comment or a user_pref call. */
+/** Reads user.js text (tor-model.js userJs) into a Map, and checks every
+ *  line is a comment or a user_pref call parseUserJs read. */
 function readUserJs(text) {
-  const prefs = new Map();
-  for (const line of text.split("\n")) {
-    if (!line || line.startsWith("//")) {
-      continue;
-    }
-    const m = /^user_pref\(("(?:[^"\\]|\\.)*"), (.*)\);$/.exec(line);
-    ok(m, `user.js line is a user_pref call: ${line}`);
-    prefs.set(JSON.parse(m[1]), JSON.parse(m[2]));
-  }
+  const prefs = AequeraTorModel.parseUserJs(text);
+  const calls = text.split("\n").filter(line => line && !line.startsWith("//"));
+  is(calls.length, prefs.size, "every user.js line is a user_pref call");
   return prefs;
 }
 
@@ -225,7 +222,7 @@ add_task(async function test_launch_while_running_hands_off() {
   Assert.deepEqual(asked, [[1234, profileDir]], "the marker's pid is checked against the profile");
   is(calls.length, 1, "a remoting client started");
   ok(await IOUtils.exists(PathUtils.join(profileDir, "in-use")), "the running instance's profile is untouched");
-  ok(!calls[0].arguments.includes("-offline"), "a handoff carries no startup flag");
+  ok(calls[0].arguments.includes("-offline"), "always -offline (a remoting client consumes it)");
   ok(!calls[0].arguments.some(a => a.startsWith("http")), "no URL");
   is(AequeraTorLauncher.child, null, "a remoting client is not the instance");
 
@@ -248,7 +245,7 @@ add_task(async function test_stale_marker_gets_a_fresh_profile() {
 
   await AequeraTorLauncher.openWindow();
   ok(!calls[0].markerAtSpawn, "the stale marker is gone before the new instance starts");
-  ok(calls[0].arguments.includes("-offline"), "a new instance, not a handoff");
+  ok(AequeraTorLauncher.child, "a new instance, not a handoff");
   ok(!(await IOUtils.exists(PathUtils.join(profileDir, "crashed-session"))), "the crashed session's profile is gone");
   await removeSocketDirOf(profileDir);
   await resetLauncher();
@@ -709,30 +706,18 @@ async function withSecurityLevels(fn) {
   // Restored exactly as they were (the test profile sets some of them).
   const prefs = Services.prefs;
   const before = [AequeraTorModel.SECURITY_LEVEL_PREF, ...AequeraTorModel.securityLevelPrefs("standard").map(([n]) => n)].map(name => {
-    const type = prefs.getPrefType(name);
     const user = prefs.prefHasUserValue(name);
-    const value = !user
-      ? null
-      : type == prefs.PREF_BOOL
-        ? prefs.getBoolPref(name)
-        : type == prefs.PREF_INT
-          ? prefs.getIntPref(name)
-          : prefs.getStringPref(name);
-    return { name, user, value };
+    return { name, user, value: user ? readPref(name) : null };
   });
   try {
     await fn(settings);
   } finally {
     AequeraTorDaemon.settingsPath = saved;
     for (const { name, user, value } of before) {
-      if (!user) {
-        prefs.clearUserPref(name);
-      } else if (typeof value == "boolean") {
-        prefs.setBoolPref(name, value);
-      } else if (typeof value == "number") {
-        prefs.setIntPref(name, value);
+      if (user) {
+        writePref(name, value);
       } else {
-        prefs.setStringPref(name, value);
+        prefs.clearUserPref(name);
       }
     }
     await IOUtils.remove(settings, { ignoreAbsent: true });
@@ -751,9 +736,11 @@ add_task(async function test_security_level_switch() {
     is(Services.prefs.getBoolPref("javascript.enabled"), true, "scripts still run at Safer");
     Assert.deepEqual(await IOUtils.readJSON(settings), { securityLevel: "safer" }, "remembered for the next Tor session");
 
-    await AequeraTorDaemon.setSecurityLevel("nonsense");
-    is(AequeraTorDaemon.securityLevel(), "standard", "an unknown level is Standard");
-    is(Services.prefs.getBoolPref("javascript.options.ion"), true, "JIT back");
+    await Assert.rejects(AequeraTorDaemon.setSecurityLevel("nonsense"), /unknown security level/, "an unknown level is refused");
+    is(AequeraTorDaemon.securityLevel(), "safer", "and changes nothing");
+
+    await AequeraTorDaemon.setSecurityLevel("standard");
+    is(Services.prefs.getBoolPref("javascript.options.ion"), true, "JIT back at Standard");
   });
 });
 
@@ -773,6 +760,410 @@ add_task(async function test_new_session_starts_at_the_remembered_level() {
   } finally {
     await resetLauncher();
     await IOUtils.remove(PathUtils.join(TOR_BASE, "settings.json"), { ignoreAbsent: true });
+  }
+});
+
+// The daemon's startup and quit, against a fake pref system and stubbed
+// network, proxy, and observer services (this test browser must keep its
+// own network settings).
+
+/** A pref branch with user values, defaults, and locks, like nsIPrefBranch. */
+function fakePrefs(user = new Map(), { failLock = new Set(), failSet = new Set() } = {}) {
+  const defaults = new Map();
+  const locked = new Set();
+  const value = name => (locked.has(name) || !user.has(name) ? defaults.get(name) : user.get(name));
+  const typeOf = v => ({ boolean: 128, number: 64, string: 32 })[typeof v] ?? 0;
+  const setter = map => (name, v) => {
+    if (failSet.has(name)) {
+      throw new Error(`cannot set ${name}`);
+    }
+    map.set(name, v);
+  };
+  return {
+    PREF_INVALID: 0,
+    PREF_STRING: 32,
+    PREF_INT: 64,
+    PREF_BOOL: 128,
+    user,
+    defaults,
+    locked,
+    getPrefType: name => typeOf(value(name)),
+    getBoolPref: (name, d) => value(name) ?? d,
+    getIntPref: (name, d) => value(name) ?? d,
+    getStringPref: (name, d) => value(name) ?? d,
+    setBoolPref: setter(user),
+    setIntPref: setter(user),
+    setStringPref: setter(user),
+    prefHasUserValue: name => user.has(name),
+    clearUserPref: name => user.delete(name),
+    lockPref(name) {
+      if (failLock.has(name)) {
+        throw new Error(`cannot lock ${name}`);
+      }
+      locked.add(name);
+    },
+    prefIsLocked: name => locked.has(name),
+    getDefaultBranch: () => ({ setBoolPref: setter(defaults), setIntPref: setter(defaults), setStringPref: setter(defaults) }),
+  };
+}
+
+/** The Tor profile's user.js prefs for a socket under `base`. */
+function torUserPrefs(base) {
+  const socksPath = AequeraTorModel.newSocketPath(base, "0badc0de");
+  const socksUrl = Services.io.newFileURI(new TorFileUtils.File(socksPath)).spec;
+  return new Map(AequeraTorModel.instancePrefs({ socksPath, socksUrl }));
+}
+
+/** Runs `fn(env)` with the daemon on fake services; `setup(env)` returns the prefs. */
+async function withFakeDaemon(setup, fn) {
+  const d = AequeraTorDaemon;
+  const keys = ["started", "ready", "state", "services", "socksPath", "socksUrl", "model", "startTor", "setSearchDefault", "markerPath", "settingsPath", "proc"];
+  const saved = Object.fromEntries(keys.map(k => [k, d[k]]));
+  const base = PathUtils.join(PathUtils.tempDir, "aequera-tor-fake-daemon");
+  await IOUtils.makeDirectory(base);
+  const env = {
+    base,
+    originals: saved,
+    calls: { startTor: 0, search: 0 },
+    io: { offline: true, manageOfflineStatus: true, newFileURI: f => Services.io.newFileURI(f) },
+    proxy: {
+      registered: [],
+      unregistered: [],
+      registerChannelFilter(f) {
+        this.registered.push(f);
+      },
+      unregisterChannelFilter(f) {
+        this.unregistered.push(f);
+      },
+    },
+    obs: {
+      added: [],
+      removed: [],
+      addObserver(_o, topic) {
+        this.added.push(topic);
+      },
+      removeObserver(_o, topic) {
+        this.removed.push(topic);
+      },
+    },
+  };
+  Object.assign(d, {
+    started: false,
+    ready: null,
+    state: { status: "idle", progress: 0, summary: "", detail: "", warnings: [] },
+    model: AequeraTorModel,
+    proc: null,
+    startTor: async () => void env.calls.startTor++,
+    setSearchDefault: async () => void env.calls.search++,
+    markerPath: () => PathUtils.join(base, "running"),
+    settingsPath: () => PathUtils.join(base, "settings.json"),
+  });
+  try {
+    env.prefs = await setup(env);
+    d.services = { prefs: env.prefs, io: env.io, proxy: env.proxy, obs: env.obs };
+    await fn(env, d);
+  } finally {
+    Object.assign(d, saved);
+    await IOUtils.remove(base, { recursive: true, ignoreAbsent: true });
+  }
+}
+
+add_task(async function test_startup_goes_online_only_after_its_checks() {
+  await withFakeDaemon(
+    env => fakePrefs(torUserPrefs(env.base)),
+    async (env, d) => {
+      const ready = d.ensureStarted();
+      ok(ready, "the startup runs");
+      is(d.ensureStarted(), ready, "once per process");
+      await ready;
+      isnot(d.state.status, "refused", "not refused");
+      is(env.io.offline, false, "online");
+      Assert.deepEqual(env.proxy.registered, [d], "the circuit filter, before going online");
+      is(env.calls.startTor, 1, "tor started once");
+      is(await IOUtils.readUTF8(PathUtils.join(env.base, "running")), String(Services.appinfo.processID), "marker written first");
+      for (const name of AequeraTorModel.requiredNames()) {
+        ok(env.prefs.locked.has(name), `${name} locked`);
+      }
+    },
+  );
+});
+
+add_task(async function test_a_tampered_value_is_overridden_by_the_lock() {
+  await withFakeDaemon(
+    env => fakePrefs(torUserPrefs(env.base).set("network.proxy.type", 0)),
+    async (env, d) => {
+      await d.ensureStarted();
+      isnot(d.state.status, "refused", "the lock puts the wanted value in force");
+      is(env.prefs.getIntPref("network.proxy.type"), 1, "manual proxy, whatever user.js said");
+    },
+  );
+});
+
+add_task(async function test_a_lock_that_fails_refuses_and_stays_offline() {
+  await withFakeDaemon(
+    env => fakePrefs(torUserPrefs(env.base), { failLock: new Set(["network.dns.disabled"]) }),
+    async (env, d) => {
+      await d.ensureStarted();
+      is(d.state.status, "refused", "refused");
+      ok(d.state.detail.includes("network.dns.disabled"), `names the pref: ${d.state.detail}`);
+      is(env.io.offline, true, "offline");
+      is(env.io.manageOfflineStatus, false, "and the network link cannot change that");
+      Assert.deepEqual(env.proxy.registered, [d.refusalFilter], "every channel sent nowhere");
+      ok(env.obs.added.includes("network:offline-status-changed"), "Work Offline watched");
+      is(env.calls.startTor, 0, "no tor");
+    },
+  );
+});
+
+add_task(async function test_refusals_marker_socket_and_not_an_instance() {
+  // The marker cannot be written: refused (the profile could be rewritten
+  // under a session the ordinary instance cannot see).
+  await withFakeDaemon(
+    env => fakePrefs(torUserPrefs(env.base)),
+    async (env, d) => {
+      await IOUtils.writeUTF8(PathUtils.join(env.base, "file"), "");
+      d.markerPath = () => PathUtils.join(env.base, "file", "running");
+      await d.ensureStarted();
+      is(d.state.status, "refused", "no marker: refused");
+      ok(d.state.detail.includes("marker"), d.state.detail);
+      is(env.io.offline, true, "offline");
+    },
+  );
+  // A socket outside a launcher-named directory: refused.
+  await withFakeDaemon(
+    env => fakePrefs(torUserPrefs(env.base).set(AequeraTorModel.SOCKS_PATH_PREF, "/tmp/socks")),
+    async (env, d) => {
+      await d.ensureStarted();
+      is(d.state.status, "refused", "bad socket path: refused");
+      is(env.calls.startTor, 0, "no tor");
+    },
+  );
+  // Not the Tor instance: nothing happens.
+  await withFakeDaemon(
+    () => fakePrefs(new Map()),
+    async (env, d) => {
+      d.ensureStarted();
+      Assert.deepEqual(env.obs.added, [], "no observers");
+      is(env.io.offline, true, "nothing changed");
+      is(d.started, false, "not started");
+    },
+  );
+});
+
+add_task(async function test_quit_cleans_up_only_its_own() {
+  await withFakeDaemon(
+    env => fakePrefs(torUserPrefs(env.base)),
+    async (env, d) => {
+      await d.ensureStarted();
+      const socketDir = AequeraTorModel.socketDir(d.socksPath);
+      await IOUtils.makeDirectory(socketDir);
+      await IOUtils.writeUTF8(PathUtils.join(socketDir, "socks"), "");
+      let killed = false;
+      d.proc = { kill: async () => void (killed = true) };
+      d.observe(null, "quit-application");
+      await TestUtils.waitForCondition(
+        async () => !(await IOUtils.exists(socketDir)) && !(await IOUtils.exists(PathUtils.join(env.base, "running"))),
+        "socket directory and marker removed",
+      );
+      ok(killed, "tor stopped");
+      Assert.deepEqual(env.proxy.unregistered, [d], "the circuit filter unregistered");
+      ok(env.obs.removed.includes("quit-application"), "observer removed");
+    },
+  );
+  // A socket path the launcher would never write: its directory stays.
+  await withFakeDaemon(
+    env => fakePrefs(torUserPrefs(env.base)),
+    async (env, d) => {
+      const notOurs = PathUtils.join(env.base, "not-ours");
+      await IOUtils.makeDirectory(notOurs);
+      await IOUtils.writeUTF8(PathUtils.join(notOurs, "keep"), "x");
+      d.socksPath = PathUtils.join(notOurs, "socks");
+      d.started = true;
+      d.state = { ...d.state, status: "refused" };
+      d.observe(null, "quit-application");
+      await new Promise(r => setTimeout(r, 300));
+      ok(await IOUtils.exists(PathUtils.join(notOurs, "keep")), "never removed");
+      Assert.deepEqual(env.proxy.unregistered, [d.refusalFilter], "a refused instance unregisters its refusal filter");
+      ok(env.obs.removed.includes("network:offline-status-changed"), "and its Work Offline watch");
+    },
+  );
+});
+
+add_task(async function test_restart_only_after_a_failure() {
+  await withFakeDaemon(
+    env => fakePrefs(torUserPrefs(env.base)),
+    async (env, d) => {
+      d.started = true;
+      for (const status of ["starting", "bootstrapping", "connected", "refused"]) {
+        d.state = { ...d.state, status };
+        await d.restart();
+        is(env.calls.startTor, 0, `no second tor while ${status}`);
+      }
+      d.state = { ...d.state, status: "failed" };
+      await d.restart();
+      is(env.calls.startTor, 1, "restarted after a failure");
+    },
+  );
+});
+
+add_task(async function test_security_level_all_or_nothing() {
+  await withFakeDaemon(
+    () => fakePrefs(new Map([[AequeraTorModel.SECURITY_LEVEL_PREF, "standard"]]), { failSet: new Set(["media.autoplay.default"]) }),
+    async (env, d) => {
+      await Assert.rejects(d.setSecurityLevel("safer"), /cannot set media.autoplay.default/, "a pref that cannot be set rejects");
+      ok(!env.prefs.user.has("javascript.options.ion"), "the prefs set before it are put back");
+      is(env.prefs.user.get(AequeraTorModel.SECURITY_LEVEL_PREF), "standard", "the level is unchanged");
+      ok(!(await IOUtils.exists(PathUtils.join(env.base, "settings.json"))), "nothing remembered");
+    },
+  );
+  // Applied but not remembered: a warning.
+  await withFakeDaemon(
+    () => fakePrefs(new Map()),
+    async (env, d) => {
+      await IOUtils.writeUTF8(PathUtils.join(env.base, "file"), "");
+      d.settingsPath = () => PathUtils.join(env.base, "file", "settings.json");
+      await d.setSecurityLevel("safer");
+      is(env.prefs.user.get("javascript.options.ion"), false, "applied");
+      ok(d.state.warnings.some(w => w.includes("could not be remembered")), "the user is told");
+    },
+  );
+});
+
+add_task(async function test_search_settings_problems_are_shown() {
+  await withFakeDaemon(
+    () =>
+      fakePrefs(
+        new Map([
+          [AequeraTorModel.SEARCH_ENGINE_PREF, "Broken"],
+          [AequeraTorModel.SEARCH_URL_PREF, "https://example.com/no-terms"],
+        ]),
+      ),
+    async (env, d) => {
+      await env.originals.setSearchDefault.call(d);
+      ok(d.state.warnings.some(w => w.includes("Broken") && w.includes("no valid search URL")), d.state.warnings.join(" | "));
+    },
+  );
+});
+
+add_task(async function test_tor_executable_must_be_absolute() {
+  await withDaemon("relative/tor", async () => {
+    await Assert.rejects(AequeraTorDaemon.findTor(), /tor not found at relative\/tor/);
+  });
+});
+
+// The launcher's edge cases.
+
+add_task(async function test_concurrent_launches_start_one_instance() {
+  const calls = [];
+  let prepared = 0;
+  const prepare = AequeraTorLauncher.prepareProfile;
+  AequeraTorLauncher.prepareProfile = async function (...args) {
+    prepared++;
+    return prepare.apply(this, args);
+  };
+  AequeraTorLauncher.spawn = async options => {
+    calls.push(options);
+    if (calls.length == 1) {
+      // The new instance comes up a little later.
+      setTimeout(() => IOUtils.writeUTF8(MARKER, "4242"), 200);
+      return fakeProcess(null);
+    }
+    return fakeProcess(0);
+  };
+  try {
+    await Promise.all([AequeraTorLauncher.openWindow(), AequeraTorLauncher.openWindow("https://example.com/")]);
+    is(calls.length, 2, "two processes");
+    is(prepared, 1, "the profile written once, never under the starting instance");
+    is(calls[1].arguments.at(-1), "https://example.com/", "the second is handed to the first");
+    await removeSocketDirOf(PathUtils.join(TOR_BASE, "profile"));
+  } finally {
+    AequeraTorLauncher.prepareProfile = prepare;
+    await resetLauncher();
+  }
+});
+
+add_task(async function test_unknown_liveness_never_rewrites_the_profile() {
+  const profileDir = PathUtils.join(TOR_BASE, "profile");
+  await IOUtils.makeDirectory(profileDir);
+  await IOUtils.writeUTF8(PathUtils.join(profileDir, "in-use"), "x");
+  await IOUtils.writeUTF8(MARKER, "1234");
+  AequeraTorLauncher.processAlive = async () => {
+    throw new Error("cannot tell");
+  };
+  const calls = [];
+  AequeraTorLauncher.spawn = async options => {
+    calls.push(options);
+    return fakeProcess(0);
+  };
+  try {
+    await AequeraTorLauncher.openWindow();
+    ok(await IOUtils.exists(PathUtils.join(profileDir, "in-use")), "an unknown liveness keeps the profile");
+    is(calls.length, 1, "a handoff");
+    // A marker that is not a pid: no instance, a fresh profile.
+    await IOUtils.writeUTF8(MARKER, "abc");
+    AequeraTorLauncher.processAlive = null;
+    AequeraTorLauncher.spawn = instanceSpawn([]);
+    await AequeraTorLauncher.openWindow();
+    ok(!(await IOUtils.exists(PathUtils.join(profileDir, "in-use"))), "a marker that is not a pid: fresh profile");
+    await removeSocketDirOf(profileDir);
+  } finally {
+    await resetLauncher();
+  }
+});
+
+add_task(async function test_start_and_handoff_timeouts_are_errors() {
+  const { startWaitMs, handoffWaitMs } = AequeraTorLauncher;
+  AequeraTorLauncher.startWaitMs = 300;
+  AequeraTorLauncher.handoffWaitMs = 300;
+  try {
+    // Runs, but never comes up as an instance (no marker).
+    AequeraTorLauncher.spawn = async () => fakeProcess(null);
+    await Assert.rejects(AequeraTorLauncher.openWindow(), /did not start within/, "a start that never comes up is an error");
+    ok(AequeraTorLauncher.child, "the process is still this session's child");
+    await removeSocketDirOf(PathUtils.join(TOR_BASE, "profile"));
+    await resetLauncher();
+
+    // A handoff that never finishes.
+    await IOUtils.writeUTF8(MARKER, "1234");
+    AequeraTorLauncher.processAlive = async () => true;
+    AequeraTorLauncher.spawn = async () => fakeProcess(null);
+    await Assert.rejects(AequeraTorLauncher.openWindow(), /did not answer/, "a handoff that never finishes is an error");
+    ok(AequeraTorLauncher.child, "that process is tracked");
+  } finally {
+    Object.assign(AequeraTorLauncher, { startWaitMs, handoffWaitMs });
+    await resetLauncher();
+  }
+});
+
+add_task(async function test_remembered_level_fails_strict() {
+  AequeraTorLauncher.model ??= AequeraTorModel;
+  const base = PathUtils.join(PathUtils.tempDir, "aequera-tor-test-remembered");
+  await IOUtils.makeDirectory(base);
+  const settings = PathUtils.join(base, "settings.json");
+  try {
+    is(await AequeraTorLauncher.rememberedSecurityLevel({ base }), "standard", "nothing remembered: Standard");
+    await IOUtils.writeUTF8(settings, "{");
+    is(await AequeraTorLauncher.rememberedSecurityLevel({ base }), "safest", "unreadable: Safest, never a silent Standard");
+    await IOUtils.writeJSON(settings, { securityLevel: "bogus" });
+    is(await AequeraTorLauncher.rememberedSecurityLevel({ base }), "safest", "unknown: Safest");
+    await IOUtils.writeJSON(settings, { securityLevel: "safer" });
+    is(await AequeraTorLauncher.rememberedSecurityLevel({ base }), "safer", "a known level as remembered");
+  } finally {
+    await IOUtils.remove(base, { recursive: true });
+  }
+});
+
+add_task(async function test_a_failed_launch_is_shown() {
+  const openWindow = AequeraTorLauncher.openWindow;
+  AequeraTorLauncher.openWindow = () => Promise.reject(new Error("boom"));
+  try {
+    await AequeraTor.open();
+    await TestUtils.waitForCondition(() => gNotificationBox.getNotificationWithValue("aequera-tor-status"), "a notification");
+    const note = gNotificationBox.getNotificationWithValue("aequera-tor-status");
+    ok(note.messageText.textContent.includes("Could not open a Tor window: boom"), "says why");
+  } finally {
+    AequeraTorLauncher.openWindow = openWindow;
+    AequeraTor.clearNotification();
   }
 });
 

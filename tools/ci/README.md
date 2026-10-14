@@ -12,7 +12,10 @@
 4. `node --test` — the pure JS models (tab-rail drag, workspaces, command
    surface, Ad Veil, palette): every tracked `aequera/**/*.test.{js,mjs}`,
    node's built-in runner, no npm packages. No test files found is a
-   failure, not a pass. Node 24 (`actions/setup-node`).
+   failure, not a pass. Node 24 (`actions/setup-node`). Then
+   `tests/security/tor/scripts.test.sh`: the tor bundle scripts' pin and
+   signature checks, offline (smoke.sh: Linux and macOS, where Tor windows
+   exist).
 5. Built-binary surface checks, all offline-safe:
    - `aequera doctor` (no `fail` entries)
    - `aequera upstream status` (lock readable)

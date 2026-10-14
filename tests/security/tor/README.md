@@ -62,7 +62,13 @@ cache stays in `<main profile>/tor/data`.
 19/19, now with fingerprinting resistance, HTTPS-only, Safest, and an onion
 search. The handoff passed before and after the code review fixes. Crash
 recovery, "checks never run" and refusal were checked by hand
-(`docs/design/TOR.md`, Verification).
+(`docs/design/TOR.md`, Verification). 2026-10-15, after the PR review
+fixes: the real "New Tor window" flow with the bundled tor passed
+(`IsTor: true`); the live check itself was not re-run.
+
+Quit the Tor instance through Firefox (close its windows, or Quit), not
+SIGTERM: on GTK a SIGTERM leaves without `quit-application`, so the socket
+directory and marker stay until the next "New Tor window" removes them.
 
 Page-side values come from the page's own script (it writes them to the
 title). Marionette's scripts run in a realm of their own, which

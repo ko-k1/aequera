@@ -35,7 +35,9 @@ cd "$WORK"
 curl -fsSL --proto '=https' --tlsv1.2 -O "${URL}sha256sums-signed-build.txt" -O "${URL}sha256sums-signed-build.txt.asc"
 gpg --quiet --auto-key-locate nodefault,wkd --locate-keys torbrowser@torproject.org >/dev/null
 # VALIDSIG's last field is the primary key fingerprint of the signing key.
-PRIMARY="$(gpg --status-fd 1 --verify sha256sums-signed-build.txt.asc sha256sums-signed-build.txt 2>/dev/null |
+# gpg exits non-zero on a bad or unknown signature; `|| true` lets the check
+# below report it instead of the script stopping without a word.
+PRIMARY="$({ gpg --status-fd 1 --verify sha256sums-signed-build.txt.asc sha256sums-signed-build.txt 2>/dev/null || true; } |
   awk '$2 == "VALIDSIG" { print $NF }')"
 if [ "$PRIMARY" != "$SIGNING_KEY" ]; then
   echo "update-pin: no valid signature by $SIGNING_KEY (got '${PRIMARY:-none}')" >&2
@@ -47,7 +49,7 @@ echo "update-pin: sha256sums-signed-build.txt signed by $SIGNING_KEY" >&2
 : > hashes
 for p in $PLATFORMS; do
   h="$(awk -v f="tor-expert-bundle-$p-$VERSION.tar.gz" '$2 == f { print $1 }' sha256sums-signed-build.txt)"
-  [ "${#h}" -eq 64 ] || { echo "update-pin: no $p bundle in $VERSION" >&2; exit 1; }
+  printf '%s\n' "$h" | grep -Eq '^[0-9a-f]{64}$' || { echo "update-pin: no $p bundle in $VERSION" >&2; exit 1; }
   echo "$p $h" >> hashes
 done
 sha_for() { awk -v p="$1" '$1 == p { print $2 }' "$WORK/hashes"; }

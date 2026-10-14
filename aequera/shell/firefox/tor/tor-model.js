@@ -24,6 +24,10 @@ var AequeraTorModel = (() => {
   const DATA_DIR_PREF = "aequera.tor.dataDir";
   /** The tor executable; empty: `tor` on PATH (ordinary profile, copied). */
   const EXECUTABLE_PREF = "aequera.tor.executable";
+  /** The session's search engine: its name, search and suggestion URLs. */
+  const SEARCH_ENGINE_PREF = "aequera.tor.searchEngine";
+  const SEARCH_URL_PREF = "aequera.tor.searchURL";
+  const SEARCH_SUGGEST_URL_PREF = "aequera.tor.searchSuggestURL";
 
   /** Longest socket path accepted, in UTF-8 bytes. sockaddr_un.sun_path is
    *  104 bytes on macOS and 108 on Linux, with the terminating NUL; Firefox
@@ -103,9 +107,9 @@ var AequeraTorModel = (() => {
     // the engine and makes it the default for the session
     // (aequera-tor-daemon.sys.mjs); an empty name keeps Firefox's default.
     // The user can still pick another engine.
-    { name: "aequera.tor.searchEngine", value: "DuckDuckGo (Onion)", why: "searches from Tor windows go to DuckDuckGo's onion service" },
-    { name: "aequera.tor.searchURL", value: `https://${DDG_ONION}/?q={searchTerms}`, why: "its search URL" },
-    { name: "aequera.tor.searchSuggestURL", value: `https://${DDG_ONION}/ac/?q={searchTerms}&type=list`, why: "its suggestions (asked only where suggestions are on)" },
+    { name: SEARCH_ENGINE_PREF, value: "DuckDuckGo (Onion)", why: "searches from Tor windows go to DuckDuckGo's onion service" },
+    { name: SEARCH_URL_PREF, value: `https://${DDG_ONION}/?q={searchTerms}`, why: "its search URL" },
+    { name: SEARCH_SUGGEST_URL_PREF, value: `https://${DDG_ONION}/ac/?q={searchTerms}&type=list`, why: "its suggestions (asked only where suggestions are on)" },
 
     // A fresh profile on every start: no first-run pages, no default-browser
     // prompt, nothing restored.
@@ -233,19 +237,30 @@ var AequeraTorModel = (() => {
     "gfx.downloadable_fonts.enabled": [true, true, false],
   };
 
-  /** A known level, else "standard". */
-  function securityLevel(level) {
-    return SECURITY_LEVELS.includes(level) ? level : "standard";
+  /**
+   * A known level, else `fallback`. Callers choose the fallback: a level
+   * read back from the instance's own pref is Standard when unset; a level
+   * remembered in a file that cannot be read is the strictest (an unreadable
+   * Safest must not become Standard).
+   *
+   * @param {*} level
+   * @param {string|null} [fallback]
+   */
+  function securityLevel(level, fallback = "standard") {
+    return SECURITY_LEVELS.includes(level) ? level : fallback;
   }
 
   /**
    * The prefs of a security level.
    *
-   * @param {string} level  "standard" | "safer" | "safest" (else standard)
+   * @param {string} level  "standard" | "safer" | "safest"
    * @returns {[string, boolean|number][]}
    */
   function securityLevelPrefs(level) {
-    const i = SECURITY_LEVELS.indexOf(securityLevel(level));
+    const i = SECURITY_LEVELS.indexOf(level);
+    if (i < 0) {
+      throw new Error(`unknown security level: ${level}`);
+    }
     return Object.entries(SECURITY_LEVEL_PREFS).map(([name, values]) => [name, values[i]]);
   }
 
@@ -321,34 +336,41 @@ var AequeraTorModel = (() => {
       // The security level from the start (the JavaScript engine reads its
       // prefs when a content process starts).
       [SECURITY_LEVEL_PREF, securityLevel(level)],
-      ...securityLevelPrefs(level),
+      ...securityLevelPrefs(securityLevel(level)),
     ];
   }
 
-  /** The names `checkRequired` and the lock cover, beyond PREFS' required. */
+  /** The prefs the instance locks and checks: the instance marker, the
+   *  socket (both names), and PREFS marked required. */
   function requiredNames() {
-    return [INSTANCE_PREF, "network.proxy.socks", ...PREFS.filter(p => p.required).map(p => p.name)];
+    return [
+      INSTANCE_PREF,
+      SOCKS_PATH_PREF,
+      "network.proxy.socks",
+      "network.proxy.socks_port",
+      ...PREFS.filter(p => p.required).map(p => p.name),
+    ];
   }
 
   /**
-   * The prefs that are not as the instance needs them.
+   * The required prefs that are not as the instance needs them: a value
+   * other than the wanted one, or not locked (a lock that failed leaves the
+   * pref open to about:config and add-ons).
    *
-   * @param {(name: string) => *} read  the pref's value, undefined if unset
-   * @param {string} socksUrl           the socket URL the instance must use
+   * @param {(name: string) => *} read      the pref's value, undefined if unset
+   * @param {Map<string, *>} wanted         instancePrefs as a Map
+   * @param {(name: string) => boolean} [isLocked]
    * @returns {string[]}  names of wrong prefs (empty: safe to browse)
    */
-  function checkRequired(read, socksUrl) {
+  function checkRequired(read, wanted, isLocked = () => true) {
     const wrong = [];
-    if (read(INSTANCE_PREF) !== true) {
-      wrong.push(INSTANCE_PREF);
-    }
-    if (read("network.proxy.socks") !== socksUrl || !String(socksUrl).startsWith("file:///")) {
-      wrong.push("network.proxy.socks");
-    }
-    for (const p of PREFS) {
-      if (p.required && read(p.name) !== p.value) {
-        wrong.push(p.name);
+    for (const name of requiredNames()) {
+      if (!wanted.has(name) || read(name) !== wanted.get(name) || !isLocked(name)) {
+        wrong.push(name);
       }
+    }
+    if (!String(wanted.get("network.proxy.socks")).startsWith("file:///") && !wrong.includes("network.proxy.socks")) {
+      wrong.push("network.proxy.socks");
     }
     return wrong;
   }
@@ -373,6 +395,30 @@ var AequeraTorModel = (() => {
       lines.push(`user_pref(${JSON.stringify(name)}, ${JSON.stringify(value)});`);
     }
     return lines.join("\n") + "\n";
+  }
+
+  /**
+   * The prefs of user.js text written by userJs. Lenient: a line that is not
+   * such a call (or does not parse) is skipped, because the launcher reads
+   * what a crashed session left behind.
+   *
+   * @param {string} text
+   * @returns {Map<string, boolean|number|string>}
+   */
+  function parseUserJs(text) {
+    const prefs = new Map();
+    for (const line of String(text).split("\n")) {
+      const m = /^user_pref\(("(?:[^"\\]|\\.)*"), (.*)\);$/.exec(line);
+      if (!m) {
+        continue;
+      }
+      try {
+        prefs.set(JSON.parse(m[1]), JSON.parse(m[2]));
+      } catch {
+        // Not JSON literals: not a line userJs wrote.
+      }
+    }
+    return prefs;
   }
 
   /** A tor configuration string value, quoted with C escapes. */
@@ -475,25 +521,29 @@ var AequeraTorModel = (() => {
   }
 
   /**
-   * The browser's command line for a Tor window. A new instance (`start`)
-   * starts offline (Firefox's -offline: before any window, nothing can load)
-   * and goes online only once its checks pass (aequera-tor-daemon.sys.mjs),
-   * so an instance whose checks never run stays offline. A running instance
-   * gets the command line through remoting, where -offline means nothing.
+   * The browser's command line for a Tor window. Always -offline: a process
+   * that becomes the instance starts offline (before any window, nothing can
+   * load) and goes online only once its checks pass
+   * (aequera-tor-daemon.sys.mjs), so an instance whose checks never run, or a
+   * launch that wrongly took the instance for running, stays offline. A
+   * remoting client consumes the flag at startup (nsAppRunner CheckArg) and
+   * never passes it on.
    *
-   * @param {{ appIni?: string|null, profileDir: string, url?: string|null, start?: boolean }} options
+   * @param {{ appIni?: string|null, profileDir: string, url?: string|null }} options
    * @returns {string[]}
    */
-  function launchArgs({ appIni = null, profileDir, url = null, start = false }) {
+  function launchArgs({ appIni = null, profileDir, url = null }) {
+    if (!isAbsolutePosix(profileDir)) {
+      throw new Error("the Tor profile must be an absolute path");
+    }
+    if (url !== null && !isTorOpenableUrl(url)) {
+      throw new Error("only http(s) URLs open in a Tor window");
+    }
     const args = [];
     if (appIni) {
       args.push("-app", appIni);
     }
-    args.push("-profile", profileDir);
-    if (start) {
-      args.push("-offline");
-    }
-    args.push("-private-window");
+    args.push("-profile", profileDir, "-offline", "-private-window");
     if (url) {
       args.push(url);
     }
@@ -563,10 +613,15 @@ var AequeraTorModel = (() => {
     launchArgs,
     isTorOpenableUrl,
     searchEngine,
+    SEARCH_ENGINE_PREF,
+    SEARCH_URL_PREF,
+    SEARCH_SUGGEST_URL_PREF,
     SECURITY_LEVELS,
     SECURITY_LEVEL_PREF,
+    SECURITY_LEVEL_PREFS,
     securityLevel,
     securityLevelPrefs,
+    parseUserJs,
   };
 })();
 

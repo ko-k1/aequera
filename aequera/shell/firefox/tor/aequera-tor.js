@@ -29,6 +29,7 @@ var AequeraTor = (() => {
   );
   const KEY_ID = "aequera-key-tor-window";
   const NOTIFICATION = "aequera-tor-status";
+  const WARNING_NOTIFICATION = "aequera-tor-warning";
   // Loads before tor listened (proxy errors), or before the instance went
   // online (it starts offline: netOffline).
   const PROXY_ERRORS = ["proxyConnectFailure", "proxyResolveFailure", "netOffline"];
@@ -170,6 +171,8 @@ var AequeraTor = (() => {
       progress.max = 100;
       const detail = document.createElement("p");
       detail.className = "aequera-tor-detail";
+      const warnings = document.createElement("p");
+      warnings.className = "aequera-tor-warnings";
       const about = document.createElement("p");
       about.className = "aequera-tor-about";
       about.textContent =
@@ -187,7 +190,7 @@ var AequeraTor = (() => {
       restart.textContent = "Restart Tor";
       restart.addEventListener("click", () => AequeraTorDaemon.restart());
       actions.append(circuit, restart);
-      body.append(title, status, progress, detail, actions, this.securityLevelGroup(), about);
+      body.append(title, status, progress, detail, warnings, actions, this.securityLevelGroup(), about);
       panel.append(body);
       document.getElementById("mainPopupSet").append(panel);
       this.panel = panel;
@@ -212,9 +215,15 @@ var AequeraTor = (() => {
         input.name = "aequera-tor-security-level";
         input.value = level;
         input.addEventListener("change", () => {
-          if (input.checked) {
-            AequeraTorDaemon.setSecurityLevel(level);
+          if (!input.checked) {
+            return;
           }
+          AequeraTorDaemon.setSecurityLevel(level).catch(error => {
+            console.error("aequera-tor: cannot switch the security level", error);
+            this.notify(`The security level could not be changed: ${error.message}`, "critical");
+            // The radios show the level that is in force.
+            this.render(AequeraTorDaemon.state);
+          });
         });
         const text = document.createElement("span");
         const strong = document.createElement("strong");
@@ -275,6 +284,14 @@ var AequeraTor = (() => {
         for (const input of this.panel.querySelectorAll(".aequera-tor-security input")) {
           input.checked = input.value == level;
         }
+        this.panel.querySelector(".aequera-tor-warnings").textContent = (state.warnings ?? []).join("\n");
+      }
+
+      // Each new warning (search engine, remembered security level) once.
+      const warnings = state.warnings ?? [];
+      if (warnings.length > this.warningsShown) {
+        this.warningsShown = warnings.length;
+        this.showWarning(warnings.at(-1));
       }
 
       if (state.status == "failed") {
@@ -323,6 +340,20 @@ var AequeraTor = (() => {
     clearNotification() {
       this.notified = null;
       gNotificationBox.getNotificationWithValue(NOTIFICATION)?.close();
+    },
+
+    /** Warnings shown so far (render shows each new one once). */
+    warningsShown: 0,
+
+    /** A warning, in its own notification: status changes do not clear it. */
+    async showWarning(label) {
+      const box = gNotificationBox;
+      box.getNotificationWithValue(WARNING_NOTIFICATION)?.close();
+      try {
+        await box.appendNotification(WARNING_NOTIFICATION, { label, priority: box.PRIORITY_WARNING_MEDIUM });
+      } catch (error) {
+        console.error("aequera-tor: warning notification failed", error);
+      }
     },
 
     init() {

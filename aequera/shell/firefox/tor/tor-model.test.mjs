@@ -26,7 +26,9 @@ const {
   searchEngine,
   SECURITY_LEVELS,
   SECURITY_LEVEL_PREF,
+  SECURITY_LEVEL_PREFS,
   securityLevel,
+  parseUserJs,
   securityLevelPrefs,
 } = model;
 
@@ -107,26 +109,55 @@ test("instance prefs carry the socket and every listed pref", () => {
 
 test("checkRequired accepts the written prefs and names every wrong one", () => {
   const prefs = new Map(instancePrefs({ socksPath: SOCKET, socksUrl: URL_ }));
-  assert.deepEqual(checkRequired(name => prefs.get(name), URL_), []);
+  assert.deepEqual(checkRequired(name => prefs.get(name), prefs), []);
 
   const tampered = new Map(prefs);
   tampered.set("network.proxy.type", 0);
   tampered.delete("network.dns.disabled");
   tampered.set("network.proxy.socks", "127.0.0.1");
   assert.deepEqual(
-    checkRequired(name => tampered.get(name), URL_).sort(),
+    checkRequired(name => tampered.get(name), prefs).sort(),
     ["network.dns.disabled", "network.proxy.socks", "network.proxy.type"].sort(),
   );
 
   // Optional prefs may differ.
   const optional = new Map(prefs);
   optional.set("geo.enabled", true);
-  assert.deepEqual(checkRequired(name => optional.get(name), URL_), []);
+  assert.deepEqual(checkRequired(name => optional.get(name), prefs), []);
 
   // Not the instance at all: nothing passes.
-  assert.ok(checkRequired(() => undefined, URL_).includes(INSTANCE_PREF));
-  // A non-file socket URL never passes, even if prefs match it.
-  assert.ok(checkRequired(name => (name == "network.proxy.socks" ? "x" : prefs.get(name)), "x").includes("network.proxy.socks"));
+  assert.ok(checkRequired(() => undefined, prefs).includes(INSTANCE_PREF));
+  // A non-file socket URL never passes, even if the pref matches it.
+  const notFile = new Map(prefs).set("network.proxy.socks", "x");
+  assert.ok(checkRequired(name => notFile.get(name), notFile).includes("network.proxy.socks"));
+});
+
+test("checkRequired: a required pref that is not locked is not in force", () => {
+  const prefs = new Map(instancePrefs({ socksPath: SOCKET, socksUrl: URL_ }));
+  const unlocked = new Set(["network.proxy.failover_direct", "network.dns.disabled"]);
+  assert.deepEqual(
+    checkRequired(name => prefs.get(name), prefs, name => !unlocked.has(name)).sort(),
+    [...unlocked].sort(),
+  );
+  // The socket's own prefs are locked and checked too.
+  for (const name of [SOCKS_PATH_PREF, "network.proxy.socks", "network.proxy.socks_port"]) {
+    assert.ok(requiredNames().includes(name), name);
+  }
+  // A required name missing from the wanted prefs is never "in force".
+  const missing = new Map(prefs);
+  missing.delete("network.proxy.type");
+  assert.ok(checkRequired(name => prefs.get(name), missing).includes("network.proxy.type"));
+});
+
+test("PREFS and the security level table: each pref once, each row typed", () => {
+  const names = [...PREFS.map(p => p.name), ...Object.keys(SECURITY_LEVEL_PREFS)];
+  assert.equal(new Set(names).size, names.length, "no pref in both, none twice");
+  for (const [name, values] of Object.entries(SECURITY_LEVEL_PREFS)) {
+    assert.equal(values.length, SECURITY_LEVELS.length, `${name}: a value per level`);
+    assert.ok(values.every(v => typeof v == typeof values[0]), `${name}: one type`);
+    assert.ok(["boolean", "number"].includes(typeof values[0]), `${name}: boolean or integer`);
+  }
+  assert.equal(new Set(requiredNames()).size, requiredNames().length, "required names once");
 });
 
 test("user.js lines are valid JS literals", () => {
@@ -231,21 +262,21 @@ test("isolation key: a top-level document by its own site, the rest by the page'
   assert.equal(isolationKey({ partitionSite: "  " }), UNKNOWN_SITE);
 });
 
-test("launch arguments: identity ini, profile, private window, optional URL", () => {
-  assert.deepEqual(launchArgs({ profileDir: "/p" }), ["-profile", "/p", "-private-window"]);
+test("launch arguments: identity ini, profile, always offline, private window, optional URL", () => {
+  assert.deepEqual(launchArgs({ profileDir: "/p" }), ["-profile", "/p", "-offline", "-private-window"]);
   assert.deepEqual(launchArgs({ appIni: "/b/aequera-application.ini", profileDir: "/p", url: "https://e.org/" }), [
     "-app",
     "/b/aequera-application.ini",
     "-profile",
     "/p",
+    "-offline",
     "-private-window",
     "https://e.org/",
   ]);
-  assert.deepEqual(
-    launchArgs({ profileDir: "/p", start: true }),
-    ["-profile", "/p", "-offline", "-private-window"],
-    "a new instance starts offline (fail closed until its checks pass)"
-  );
+  assert.throws(() => launchArgs({ profileDir: "relative" }), /absolute/);
+  for (const url of ["-safe-mode", "file:///etc/passwd", "about:config"]) {
+    assert.throws(() => launchArgs({ profileDir: "/p", url }), /only http/, url);
+  }
 });
 
 test("the session's search engine: DuckDuckGo's onion service by default", () => {
@@ -315,7 +346,7 @@ test("security levels: Tor Browser's table, plus what NoScript would block", () 
   assert.equal(safest["svg.disabled"], true);
   assert.equal(safest["gfx.downloadable_fonts.enabled"], false);
   // Unknown levels are Standard; every level sets the same prefs.
-  assert.deepEqual(at("bogus"), standard);
+  assert.throws(() => securityLevelPrefs("bogus"), /unknown security level/);
   assert.deepEqual(Object.keys(safer), Object.keys(standard));
 });
 
@@ -327,6 +358,29 @@ test("the instance starts at its security level", () => {
   assert.equal(standard.get(SECURITY_LEVEL_PREF), "standard");
   assert.equal(standard.get("javascript.enabled"), true);
   assert.equal(securityLevel("nonsense"), "standard");
+});
+
+test("security level fallback is the caller's choice", () => {
+  assert.equal(securityLevel("safer"), "safer");
+  assert.equal(securityLevel("nonsense"), "standard", "unset readback: Standard");
+  assert.equal(securityLevel("nonsense", null), null, "unknown: the caller decides");
+  assert.equal(securityLevel(undefined, "safest"), "safest");
+});
+
+test("parseUserJs reads userJs back, and skips what it did not write", () => {
+  const prefs = instancePrefs({ socksPath: SOCKET, socksUrl: URL_ });
+  assert.deepEqual([...parseUserJs(userJs(prefs))], prefs);
+  const damaged = [
+    'user_pref("aequera.tor.socksPath", "/run/user/1000/aequera-tor-0123abcd/socks");',
+    "garbage",
+    'user_pref("x", undefined);',
+    'user_pref("y", "unterminated);',
+    "user_pref(\"z\", 1);",
+  ].join("\n");
+  const read = parseUserJs(damaged);
+  assert.equal(read.get(SOCKS_PATH_PREF), "/run/user/1000/aequera-tor-0123abcd/socks");
+  assert.equal(read.get("z"), 1);
+  assert.ok(!read.has("x") && !read.has("y"), "unparsable lines skipped, not thrown");
 });
 
 test("only web URLs are handed to a Tor window", () => {

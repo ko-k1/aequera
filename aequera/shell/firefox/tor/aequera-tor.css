@@ -94,8 +94,15 @@
     margin: 0;
   }
 
-  .aequera-tor-detail:empty {
+  .aequera-tor-detail:empty,
+  .aequera-tor-warnings:empty {
     display: none;
+  }
+
+  .aequera-tor-warnings {
+    white-space: pre-line;
+    color: var(--icon-color-warning);
+    font-size: var(--font-size-small);
   }
 
   .aequera-tor-detail,

@@ -31,7 +31,8 @@ Tor.
   and goes online only after it has locked and checked its prefs and
   registered its circuit filter. If that code never runs (a script that
   fails to load after an upstream change), the instance stays offline. If
-  a check fails, it stays offline for good ("refused"): going online again
+  a check fails (a pref's value or its lock), or the instance cannot mark
+  itself running, it stays offline for good ("refused"): going online again
   is undone, and every channel is sent to a socket that does not exist.
 - **Per-site circuits.** A channel filter gives each channel SOCKS
   credentials named after its top-level site, and tor's default

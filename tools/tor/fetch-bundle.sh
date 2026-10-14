@@ -24,22 +24,26 @@ case "$(uname -s)-$(uname -m)" in
 esac
 
 lock_value() { awk -v key="$1:" '$1 == key { v = $2; gsub(/"/, "", v); print v; exit }' "$LOCK"; }
+# Every value is checked against an exact pattern before use (it also goes
+# into the marker file below).
+must_match() {
+  printf '%s\n' "$2" | grep -Eq "$3" || { echo "fetch-bundle: bad $1 in $LOCK: '$2'" >&2; exit 1; }
+}
+must_match schema_version "$(lock_value schema_version)" '^1$'
 VERSION="$(lock_value tor_browser_version)"
 TOR_VERSION="$(lock_value tor_version)"
 RELEASE_URL="$(lock_value release_url)"
 SHA256="$(lock_value "$PLATFORM")"
-case "$SHA256" in
-  [0-9a-f]*) [ "${#SHA256}" -eq 64 ] || { echo "fetch-bundle: bad pin for $PLATFORM in $LOCK" >&2; exit 1; } ;;
-  *) echo "fetch-bundle: no pin for $PLATFORM in $LOCK" >&2; exit 1 ;;
-esac
-case "$RELEASE_URL" in
-  https://dist.torproject.org/torbrowser/*/) ;;
-  *) echo "fetch-bundle: release_url must be a dist.torproject.org release directory" >&2; exit 1 ;;
-esac
+must_match tor_browser_version "$VERSION" '^[0-9]+(\.[0-9]+)+$'
+must_match tor_version "$TOR_VERSION" '^[0-9]+(\.[0-9]+)+$'
+must_match "pin for $PLATFORM" "$SHA256" '^[0-9a-f]{64}$'
+must_match release_url "$RELEASE_URL" "^https://dist\.torproject\.org/torbrowser/${VERSION//./\\.}/\$"
 
+# The objdir the launchers start (tools/build/aequera-run.sh): the compiled
+# build when its binary exists, else the artifact build.
 if [ $# -gt 0 ]; then
   OBJDIR="$1"
-elif [ -d "$ROOT/obj/firefox/compiled/dist/bin" ]; then
+elif [ -x "$ROOT/obj/firefox/compiled/dist/bin/aequera" ]; then
   OBJDIR="$ROOT/obj/firefox/compiled"
 else
   OBJDIR="$ROOT/obj/firefox/artifact"

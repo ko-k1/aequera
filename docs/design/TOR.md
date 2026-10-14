@@ -30,8 +30,8 @@ user, and Tor for ordinary windows.
 | Link context menu | "Open Link in Tor Window" for http(s) links |
 | Address bar commands | "New Tor window" (also "private window with tor", "onion") |
 | Tor window toolbar | The Tor button at its start: "Tor 45%" while connecting, "Tor" once connected, "Tor offline" on failure |
-| Tor button panel | Status, bootstrap progress, tor's last warning, "New circuit for this site", "Restart Tor" after a failure, and what a Tor window does and does not protect |
-| Notification | Only when tor stopped or the window refused to browse |
+| Tor button panel | Status, bootstrap progress, tor's last warning, what works differently than set (the search engine could not be set up, a security level not remembered), "New circuit for this site", "Restart Tor" after a failure, and what a Tor window does and does not protect |
+| Notification | When tor stopped or the window refused to browse; each "works differently" warning once, in a notification of its own |
 | Search | DuckDuckGo's onion service for the session, `duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion`, search and suggestions (Tor Browser offers the same; the search never leaves the Tor network, and Google answers Tor exits with captchas) |
 
 A page opened before tor finished connecting shows Firefox's proxy error.
@@ -60,17 +60,25 @@ ordinary instance (profile P)                Tor instance (profile P/tor/profile
 - **Two instances.** The ordinary instance writes the Tor profile and
   starts the same binary on it (`-app` identity ini, `-profile`, `-offline`,
   `-private-window`). The Tor instance writes its pid to the marker
-  `P/tor/running` as soon as it starts. While the process the marker names
-  is alive and runs that profile (`/proc` on Linux, `ps` on macOS), the
-  command line (without `-offline`) goes to it through Firefox's
-  per-profile remoting. A crashed instance's marker is stale and is
-  ignored. The child environment drops the variables that pick a profile
+  `P/tor/running` before anything else; if it cannot, it refuses to browse
+  (the ordinary instance could rewrite its profile under it). While the
+  process the marker names is alive and runs that profile (`/proc` on
+  Linux, `ps` on macOS), the command line goes to it through Firefox's
+  per-profile remoting. It always carries `-offline`: the remoting client
+  consumes it, and a client that becomes an instance itself (the marker
+  was wrong) stays offline until its own checks pass. A crashed instance's
+  marker is stale and is ignored; a marker that cannot be read, or a
+  liveness that cannot be told, counts as running (the profile is never
+  rewritten on a guess). The child environment drops the variables that pick a profile
   ahead of `-profile` or turn remoting off (`MOZ_NEW_INSTANCE`), and those
   that turn on automation (Marionette, Remote Agent).
 - **Errors are shown.** A new instance that exits before it starts, or a
   handoff the running instance did not take, is reported in the window
   that asked ("Could not open a Tor window"). The launcher never waits on
-  a child longer than its start (20 s) or a handoff (15 s).
+  a child longer than its start (20 s) or a handoff (15 s); both timeouts
+  are errors too. A child still running then is kept as this session's
+  Tor instance (offline: it never passed its checks), so the next "New Tor
+  window" goes to it rather than rewriting its profile.
 - **Fresh profile.** The Tor profile is removed and rewritten whenever no
   Tor instance runs, together with what a crashed session left: its marker
   and its socket directory. tor's data directory beside it is kept: guards
@@ -89,7 +97,8 @@ Every pref of the Tor instance, with its reason, is in `tor/tor-model.js`
 (`PREFS`). They are written to the profile's `user.js`, so they apply before
 any network activity. The **required** ones keep traffic on Tor. At the
 first window the instance sets each one on the default branch, locks it,
-and checks it (`checkRequired`), with the socket path (it must be `socks`
+and checks both its value and its lock (`checkRequired`; a lock that
+failed counts as not in force), with the socket path (it must be `socks`
 in a directory named `aequera-tor-<8 hex>`: the only kind the instance
 creates, locks down, and removes). If any is not in force, the instance
 stays offline ("refused"; see Fail closed). A locked pref ignores writes
@@ -144,7 +153,8 @@ of other schemes name browser pages, never a site: the JSON viewer's is
 - **Until checked:** the instance starts offline (`-offline`) and goes online
   only after the checks pass and the circuit filter is registered. If that
   code never runs, nothing loads (`netOffline`).
-- **Refused:** a failed check keeps it offline. Turning it online (File >
+- **Refused:** a failed check, or a marker that could not be written, keeps
+  it offline. Turning it online (File >
   Work Offline) is undone at once, and a filter sends every channel to a
   socket that does not exist, so even an online state loads nothing.
 - **Before tor listens, or after it stops:** the socket does not exist, and
@@ -171,8 +181,15 @@ Nothing ever falls back to a direct connection. Tabs that failed with
 - Bootstrap progress and errors come from tor's log (`parseLogLine`); there
   is no control port in slice 1. Only the current tor's lines count: after
   "Restart Tor", the stopped one's last lines never reach the new session.
+  "Restart Tor" acts only after a failure: never a second tor beside a
+  running or starting one, never in a refused instance.
 - On quit: the filter is unregistered, tor is killed, and the socket
-  directory and the marker are removed.
+  directory and the marker are removed. A socket directory is removed only
+  when its name is one the launcher gives (`aequera-tor-<8 hex>`). A quit by
+  SIGTERM skips this (GTK's app shell leaves its event loop without
+  `quit-application`); tor still exits with the instance
+  (`__OwningControllerProcess`), and the next "New Tor window" treats the
+  marker as stale and removes both.
 
 ## Configuration
 
@@ -239,7 +256,11 @@ media and fonts per site. Aequera has no NoScript, so it sets these for every
 site at the level: WebAssembly and autoplay go at Safer, and JavaScript and
 web fonts at Safest. HTTPS-only already keeps plain-HTTP pages out. The level
 is remembered for the next Tor session in `<profile>/tor/settings.json`, and
-it applies to pages loaded after the change.
+it applies to pages loaded after the change. A change is all or nothing: if
+one of its prefs cannot be set, every pref is put back and the panel says
+so. One that applies but cannot be remembered is shown as a warning. A
+`settings.json` that cannot be read, or names no known level, starts the
+next session at Safest, never a silent Standard.
 
 ## What it protects, and what not
 
@@ -266,6 +287,16 @@ unless bridges are used, a later slice).
   environment, refusal of non-web URLs, the running instance's profile
   untouched), the circuit filter on real channels, tor's lifecycle with a fake
   tor (real `Subprocess`), the search default, and the Tor button and panel.
+  The daemon's startup and quit run against a fake pref system and stubbed
+  network, proxy, and observer services: online only after the marker and
+  the locked checks, refusal on a failed lock, an unwritable marker, or a
+  bad socket path, quit cleanup of only its own directory, restart only
+  after a failure, all-or-nothing security levels. Launcher edge cases:
+  concurrent launches, unknown liveness, start and handoff timeouts, a
+  corrupt `settings.json`.
+- `tests/security/tor/scripts.test.sh` (PR CI, offline): the bundle
+  scripts' pin, lock, and signature checks with shimmed `curl`, `gpg`, and
+  `uname`.
 - Live check (`tests/security/tor`: Marionette into both instances, a
   headless sway as the window system), 2026-10-14, tor 0.4.9.14 from
   nixpkgs. 15 of 15 passed:
@@ -299,6 +330,10 @@ unless bridges are used, a later slice).
   - **Refused** (socket path `/tmp/socks`): the instance stayed offline,
     turning it online was undone, nothing loaded, no tor started, and `/tmp`
     was untouched (mode 1777, present after quit).
+
+- 2026-10-15, after the PR review fixes: "New Tor window" from a headless
+  ordinary instance started the bundled tor (Tor Browser 15.0.25), and its
+  socket answered `IsTor: true`; the gate passed (1001 checks).
 
   The liveness check reads `/proc/<pid>/stat` and `cmdline` with
   `maxBytes`. procfs reports a size of 0, and IOUtils otherwise reads
