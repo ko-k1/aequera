@@ -59,7 +59,7 @@ var AequeraCommandModel = (() => {
   /**
    * @typedef {{ id: string, name: string, tabCount: number }} WorkspaceSource
    * @typedef {{ closedId: number, title: string, url: string, workspace: string|null }} ClosedSource
-   * @typedef {{ workspaces: WorkspaceSource[], active: string|null, closed: ClosedSource[] }} Sources
+   * @typedef {{ workspaces: WorkspaceSource[], active: string|null, closed: ClosedSource[], torWindows?: boolean }} Sources
    *
    * @typedef {object} Row
    * @property {"workspace"|"closed"|"command"} kind
@@ -108,6 +108,10 @@ var AequeraCommandModel = (() => {
       const canRestore = (sources.closed ?? []).length > 0;
       for (const c of COMMANDS) {
         if (c.id === "restore-closed" && !canRestore) {
+          continue;
+        }
+        // Only where Tor windows can be opened (aequera.tor.enabled, platform).
+        if (c.id === "new-tor-window" && sources.torWindows !== true) {
           continue;
         }
         if (matches(q, c.title, ...c.keywords)) {

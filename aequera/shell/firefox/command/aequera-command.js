@@ -62,7 +62,8 @@ var AequeraCommand = (() => {
     rows(query) {
       const { workspaces, active } = workspaceSources();
       const names = new Map(workspaces.map(w => [w.id, w.name]));
-      return AequeraCommandModel.rows(query, { workspaces, active, closed: closedSources(names) });
+      const torWindows = !!window.AequeraTor && !window.AequeraTor.unavailable();
+      return AequeraCommandModel.rows(query, { workspaces, active, closed: closedSources(names), torWindows });
     },
 
     /** Run a row's action. Unknown or stale actions do nothing. */
