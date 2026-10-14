@@ -1,0 +1,866 @@
+Subject: [PATCH] widget/gtk: ask Wayland compositors to blur behind translucent window parts
+
+Why Firefox source must change:
+  Aequera's glass frame material (docs/design/MATERIAL.md) paints the chrome
+  frame translucent and relies on the desktop to blur what shows through it.
+  Hyprland blurs every translucent window, but KWin (Plasma 6.7+) blurs only
+  surfaces that ask, through the staging protocol ext-background-effect-v1
+  (wayland-protocols 1.45+), which Hyprland 0.56 also implements. Gecko does
+  not speak it, and chrome code cannot reach a wl_surface, so on KDE the
+  frame was either glass over a sharp wallpaper or forced solid.
+
+What it changes:
+  - widget/gtk/wayland: generated client code for ext-background-effect-v1
+    (wayland-scanner 1.26.0, wayland-protocols 1.49), clang-formatted, with
+    the visibility pragma the other protocol files carry.
+  - nsWaylandDisplay binds ext_background_effect_manager_v1 and tracks its
+    blur capability; a capability change after startup notifies
+    LookAndFeel (media queries only).
+  - nsWindowWayland::UpdateBackgroundBlur: for a mapped toplevel, sets the
+    blur region of GTK's toplevel wl_surface to the client area minus the
+    window's opaque region (the display list's, which the opaque-region path
+    already computes) and minus the rounded CSD corners when they are drawn,
+    then commits it (double-buffered state; GTK commits that surface only on
+    decoration repaints, and the PiP code commits it the same way; our own
+    subsurface is desynchronized). Runs on map, container resize, and opaque
+    region changes; skips unchanged regions; cleared on unmap and destroy.
+    An opaque (solid) frame leaves only slivers the opaque region misses, so
+    it costs the compositor next to nothing.
+  - Coordinates: surface-local as the protocol says (client area offset by
+    the CSD shadow margins), except on KDE: KWin 6.7 places the region
+    relative to the window geometry (src/plugins/blur/blur.cpp,
+    BlurEffect::blurRegion translates by contentsRect().topLeft()), so there
+    the margins are left out. Drop that branch once KWin follows the
+    protocol. With tiled states (Hyprland) GTK has no margins and both agree.
+  - pref widget.wayland.background-blur.enabled, default false, so
+    Firefox's behavior is unchanged; aequera-prefs.js turns it on.
+
+Depends on: nothing.
+Validation: compiled Linux build (157.0.1, bootstrap toolchains). Aequera in
+  KWin 6.7.5 nested in headless sway, XDG_CURRENT_DESKTOP=KDE: WAYLAND_DEBUG
+  shows the capability, get_background_effect on the toplevel surface and
+  set_blur_region with the client area minus the corners; screenshots show
+  the checkerboard wallpaper evenly blurred behind the whole frame, sharp
+  outside the rounded corners; switching to the solid frame shrinks the
+  region to slivers under opaque pixels. Without the KDE branch KWin left a
+  margin-wide unblurred band (the quirk above). Hyprland 0.56.2 nested in
+  that KWin: frame blurred, tiled and floating. Mochitest gate (Aequera
+  760/760 compiled, 758/758 artifact).
+Upstream risk: medium. Hooks nsWindow's opaque-region path, container
+  size-allocate, and the Wayland map/unmap/destroy paths next to PiP's;
+  conflicts if Mozilla reworks those. If Mozilla adopts the protocol
+  itself, drop this patch in favor of upstream's.
+
+diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
+index b4ea2261c2c9d13f21bbbc0b229acda433321ec2..f41f161a991e6ffd699b16e77e1ca5dc9ca30d64 100644
+--- a/modules/libpref/init/StaticPrefList.yaml
++++ b/modules/libpref/init/StaticPrefList.yaml
+@@ -20884,6 +20884,13 @@
+   value: true
+   mirror: once
+ 
++# Whether toplevel windows ask the compositor to blur what is behind their
++# translucent parts (ext-background-effect-v1), where it offers blur.
++- name: widget.wayland.background-blur.enabled
++  type: bool
++  value: false
++  mirror: always
++
+ # Use frame callback based vsync
+ - name: widget.wayland.vsync.enabled
+   type: bool
+diff --git a/widget/gtk/nsWaylandDisplay.cpp b/widget/gtk/nsWaylandDisplay.cpp
+index 74006778ed7c8942814a557c759fdbffc1c5748e..9d47a125d8a1755cda7be27d43a62ba930fd0759 100644
+--- a/widget/gtk/nsWaylandDisplay.cpp
++++ b/widget/gtk/nsWaylandDisplay.cpp
+@@ -11,6 +11,7 @@
+ #include "WidgetUtilsGtk.h"
+ #include "base/message_loop.h"  // for MessageLoop
+ #include "base/task.h"          // for NewRunnableMethod, etc
++#include "mozilla/LookAndFeel.h"
+ #include "mozilla/Sprintf.h"
+ #include "mozilla/StaticMutex.h"
+ #include "mozilla/StaticPrefs_general.h"
+@@ -621,6 +622,43 @@ void nsWaylandDisplay::SetColorManager(wp_color_manager_v1* aColorManager) {
+   }
+ }
+ 
++static void background_effect_capabilities(
++    void* data, struct ext_background_effect_manager_v1* manager,
++    uint32_t flags) {
++  auto* display = static_cast<nsWaylandDisplay*>(data);
++  display->SetBackgroundEffectCapabilities(flags);
++}
++
++static const struct ext_background_effect_manager_v1_listener
++    background_effect_manager_listener = {
++        background_effect_capabilities,
++};
++
++void nsWaylandDisplay::SetBackgroundEffectManager(
++    ext_background_effect_manager_v1* aManager) {
++  mBackgroundEffectManager = aManager;
++  if (mBackgroundEffectManager) {
++    LOG("nsWaylandDisplay::SetBackgroundEffectManager()");
++    ext_background_effect_manager_v1_add_listener(
++        mBackgroundEffectManager, &background_effect_manager_listener, this);
++  }
++}
++
++void nsWaylandDisplay::SetBackgroundEffectCapabilities(uint32_t aCapabilities) {
++  const bool blur =
++      aCapabilities & EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR;
++  LOG("nsWaylandDisplay::SetBackgroundEffectCapabilities() blur %d", blur);
++  if (blur == mBackgroundBlurSupported) {
++    return;
++  }
++  mBackgroundBlurSupported = blur;
++  // The compositor can turn blur on or off at runtime; -moz-gtk-background-
++  // blur-available follows it.
++  if (mInitialized && NS_IsMainThread()) {
++    LookAndFeel::NotifyChangedAllWindows(ThemeChangeKind::MediaQueriesOnly);
++  }
++}
++
+ void nsWaylandDisplay::SetSupportedCoefficientsAndRanges(uint32_t aCoefficients,
+                                                          uint32_t aRange) {
+   if (aCoefficients < sSupportedRangesNum) {
+@@ -896,6 +934,10 @@ static void global_registry_handler(void* data, wl_registry* registry,
+     auto* pipShell = WaylandRegistryBind<xx_pip_shell_v1>(
+         registry, id, &xx_pip_shell_v1_interface, 1);
+     display->SetPipShell(pipShell);
++  } else if (iface.EqualsLiteral("ext_background_effect_manager_v1")) {
++    auto* manager = WaylandRegistryBind<ext_background_effect_manager_v1>(
++        registry, id, &ext_background_effect_manager_v1_interface, 1);
++    display->SetBackgroundEffectManager(manager);
+   } else if (iface.EqualsLiteral("xdg_wm_base")) {
+     uint32_t vers = MIN(version, (uint32_t)xdg_wm_base_interface.version);
+     auto* xdgWm = WaylandRegistryBind<xdg_wm_base>(
+@@ -1356,6 +1398,7 @@ void nsWaylandDisplay::Init() {
+   if (!GetFractionalScaleManager()) {
+     NS_WARNING("Missing wp_fractional_scale_v1 wayland protocol!");
+   }
++  mInitialized = true;
+ }
+ 
+ bool nsWaylandDisplay::IsTFSupported(uint32_t aTF) {
+diff --git a/widget/gtk/nsWaylandDisplay.h b/widget/gtk/nsWaylandDisplay.h
+index f7430873a469e22824b931ec6612ccf864b9b673..c517c06d3dfae54a011e0df7892d62e44e318f01 100644
+--- a/widget/gtk/nsWaylandDisplay.h
++++ b/widget/gtk/nsWaylandDisplay.h
+@@ -16,6 +16,7 @@
+ #include "DMABufDevice.h"
+ #include "mozilla/widget/color-management-v1-client-protocol.h"
+ #include "mozilla/widget/color-representation-v1-client-protocol.h"
++#include "mozilla/widget/ext-background-effect-v1-client-protocol.h"
+ #include "mozilla/widget/fractional-scale-v1-client-protocol.h"
+ #include "mozilla/widget/gtk-primary-selection-client-protocol.h"
+ #include "mozilla/widget/idle-inhibit-unstable-v1-client-protocol.h"
+@@ -142,6 +143,15 @@ class nsWaylandDisplay {
+   }
+   void SetPipShell(xx_pip_shell_v1* aShell) { mPipShell = aShell; }
+   xx_pip_shell_v1* GetPipShell() const { return mPipShell; }
++  void SetBackgroundEffectManager(ext_background_effect_manager_v1* aManager);
++  ext_background_effect_manager_v1* GetBackgroundEffectManager() const {
++    return mBackgroundEffectManager;
++  }
++  void SetBackgroundEffectCapabilities(uint32_t aCapabilities);
++  // Whether the compositor blurs what is behind a surface's blur region.
++  bool IsBackgroundBlurSupported() const {
++    return mBackgroundEffectManager && mBackgroundBlurSupported;
++  }
+   void SetXdgWm(xdg_wm_base* aWmBase) { mWmBase = aWmBase; }
+   xdg_wm_base* GetXdgWm() const { return mWmBase; }
+   void SetCMSupportedFeature(uint32_t aFeature);
+@@ -236,6 +246,9 @@ class nsWaylandDisplay {
+   wp_color_manager_v1* mColorManager = nullptr;
+   wp_color_representation_manager_v1* mColorRepresentationManager = nullptr;
+   xx_pip_shell_v1* mPipShell = nullptr;
++  ext_background_effect_manager_v1* mBackgroundEffectManager = nullptr;
++  bool mBackgroundBlurSupported = false;
++  bool mInitialized = false;
+   xdg_wm_base* mWmBase = nullptr;
+   xdg_session_manager_v1* mSessionManager = nullptr;
+   xdg_session_v1* mWaylandSession = nullptr;
+diff --git a/widget/gtk/nsWindow.cpp b/widget/gtk/nsWindow.cpp
+index 71d1dd168c5f70ca404334e89d4eec44e44da415..6b357b893a3dc6261283720b6e62a21f5ae4154a 100644
+--- a/widget/gtk/nsWindow.cpp
++++ b/widget/gtk/nsWindow.cpp
+@@ -2401,6 +2401,12 @@ void nsWindow::OnContainerSizeAllocate(GtkAllocation* aAllocation) {
+ 
+   SchedulePendingBounds();
+ 
++#ifdef MOZ_WAYLAND
++  if (AsWayland()) {
++    AsWayland()->UpdateBackgroundBlur();
++  }
++#endif
++
+   // Invalidate the new part of the window now for the pending paint to
+   // minimize background flashes (GDK does not do this for external
+   // renewClientSizes of toplevels.)
+@@ -5072,6 +5078,12 @@ void nsWindow::UpdateOpaqueRegionInternal() {
+     }
+ #endif
+   }
++
++#ifdef MOZ_WAYLAND
++  if (AsWayland()) {
++    AsWayland()->UpdateBackgroundBlur();
++  }
++#endif
+ }
+ 
+ bool nsWindow::IsChromeWindowTitlebar() {
+@@ -7400,6 +7412,7 @@ void nsWindow::OnUnmap() {
+ #ifdef MOZ_WAYLAND
+   if (AsWayland()) {
+     AsWayland()->ClearPipResources();
++    AsWayland()->ClearBackgroundBlur(/* aCommit */ false);
+   }
+ #endif
+ 
+diff --git a/widget/gtk/nsWindowWayland.cpp b/widget/gtk/nsWindowWayland.cpp
+index ac18827d1e5189fb704e91e5f38c1173408bec22..7f6b3ba687f0388096459bce1fd5957a9590f94e 100644
+--- a/widget/gtk/nsWindowWayland.cpp
++++ b/widget/gtk/nsWindowWayland.cpp
+@@ -6,8 +6,12 @@
+ 
+ #include <dlfcn.h>
+ 
++#include <algorithm>
++#include <cmath>
++
+ #include "WaylandVsyncSource.h"
+ #include "WidgetUtilsGtk.h"
++#include "mozilla/LookAndFeel.h"
+ #include "mozilla/PresShell.h"
+ #include "mozilla/StaticPrefs_widget.h"
+ #include "mozilla/VsyncDispatcher.h"
+@@ -2056,6 +2060,117 @@ void nsWindowWayland::ClearPipResources() {
+   MozClearPointer(mPipResources.mXdgSurface, xdg_surface_destroy);
+ }
+ 
++// Removes the pixels outside the rounded corners of aRect from aRegion.
++static void SubtractRoundedCorners(IntRegion& aRegion, const IntRect& aRect,
++                                   int32_t aRadius, bool aBottomCorners) {
++  const int32_t radius = std::min({aRadius, aRect.width / 2, aRect.height / 2});
++  for (int32_t row = 0; row < radius; row++) {
++    const double dy = radius - row - 0.5;
++    const int32_t inset =
++        radius - int32_t(std::lround(std::sqrt(radius * radius - dy * dy)));
++    if (inset <= 0) {
++      continue;
++    }
++    aRegion.SubOut(IntRect(aRect.x, aRect.y + row, inset, 1));
++    aRegion.SubOut(IntRect(aRect.XMost() - inset, aRect.y + row, inset, 1));
++    if (aBottomCorners) {
++      aRegion.SubOut(IntRect(aRect.x, aRect.YMost() - 1 - row, inset, 1));
++      aRegion.SubOut(
++          IntRect(aRect.XMost() - inset, aRect.YMost() - 1 - row, inset, 1));
++    }
++  }
++}
++
++void nsWindowWayland::UpdateBackgroundBlur() {
++  if (mWindowType != WindowType::TopLevel || !mIsMapped || !mGdkWindow) {
++    return;
++  }
++  nsWaylandDisplay* display = WaylandDisplayGet();
++  if (!StaticPrefs::widget_wayland_background_blur_enabled() ||
++      !display->IsBackgroundBlurSupported() || !mCompositedScreen) {
++    ClearBackgroundBlur(/* aCommit */ true);
++    return;
++  }
++  GdkWindow* toplevel = GetToplevelGdkWindow();
++  wl_surface* surface =
++      toplevel ? gdk_wayland_window_get_wl_surface(toplevel) : nullptr;
++  if (!surface) {
++    return;
++  }
++
++  // The client area sits inside the toplevel surface, offset by the
++  // client-side decoration margins. KWin (6.7) reads the region relative to
++  // the window geometry instead, which starts at the client area.
++  GdkPoint offset{0, 0};
++  if (!IsKdeDesktopEnvironment()) {
++    gdk_window_get_position(mGdkWindow, &offset.x, &offset.y);
++  }
++  const IntRect client(offset.x, offset.y, gdk_window_get_width(mGdkWindow),
++                       gdk_window_get_height(mGdkWindow));
++  IntRegion region(client);
++  const LayoutDeviceIntRect clientArea(LayoutDeviceIntPoint(), GetClientSize());
++  const LayoutDeviceIntRegion opaque = GetOpaqueRegion();
++  for (auto iter = opaque.RectIter(); !iter.Done(); iter.Next()) {
++    const auto rect = iter.Get().Intersect(clientArea);
++    if (rect.IsEmpty()) {
++      continue;
++    }
++    const GdkRectangle gdkRect = DevicePixelsToGdkRectRoundIn(rect);
++    region.SubOut(IntRect(gdkRect.x + offset.x, gdkRect.y + offset.y,
++                          gdkRect.width, gdkRect.height));
++  }
++  if (DoDrawTilebarCorners()) {
++    SubtractRoundedCorners(
++        region, client, LookAndFeel::GetInt(LookAndFeel::IntID::TitlebarRadius),
++        StaticPrefs::widget_gtk_rounded_bottom_corners_enabled());
++  }
++
++  if (mBackgroundBlur.mEffect && mBackgroundBlur.mSurface == surface &&
++      mBackgroundBlur.mRegion == region) {
++    return;
++  }
++  if (mBackgroundBlur.mSurface != surface) {
++    ClearBackgroundBlur(/* aCommit */ false);
++    mBackgroundBlur.mEffect =
++        ext_background_effect_manager_v1_get_background_effect(
++            display->GetBackgroundEffectManager(), surface);
++    mBackgroundBlur.mSurface = surface;
++  }
++  mBackgroundBlur.mRegion = region;
++
++  LOG("nsWindowWayland::UpdateBackgroundBlur() %u rects", region.GetNumRects());
++  wl_region* blurRegion = nullptr;
++  if (!region.IsEmpty()) {
++    blurRegion = wl_compositor_create_region(display->GetCompositor());
++    for (auto iter = region.RectIter(); !iter.Done(); iter.Next()) {
++      const IntRect& rect = iter.Get();
++      wl_region_add(blurRegion, rect.x, rect.y, rect.width, rect.height);
++    }
++  }
++  ext_background_effect_surface_v1_set_blur_region(mBackgroundBlur.mEffect,
++                                                   blurRegion);
++  if (blurRegion) {
++    wl_region_destroy(blurRegion);
++  }
++  // The blur region is double-buffered state of GTK's toplevel surface, which
++  // GTK commits only when it repaints the decorations.
++  wl_surface_commit(surface);
++}
++
++void nsWindowWayland::ClearBackgroundBlur(bool aCommit) {
++  if (!mBackgroundBlur.mEffect) {
++    return;
++  }
++  LOG("nsWindowWayland::ClearBackgroundBlur()");
++  MozClearPointer(mBackgroundBlur.mEffect,
++                  ext_background_effect_surface_v1_destroy);
++  if (aCommit) {
++    wl_surface_commit(mBackgroundBlur.mSurface);
++  }
++  mBackgroundBlur.mSurface = nullptr;
++  mBackgroundBlur.mRegion.SetEmpty();
++}
++
+ bool nsWindowWayland::PIPMove() {
+   if (!mPipResources.mPipSurface) {
+     return false;
+@@ -2177,6 +2292,7 @@ void nsWindowWayland::DestroyNative() {
+   }
+   MozClearPointer(mSessionRestoreToken, xdg_toplevel_session_v1_destroy);
+   ClearPipResources();
++  ClearBackgroundBlur(/* aCommit */ false);
+ 
+   // Shut down our local vsync source
+   // Also drops reference to nsWindow::mSurface.
+@@ -2294,4 +2410,7 @@ bool nsWindowWayland::ApplyEnterLeaveMutterWorkaround() {
+   return false;
+ }
+ 
+-void nsWindowWayland::OnMapNative() { MaybeCreatePipResources(); }
++void nsWindowWayland::OnMapNative() {
++  MaybeCreatePipResources();
++  UpdateBackgroundBlur();
++}
+diff --git a/widget/gtk/nsWindowWayland.h b/widget/gtk/nsWindowWayland.h
+index e73bc5c1221eacad16203a3140c1e7360adba58d..c5241f2d8b9ed6f19e122b71cdb22e03c6955cbc 100644
+--- a/widget/gtk/nsWindowWayland.h
++++ b/widget/gtk/nsWindowWayland.h
+@@ -56,6 +56,12 @@ class nsWindowWayland final : public nsWindow {
+   void MaybeCreatePipResources();
+   void ClearPipResources();
+ 
++  // Asks the compositor to blur what is behind the translucent parts of a
++  // toplevel window: its client area minus the opaque region and the rounded
++  // corners (ext-background-effect-v1).
++  void UpdateBackgroundBlur();
++  void ClearBackgroundBlur(bool aCommit);
++
+   bool ApplyEnterLeaveMutterWorkaround();
+ 
+  protected:
+@@ -247,6 +253,13 @@ class nsWindowWayland final : public nsWindow {
+     struct xx_pip_v1* mPipSurface = nullptr;
+     LayoutDeviceIntSize mConfigureSize;
+   } mPipResources;
++  struct {
++    struct ext_background_effect_surface_v1* mEffect = nullptr;
++    // The toplevel wl_surface mEffect belongs to.
++    struct wl_surface* mSurface = nullptr;
++    // Last blur region sent, in toplevel surface coordinates.
++    gfx::IntRegion mRegion;
++  } mBackgroundBlur;
+ };
+ 
+ }  // namespace mozilla::widget
+diff --git a/widget/gtk/wayland/ext-background-effect-v1-client-protocol.h b/widget/gtk/wayland/ext-background-effect-v1-client-protocol.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..1eaa09e017267d63c20ae98ff5fec6cada8a523e
+--- /dev/null
++++ b/widget/gtk/wayland/ext-background-effect-v1-client-protocol.h
+@@ -0,0 +1,343 @@
++/* Generated by wayland-scanner 1.26.0 */
++
++#ifndef EXT_BACKGROUND_EFFECT_V1_CLIENT_PROTOCOL_H
++#define EXT_BACKGROUND_EFFECT_V1_CLIENT_PROTOCOL_H
++
++#include <stddef.h>
++#include <stdint.h>
++
++#include "wayland-client.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/**
++ * @page page_ext_background_effect_v1 The ext_background_effect_v1 protocol
++ * @section page_ifaces_ext_background_effect_v1 Interfaces
++ * - @subpage page_iface_ext_background_effect_manager_v1 - background effect
++ * factory
++ * - @subpage page_iface_ext_background_effect_surface_v1 - background effects
++ * for a surface
++ * @section page_copyright_ext_background_effect_v1 Copyright
++ * <pre>
++ *
++ * Copyright (C) 2015 Martin Gräßlin
++ * Copyright (C) 2015 Marco Martin
++ * Copyright (C) 2020 Vlad Zahorodnii
++ * Copyright (C) 2024 Xaver Hugl
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ * </pre>
++ */
++struct ext_background_effect_manager_v1;
++struct ext_background_effect_surface_v1;
++struct wl_region;
++struct wl_surface;
++
++#ifndef EXT_BACKGROUND_EFFECT_MANAGER_V1_INTERFACE
++#  define EXT_BACKGROUND_EFFECT_MANAGER_V1_INTERFACE
++/**
++ * @page page_iface_ext_background_effect_manager_v1
++ * ext_background_effect_manager_v1
++ * @section page_iface_ext_background_effect_manager_v1_desc Description
++ *
++ * This protocol provides a way to improve visuals of translucent surfaces
++ * by applying effects like blur to the background behind them.
++ *
++ * The capabilities are send when the global is bound, and every time they
++ * change. Note that when the capability goes away, the corresponding effect
++ * is no longer applied by the compositor, even if it was set before.
++ *
++ * Warning! The protocol described in this file is currently in the testing
++ * phase. Backward compatible changes may be added together with the
++ * corresponding interface version bump. Backward incompatible changes can
++ * only be done by creating a new major version of the extension.
++ * @section page_iface_ext_background_effect_manager_v1_api API
++ * See @ref iface_ext_background_effect_manager_v1.
++ */
++/**
++ * @defgroup iface_ext_background_effect_manager_v1 The
++ * ext_background_effect_manager_v1 interface
++ *
++ * This protocol provides a way to improve visuals of translucent surfaces
++ * by applying effects like blur to the background behind them.
++ *
++ * The capabilities are send when the global is bound, and every time they
++ * change. Note that when the capability goes away, the corresponding effect
++ * is no longer applied by the compositor, even if it was set before.
++ *
++ * Warning! The protocol described in this file is currently in the testing
++ * phase. Backward compatible changes may be added together with the
++ * corresponding interface version bump. Backward incompatible changes can
++ * only be done by creating a new major version of the extension.
++ */
++extern const struct wl_interface ext_background_effect_manager_v1_interface;
++#endif
++#ifndef EXT_BACKGROUND_EFFECT_SURFACE_V1_INTERFACE
++#  define EXT_BACKGROUND_EFFECT_SURFACE_V1_INTERFACE
++/**
++ * @page page_iface_ext_background_effect_surface_v1
++ * ext_background_effect_surface_v1
++ * @section page_iface_ext_background_effect_surface_v1_desc Description
++ *
++ * The background effect object provides a way to specify a region behind
++ * a surface that should have background effects like blur applied.
++ *
++ * If the wl_surface associated with the ext_background_effect_surface_v1
++ * object has been destroyed, this object becomes inert.
++ * @section page_iface_ext_background_effect_surface_v1_api API
++ * See @ref iface_ext_background_effect_surface_v1.
++ */
++/**
++ * @defgroup iface_ext_background_effect_surface_v1 The
++ * ext_background_effect_surface_v1 interface
++ *
++ * The background effect object provides a way to specify a region behind
++ * a surface that should have background effects like blur applied.
++ *
++ * If the wl_surface associated with the ext_background_effect_surface_v1
++ * object has been destroyed, this object becomes inert.
++ */
++extern const struct wl_interface ext_background_effect_surface_v1_interface;
++#endif
++
++#ifndef EXT_BACKGROUND_EFFECT_MANAGER_V1_ERROR_ENUM
++#  define EXT_BACKGROUND_EFFECT_MANAGER_V1_ERROR_ENUM
++enum ext_background_effect_manager_v1_error {
++  /**
++   * the surface already has a background effect object
++   */
++  EXT_BACKGROUND_EFFECT_MANAGER_V1_ERROR_BACKGROUND_EFFECT_EXISTS = 0,
++};
++#endif /* EXT_BACKGROUND_EFFECT_MANAGER_V1_ERROR_ENUM */
++
++#ifndef EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_ENUM
++#  define EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_ENUM
++enum ext_background_effect_manager_v1_capability {
++  /**
++   * the compositor supports applying blur
++   */
++  EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR = 1,
++};
++#endif /* EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_ENUM */
++
++/**
++ * @ingroup iface_ext_background_effect_manager_v1
++ * @struct ext_background_effect_manager_v1_listener
++ */
++struct ext_background_effect_manager_v1_listener {
++  /**
++   * capabilities of the compositor
++   *
++   *
++   */
++  void (*capabilities)(
++      void* data,
++      struct ext_background_effect_manager_v1* ext_background_effect_manager_v1,
++      uint32_t flags);
++};
++
++/**
++ * @ingroup iface_ext_background_effect_manager_v1
++ */
++static inline int ext_background_effect_manager_v1_add_listener(
++    struct ext_background_effect_manager_v1* ext_background_effect_manager_v1,
++    const struct ext_background_effect_manager_v1_listener* listener,
++    void* data) {
++  return wl_proxy_add_listener(
++      (struct wl_proxy*)ext_background_effect_manager_v1,
++      (void (**)(void))listener, data);
++}
++
++#define EXT_BACKGROUND_EFFECT_MANAGER_V1_DESTROY 0
++#define EXT_BACKGROUND_EFFECT_MANAGER_V1_GET_BACKGROUND_EFFECT 1
++
++/**
++ * @ingroup iface_ext_background_effect_manager_v1
++ */
++#define EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITIES_SINCE_VERSION 1
++
++/**
++ * @ingroup iface_ext_background_effect_manager_v1
++ */
++#define EXT_BACKGROUND_EFFECT_MANAGER_V1_DESTROY_SINCE_VERSION 1
++/**
++ * @ingroup iface_ext_background_effect_manager_v1
++ */
++#define EXT_BACKGROUND_EFFECT_MANAGER_V1_GET_BACKGROUND_EFFECT_SINCE_VERSION 1
++
++/** @ingroup iface_ext_background_effect_manager_v1 */
++static inline void ext_background_effect_manager_v1_set_user_data(
++    struct ext_background_effect_manager_v1* ext_background_effect_manager_v1,
++    void* user_data) {
++  wl_proxy_set_user_data((struct wl_proxy*)ext_background_effect_manager_v1,
++                         user_data);
++}
++
++/** @ingroup iface_ext_background_effect_manager_v1 */
++static inline void* ext_background_effect_manager_v1_get_user_data(
++    struct ext_background_effect_manager_v1* ext_background_effect_manager_v1) {
++  return wl_proxy_get_user_data(
++      (struct wl_proxy*)ext_background_effect_manager_v1);
++}
++
++static inline uint32_t ext_background_effect_manager_v1_get_version(
++    struct ext_background_effect_manager_v1* ext_background_effect_manager_v1) {
++  return wl_proxy_get_version(
++      (struct wl_proxy*)ext_background_effect_manager_v1);
++}
++
++/**
++ * @ingroup iface_ext_background_effect_manager_v1
++ *
++ * Informs the server that the client will no longer be using this
++ * protocol object. Existing objects created by this object are not
++ * affected.
++ */
++static inline void ext_background_effect_manager_v1_destroy(
++    struct ext_background_effect_manager_v1* ext_background_effect_manager_v1) {
++  wl_proxy_marshal_flags(
++      (struct wl_proxy*)ext_background_effect_manager_v1,
++      EXT_BACKGROUND_EFFECT_MANAGER_V1_DESTROY, NULL,
++      wl_proxy_get_version((struct wl_proxy*)ext_background_effect_manager_v1),
++      WL_MARSHAL_FLAG_DESTROY);
++}
++
++/**
++ * @ingroup iface_ext_background_effect_manager_v1
++ *
++ * Instantiate an interface extension for the given wl_surface to add
++ * effects like blur for the background behind it.
++ *
++ * If the given wl_surface already has a ext_background_effect_surface_v1
++ * object associated, the background_effect_exists protocol error will be
++ * raised.
++ */
++static inline struct ext_background_effect_surface_v1*
++ext_background_effect_manager_v1_get_background_effect(
++    struct ext_background_effect_manager_v1* ext_background_effect_manager_v1,
++    struct wl_surface* surface) {
++  struct wl_proxy* id;
++
++  id = wl_proxy_marshal_flags(
++      (struct wl_proxy*)ext_background_effect_manager_v1,
++      EXT_BACKGROUND_EFFECT_MANAGER_V1_GET_BACKGROUND_EFFECT,
++      &ext_background_effect_surface_v1_interface,
++      wl_proxy_get_version((struct wl_proxy*)ext_background_effect_manager_v1),
++      0, NULL, surface);
++
++  return (struct ext_background_effect_surface_v1*)id;
++}
++
++#ifndef EXT_BACKGROUND_EFFECT_SURFACE_V1_ERROR_ENUM
++#  define EXT_BACKGROUND_EFFECT_SURFACE_V1_ERROR_ENUM
++enum ext_background_effect_surface_v1_error {
++  /**
++   * the associated surface has been destroyed
++   */
++  EXT_BACKGROUND_EFFECT_SURFACE_V1_ERROR_SURFACE_DESTROYED = 0,
++};
++#endif /* EXT_BACKGROUND_EFFECT_SURFACE_V1_ERROR_ENUM */
++
++#define EXT_BACKGROUND_EFFECT_SURFACE_V1_DESTROY 0
++#define EXT_BACKGROUND_EFFECT_SURFACE_V1_SET_BLUR_REGION 1
++
++/**
++ * @ingroup iface_ext_background_effect_surface_v1
++ */
++#define EXT_BACKGROUND_EFFECT_SURFACE_V1_DESTROY_SINCE_VERSION 1
++/**
++ * @ingroup iface_ext_background_effect_surface_v1
++ */
++#define EXT_BACKGROUND_EFFECT_SURFACE_V1_SET_BLUR_REGION_SINCE_VERSION 1
++
++/** @ingroup iface_ext_background_effect_surface_v1 */
++static inline void ext_background_effect_surface_v1_set_user_data(
++    struct ext_background_effect_surface_v1* ext_background_effect_surface_v1,
++    void* user_data) {
++  wl_proxy_set_user_data((struct wl_proxy*)ext_background_effect_surface_v1,
++                         user_data);
++}
++
++/** @ingroup iface_ext_background_effect_surface_v1 */
++static inline void* ext_background_effect_surface_v1_get_user_data(
++    struct ext_background_effect_surface_v1* ext_background_effect_surface_v1) {
++  return wl_proxy_get_user_data(
++      (struct wl_proxy*)ext_background_effect_surface_v1);
++}
++
++static inline uint32_t ext_background_effect_surface_v1_get_version(
++    struct ext_background_effect_surface_v1* ext_background_effect_surface_v1) {
++  return wl_proxy_get_version(
++      (struct wl_proxy*)ext_background_effect_surface_v1);
++}
++
++/**
++ * @ingroup iface_ext_background_effect_surface_v1
++ *
++ * Informs the server that the client will no longer be using this protocol
++ * object. The effect regions will be removed on the next commit.
++ */
++static inline void ext_background_effect_surface_v1_destroy(
++    struct ext_background_effect_surface_v1* ext_background_effect_surface_v1) {
++  wl_proxy_marshal_flags(
++      (struct wl_proxy*)ext_background_effect_surface_v1,
++      EXT_BACKGROUND_EFFECT_SURFACE_V1_DESTROY, NULL,
++      wl_proxy_get_version((struct wl_proxy*)ext_background_effect_surface_v1),
++      WL_MARSHAL_FLAG_DESTROY);
++}
++
++/**
++ * @ingroup iface_ext_background_effect_surface_v1
++ *
++ * This request sets the region of the surface that will have its
++ * background blurred.
++ *
++ * The blur region is specified in the surface-local coordinates, and
++ * clipped by the compositor to the surface size.
++ *
++ * The initial value for the blur region is empty. Setting the pending
++ * blur region has copy semantics, and the wl_region object can be
++ * destroyed immediately. A NULL wl_region removes the effect.
++ *
++ * The blur region is double-buffered state, and will be applied on
++ * the next wl_surface.commit.
++ *
++ * The blur algorithm is subject to compositor policies.
++ *
++ * If the associated surface has been destroyed, the surface_destroyed
++ * error will be raised.
++ */
++static inline void ext_background_effect_surface_v1_set_blur_region(
++    struct ext_background_effect_surface_v1* ext_background_effect_surface_v1,
++    struct wl_region* region) {
++  wl_proxy_marshal_flags(
++      (struct wl_proxy*)ext_background_effect_surface_v1,
++      EXT_BACKGROUND_EFFECT_SURFACE_V1_SET_BLUR_REGION, NULL,
++      wl_proxy_get_version((struct wl_proxy*)ext_background_effect_surface_v1),
++      0, region);
++}
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif
+diff --git a/widget/gtk/wayland/ext-background-effect-v1-protocol.c b/widget/gtk/wayland/ext-background-effect-v1-protocol.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..f3634cf58cdb9b8132b7d7507a4c60309bb78a6b
+--- /dev/null
++++ b/widget/gtk/wayland/ext-background-effect-v1-protocol.c
+@@ -0,0 +1,86 @@
++/* Generated by wayland-scanner 1.26.0 */
++
++/*
++ * Copyright (C) 2015 Martin Gräßlin
++ * Copyright (C) 2015 Marco Martin
++ * Copyright (C) 2020 Vlad Zahorodnii
++ * Copyright (C) 2024 Xaver Hugl
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ */
++
++#include <stdbool.h>
++#include <stdint.h>
++#include <stdlib.h>
++
++#include "wayland-util.h"
++
++#ifndef __has_attribute
++#  define __has_attribute(x) 0 /* Compatibility with non-clang compilers. */
++#endif
++
++#if (__has_attribute(visibility) || defined(__GNUC__) && __GNUC__ >= 4)
++#  define WL_PRIVATE __attribute__((visibility("hidden")))
++#else
++#  define WL_PRIVATE
++#endif
++
++#pragma GCC visibility push(default)
++extern const struct wl_interface wl_region_interface;
++extern const struct wl_interface wl_surface_interface;
++#pragma GCC visibility pop
++extern const struct wl_interface ext_background_effect_surface_v1_interface;
++
++static const struct wl_interface* ext_background_effect_v1_types[] = {
++    NULL,
++    &ext_background_effect_surface_v1_interface,
++    &wl_surface_interface,
++    &wl_region_interface,
++};
++
++static const struct wl_message ext_background_effect_manager_v1_requests[] = {
++    {"destroy", "", ext_background_effect_v1_types + 0},
++    {"get_background_effect", "no", ext_background_effect_v1_types + 1},
++};
++
++static const struct wl_message ext_background_effect_manager_v1_events[] = {
++    {"capabilities", "u", ext_background_effect_v1_types + 0},
++};
++
++WL_PRIVATE const struct wl_interface
++    ext_background_effect_manager_v1_interface = {
++        "ext_background_effect_manager_v1",
++        1,
++        2,
++        ext_background_effect_manager_v1_requests,
++        1,
++        ext_background_effect_manager_v1_events,
++};
++
++static const struct wl_message ext_background_effect_surface_v1_requests[] = {
++    {"destroy", "", ext_background_effect_v1_types + 0},
++    {"set_blur_region", "?o", ext_background_effect_v1_types + 3},
++};
++
++WL_PRIVATE const struct wl_interface
++    ext_background_effect_surface_v1_interface = {
++        "ext_background_effect_surface_v1",        1, 2,
++        ext_background_effect_surface_v1_requests, 0, NULL,
++};
+diff --git a/widget/gtk/wayland/moz.build b/widget/gtk/wayland/moz.build
+index 612886215224daa0ebd7a6c12fe11d95c20d64bb..9c0c882699dd139b7961a666a7df8f4082b03698 100644
+--- a/widget/gtk/wayland/moz.build
++++ b/widget/gtk/wayland/moz.build
+@@ -8,6 +8,7 @@ with Files("**"):
+ SOURCES += [
+     "color-management-v1-protocol.c",
+     "color-representation-v1-protocol.c",
++    "ext-background-effect-v1-protocol.c",
+     "fractional-scale-v1-protocol.c",
+     "gtk-primary-selection-protocol.c",
+     "idle-inhibit-unstable-v1-protocol.c",
+@@ -29,6 +30,7 @@ SOURCES += [
+ EXPORTS.mozilla.widget += [
+     "color-management-v1-client-protocol.h",
+     "color-representation-v1-client-protocol.h",
++    "ext-background-effect-v1-client-protocol.h",
+     "fractional-scale-v1-client-protocol.h",
+     "gtk-primary-selection-client-protocol.h",
+     "idle-inhibit-unstable-v1-client-protocol.h",

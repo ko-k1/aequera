@@ -72,10 +72,23 @@ patches:
   # offered under the same conditions as rail-position, after it.
   - id: rail-magnify
     series: browser/rail-magnify
+  # Frame material on Linux (docs/design/MATERIAL.md): Wayland toplevels ask
+  # the compositor to blur behind their translucent parts
+  # (ext-background-effect-v1: KDE Plasma 6.7+, GNOME), and chrome reads
+  # whether it does as (-moz-gtk-background-blur-available). Pref-gated
+  # (widget.wayland.background-blur.enabled, off in Firefox). Compiled
+  # builds only. Rationale, validation, and risk are in each patch header.
+  - id: background-blur
+    series: gecko/background-blur
+  # Frame material on macOS 26+: titlebar vibrancy drawn as Liquid Glass
+  # (NSGlassEffectView). Pref-gated (widget.macos.titlebar-glass.enabled,
+  # off in Firefox). Not yet built or run on a Mac: see the patch header.
+  - id: macos-glass
+    series: gecko/macos-glass
 
 overlays:
   # Stage 1 shell: frame-model stylesheet, launcher-width glue, default
-  # prefs (vertical hover rail, 250ms motion, Mica). Source of truth:
+  # prefs (vertical hover rail, 250ms motion, frame material). Source of truth:
   # aequera/shell/firefox; the worktree copy is generated.
   - id: shell-chrome
     source: aequera/shell/firefox

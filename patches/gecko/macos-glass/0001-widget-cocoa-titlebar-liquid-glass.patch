@@ -1,0 +1,120 @@
+Subject: [PATCH] widget/cocoa: draw titlebar vibrancy as Liquid Glass on macOS 26+
+
+Why Firefox source must change:
+  Aequera's macOS frame material is the titlebar vibrancy, spread over the
+  whole frame by the shell (aequera-shell.css body::before). From macOS 26
+  the system material for window chrome is Liquid Glass
+  (NSGlassEffectView). Firefox already uses it for menus, but the titlebar
+  vibrancy views are NSVisualEffectViews that VibrancyManager creates, out
+  of chrome's reach.
+
+What it changes:
+  - VibrancyManager creates the titlebar region's views as a hit-test
+    transparent host of an NSGlassEffectView (a host, not a subclass: the
+    class is missing before macOS 26) when widget.macos.titlebar-glass.enabled
+    is set (read at startup) on macOS 26+. The sidebar type and older
+    systems keep NSVisualEffectView.
+  - The blend-mode pref callback reconfigures only vibrancy views.
+  - pref widget.macos.titlebar-glass.enabled, default false, so Firefox's
+    behavior is unchanged; aequera-prefs.js turns it on.
+
+Depends on: nothing.
+Validation: NOT RUN YET. Needs a Mac with the macOS 26 SDK (Xcode): compiled
+  build, launch on macOS 26, compare the frame with the pref off
+  (vibrancy); browser_aequera_material.js on macOS. Open question: whether
+  NSGlassEffectView samples the desktop behind the opaque browser window
+  the way it does behind menus (transparent windows); if it only shows the
+  window background, turn the pref off and keep vibrancy.
+Upstream risk: low. One file plus a pref; if Mozilla adopts glass for
+  titlebars itself, drop this patch.
+
+diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
+index f41f161a991e6ffd699b16e77e1ca5dc9ca30d64..40fc496f3ad408580489c42a7839a723e4a90e24 100644
+--- a/modules/libpref/init/StaticPrefList.yaml
++++ b/modules/libpref/init/StaticPrefList.yaml
+@@ -20716,6 +20716,13 @@
+   value: false
+   mirror: always
+ 
++# Whether titlebar vibrancy is drawn as Liquid Glass (NSGlassEffectView) on
++# macOS 26 and later.
++- name: widget.macos.titlebar-glass.enabled
++  type: bool
++  value: false
++  mirror: once
++
+ - name: widget.macos.window-transforms.disabled
+   type: RelaxedAtomicBool
+   value: false
+diff --git a/widget/cocoa/VibrancyManager.mm b/widget/cocoa/VibrancyManager.mm
+index bc62ff28285691c605fe0680e7a98927f11d5882..b62cf3fa5d711a660c853e2052157ebe148304ab 100644
+--- a/widget/cocoa/VibrancyManager.mm
++++ b/widget/cocoa/VibrancyManager.mm
+@@ -78,6 +78,40 @@ static NSVisualEffectBlendingMode VisualEffectBlendingModeForVibrancyType(
+ }
+ @end
+ 
++// Hosts an NSGlassEffectView rather than subclassing it, since the class is
++// missing before macOS 26.
++@interface MOZGlassView : NSView
++@end
++
++@implementation MOZGlassView
++- (instancetype)initWithFrame:(NSRect)aRect {
++  self = [super initWithFrame:aRect];
++  if (@available(macOS 26.0, *)) {
++    auto* glass = [[NSGlassEffectView alloc] initWithFrame:self.bounds];
++    glass.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
++    [self addSubview:glass];
++    [glass release];
++  }
++  return self;
++}
++
++- (NSView*)hitTest:(NSPoint)aPoint {
++  // This view must be transparent to mouse events.
++  return nil;
++}
++@end
++
++static bool UseGlassForVibrancyType(VibrancyType aType) {
++  if (aType != VibrancyType::Titlebar ||
++      !StaticPrefs::widget_macos_titlebar_glass_enabled_AtStartup()) {
++    return false;
++  }
++  if (@available(macOS 26.0, *)) {
++    return true;
++  }
++  return false;
++}
++
+ static void PrefChanged(const char* aPref, void* aClosure) {
+   static_cast<VibrancyManager*>(aClosure)->PrefChanged();
+ }
+@@ -108,7 +142,9 @@ void VibrancyManager::PrefChanged() {
+       continue;
+     }
+     for (NSView* view : region->Views()) {
+-      [static_cast<MOZVibrantView*>(view) prefChanged];
++      if ([view isKindOfClass:[MOZVibrantView class]]) {
++        [static_cast<MOZVibrantView*>(view) prefChanged];
++      }
+     }
+   }
+ }
+@@ -124,7 +160,12 @@ bool VibrancyManager::UpdateVibrantRegion(
+   if (!slot) {
+     slot = MakeUnique<ViewRegion>();
+   }
+-  return slot->UpdateRegion(aRegion, mCoordinateConverter, mContainerView, ^() {
+-    return [[MOZVibrantView alloc] initWithFrame:NSZeroRect vibrancyType:aType];
+-  });
++  return slot->UpdateRegion(
++      aRegion, mCoordinateConverter, mContainerView, ^NSView*() {
++        if (UseGlassForVibrancyType(aType)) {
++          return [[MOZGlassView alloc] initWithFrame:NSZeroRect];
++        }
++        return [[MOZVibrantView alloc] initWithFrame:NSZeroRect
++                                        vibrancyType:aType];
++      });
+ }

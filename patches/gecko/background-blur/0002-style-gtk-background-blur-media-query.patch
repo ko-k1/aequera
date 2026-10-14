@@ -1,0 +1,133 @@
+Subject: [PATCH] style: chrome-only (-moz-gtk-background-blur-available) media query
+
+Why Firefox source must change:
+  The shell's "auto" frame material picks glass only where the desktop
+  blurs what shows through a translucent window. Whether the compositor
+  offers blur is a widget fact (0001) that chrome cannot read: chrome-only
+  media queries backed by LookAndFeel are how Gecko exposes such facts
+  (cf. -moz-gtk-csd-transparency-available).
+
+What it changes:
+  - LookAndFeel IntID GTKBackgroundBlurAvailable (override pref
+    ui.GtkBackgroundBlurAvailable): widget.wayland.background-blur.enabled
+    and the compositor's blur capability on Wayland, 0 elsewhere.
+  - servo: the -moz-gtk-background-blur-available media feature (chrome and
+    UA sheets only) and its static atom; the chrome-only media query test
+    list.
+  - nsXPLookAndFeel refreshes media queries when the pref changes.
+
+Depends on: 0001 (nsWaylandDisplay::IsBackgroundBlurSupported, the pref).
+Validation: layout/style/test/chrome/test_chrome_only_media_queries.html;
+  browser_aequera_material.js (test_auto_follows_compositor_blur flips the
+  override and expects auto to follow); the KWin run of 0001 resolves auto
+  to glass.
+Upstream risk: low to medium. A new IntID (enum plus its pref-name table)
+  and an entry in the media feature array: conflicts are mechanical when
+  upstream adds neighbors.
+
+diff --git a/layout/style/test/chrome/chrome-only-media-queries.js b/layout/style/test/chrome/chrome-only-media-queries.js
+index 04bf0cd8edd7e7d4ca162b5b3feb65473f222a55..df98a1dfaff3b2f4ef6dfe02a87265d4e98fd025 100644
+--- a/layout/style/test/chrome/chrome-only-media-queries.js
++++ b/layout/style/test/chrome/chrome-only-media-queries.js
+@@ -10,6 +10,7 @@ const CHROME_ONLY_TOGGLES = [
+   "-moz-swipe-animation-enabled",
+   "-moz-gtk-csd-available",
+   "-moz-gtk-csd-transparency-available",
++  "-moz-gtk-background-blur-available",
+   "-moz-gtk-csd-minimize-button",
+   "-moz-gtk-csd-maximize-button",
+   "-moz-gtk-csd-close-button",
+diff --git a/servo/components/style/gecko/media_features.rs b/servo/components/style/gecko/media_features.rs
+index 199216dbc108836d24780c976f21883c336040da..871a8f20c5a2f6c3dd29cb9d09cc753be14351e8 100644
+--- a/servo/components/style/gecko/media_features.rs
++++ b/servo/components/style/gecko/media_features.rs
+@@ -659,7 +659,7 @@ macro_rules! lnf_int_feature {
+ /// to support new types in these entries and (2) ensuring that either
+ /// nsPresContext::MediaFeatureValuesChanged is called when the value that
+ /// would be returned by the evaluator function could change.
+-pub static MEDIA_FEATURES: [QueryFeatureDescription; 60] = [
++pub static MEDIA_FEATURES: [QueryFeatureDescription; 61] = [
+     feature!(
+         atom!("width"),
+         AllowsRanges::Yes,
+@@ -957,6 +957,10 @@ pub static MEDIA_FEATURES: [QueryFeatureDescription; 60] = [
+         atom!("-moz-gtk-csd-transparency-available"),
+         GTKCSDTransparencyAvailable
+     ),
++    lnf_int_feature!(
++        atom!("-moz-gtk-background-blur-available"),
++        GTKBackgroundBlurAvailable
++    ),
+     lnf_int_feature!(atom!("-moz-gtk-csd-minimize-button"), GTKCSDMinimizeButton),
+     lnf_int_feature!(atom!("-moz-gtk-csd-maximize-button"), GTKCSDMaximizeButton),
+     lnf_int_feature!(atom!("-moz-gtk-csd-close-button"), GTKCSDCloseButton),
+diff --git a/widget/LookAndFeel.h b/widget/LookAndFeel.h
+index ae911763ed21ba7293e50fcfa471e900230d0260..68b08cde03580b5759f3de565a4be3da3d0e3053 100644
+--- a/widget/LookAndFeel.h
++++ b/widget/LookAndFeel.h
+@@ -203,6 +203,12 @@ class LookAndFeel {
+      */
+     GTKCSDTransparencyAvailable,
+ 
++    /*
++     * A boolean value indicating whether the compositor blurs what is behind
++     * the translucent parts of a toplevel window.
++     */
++    GTKBackgroundBlurAvailable,
++
+     /*
+      * A boolean value indicating whether client-side decorations should
+      * contain a minimize button.
+diff --git a/widget/gtk/nsLookAndFeel.cpp b/widget/gtk/nsLookAndFeel.cpp
+index cfa9708aaecfdd2b689f3d31ef468333c841e40d..16545fdbff23a85e5b62ac20937306dc5cd936f5 100644
+--- a/widget/gtk/nsLookAndFeel.cpp
++++ b/widget/gtk/nsLookAndFeel.cpp
+@@ -1084,6 +1084,15 @@ nsresult nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
+                 gdk_screen_is_composited(screen);
+       break;
+     }
++    case IntID::GTKBackgroundBlurAvailable:
++      aResult = false;
++#ifdef MOZ_WAYLAND
++      if (GdkIsWaylandDisplay()) {
++        aResult = StaticPrefs::widget_wayland_background_blur_enabled() &&
++                  WaylandDisplayGet()->IsBackgroundBlurSupported();
++      }
++#endif
++      break;
+     case IntID::GTKCSDMaximizeButton:
+       EnsureInit();
+       aResult = mCSDMaximizeButton;
+diff --git a/widget/nsXPLookAndFeel.cpp b/widget/nsXPLookAndFeel.cpp
+index b9d50a4cc8a7c0959edb537d2e20313eb5ba1d3a..822a2d79885416e61c8fe2c0c2a2fcae26f5bd56 100644
+--- a/widget/nsXPLookAndFeel.cpp
++++ b/widget/nsXPLookAndFeel.cpp
+@@ -135,6 +135,7 @@ static const char sIntPrefs[][45] = {
+     "ui.tooltipOffsetVertical",
+     "ui.GtkCSDAvailable",
+     "ui.GtkCSDTransparencyAvailable",
++    "ui.GtkBackgroundBlurAvailable",
+     "ui.GtkCSDMinimizeButton",
+     "ui.GtkCSDMaximizeButton",
+     "ui.GtkCSDCloseButton",
+@@ -521,6 +522,8 @@ static constexpr struct {
+     {"widget.gtk.libadwaita-colors.enabled"_ns, widget::ThemeChangeKind::Style},
+     {"widget.gtk.theme-scrollbar-colors.enabled"_ns,
+      widget::ThemeChangeKind::Style},
++    // Affects -moz-gtk-background-blur-available.
++    {"widget.wayland.background-blur.enabled"_ns},
+     // This affects not only the media query, but also the native theme, so we
+     // need to re-layout.
+     {"browser.theme.toolbar-theme"_ns, widget::ThemeChangeKind::AllBits},
+diff --git a/xpcom/ds/StaticAtoms.py b/xpcom/ds/StaticAtoms.py
+index 360b013fe9cf3c0c24a8c627dda87f202e3906ff..1a5dd919e4d50a5218465d3f558e5617de33123d 100644
+--- a/xpcom/ds/StaticAtoms.py
++++ b/xpcom/ds/StaticAtoms.py
+@@ -2341,6 +2341,7 @@ STATIC_ATOMS = [
+     Atom("_moz_swipe_animation_enabled", "-moz-swipe-animation-enabled"),
+     Atom("_moz_gtk_csd_available", "-moz-gtk-csd-available"),
+     Atom("_moz_gtk_csd_transparency_available", "-moz-gtk-csd-transparency-available"),
++    Atom("_moz_gtk_background_blur_available", "-moz-gtk-background-blur-available"),
+     Atom("_moz_gtk_csd_titlebar_radius", "-moz-gtk-csd-titlebar-radius"),
+     Atom("_moz_gtk_csd_tooltip_radius", "-moz-gtk-csd-tooltip-radius"),
+     Atom("_moz_gtk_csd_titlebar_button_spacing", "-moz-gtk-csd-titlebar-button-spacing"),
