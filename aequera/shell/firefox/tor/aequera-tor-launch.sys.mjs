@@ -302,8 +302,23 @@ export const AequeraTorLauncher = {
     const socksPath = await this.socketPath();
     const socksUrl = Services.io.newFileURI(new lazy.FileUtils.File(socksPath)).spec;
     const executable = Services.prefs.getStringPref(this.model.EXECUTABLE_PREF, "");
-    const prefs = this.model.instancePrefs({ socksPath, socksUrl, dataDir: paths.data, executable });
+    const level = await this.rememberedSecurityLevel(paths);
+    const prefs = this.model.instancePrefs({ socksPath, socksUrl, dataDir: paths.data, executable, level });
     await IOUtils.writeUTF8(PathUtils.join(paths.profile, "user.js"), this.model.userJs(prefs));
+  },
+
+  /**
+   * The security level the last Tor session chose (the Tor instance keeps
+   * it in <profile>/tor/settings.json, beside its throwaway profile).
+   * Missing or unreadable: Standard.
+   */
+  async rememberedSecurityLevel(paths) {
+    try {
+      const settings = await IOUtils.readJSON(PathUtils.join(paths.base, "settings.json"));
+      return this.model.securityLevel(settings?.securityLevel);
+    } catch {
+      return "standard";
+    }
   },
 
   /**

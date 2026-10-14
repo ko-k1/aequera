@@ -57,9 +57,11 @@ Design, prefs, and verification: `docs/design/TOR.md`.
 - Brave's Tor window is a private profile whose network context goes
   through a bundled tor, with per-site circuits and no local DNS. Brave
   says it does not protect as much as Tor Browser (no fingerprinting
-  uniformity). Aequera makes the same promise and no more: it hides the
-  user's IP address and DNS from sites and the network, and keeps sites
-  unlinked.
+  uniformity). Aequera promises that much: it hides the user's IP address
+  and DNS from sites and the network, and keeps sites unlinked. Since
+  2026-10-14 it also takes Tor Browser's and Mullvad Browser's hardening
+  (fingerprinting resistance, HTTPS-only, security levels;
+  `docs/design/TOR.md`), but it still does not join Tor Browser's crowd.
 - Firefox keeps one private-browsing context per process
   (`privateBrowsingId` 1). A Tor window in the same process would share
   private cookies and storage with ordinary private windows, unless every
@@ -109,8 +111,11 @@ Design, prefs, and verification: `docs/design/TOR.md`.
   a second of startup, which overlaps tor's bootstrap (several seconds).
 - Tor windows have no bookmarks, history, or extensions of the ordinary
   profile. Ad Veil, which is built in, runs in them.
-- No fingerprinting uniformity (Tor Browser's), stated in the Tor window
-  panel and in the doc.
+- Tor Browser's and Mullvad Browser's hardening is taken as prefs
+  (fingerprinting resistance with letterboxing, HTTPS-only, and the rest;
+  security levels), amended 2026-10-14. Still no membership in Tor Browser's
+  crowd: another Firefox version and no bundled fonts. This is stated in the
+  Tor window panel and in the doc.
 - Unix (Linux, macOS) first: Firefox reaches a local SOCKS proxy on Windows
   only through a named pipe, which tor does not offer. Windows needs a TCP
   port design and its own review.

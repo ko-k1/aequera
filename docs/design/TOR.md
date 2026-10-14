@@ -183,17 +183,77 @@ Nothing ever falls back to a direct connection. Tabs that failed with
 | `aequera.tor.searchEngine` | Tor (`user.js`) | DuckDuckGo (Onion) | The session's search engine; empty keeps Firefox's; without a URL, a built-in engine by name |
 | `aequera.tor.searchURL`, `aequera.tor.searchSuggestURL` | Tor (`user.js`) | DuckDuckGo's onion service (`/?q=`, `/ac/?…&type=list`) | Its search and suggestion templates (`{searchTerms}`); the engine is added for the session. If it cannot be added, the built-in DuckDuckGo is used |
 
+## Hardening (Tor Browser and Mullvad Browser)
+
+Tor windows take the hardening of Tor Browser and Mullvad Browser: their
+shared base-browser profile (tor-browser `140.17.0esr-15.0`,
+`browser/app/profile/001-base-profile.js`). Every pref Firefox 157 knows is in
+`tor-model.js` with its reason. In short:
+
+- **Fingerprinting:** `privacy.resistFingerprinting`, locked and checked like
+  the network prefs, no exempt sites, with letterboxing. Pages see UTC,
+  English, 4 cores, and a screen the size of the stepped page. Also off:
+  WebGL 2, WebMIDI, WebVR, WebAuthn, SharedArrayBuffer, Network Information,
+  HEVC, device IDs, the add-on manager, window moving and resizing, system
+  accent and colors, Wayland vsync (refresh rate).
+- **Network and headers:** cross-origin Referer is trimmed to the origin, no
+  cross-origin login prompts, no requests to 0.0.0.0, query parameters
+  stripped, Tor Browser's connection settings for the proxy.
+- **HTTPS:** HTTPS-only, locked (http `.onion` still loads: onion services are
+  encrypted end to end); safe TLS renegotiation only; no TLS 1.0/1.1, session
+  IDs, enterprise roots, or OS client certificates; strict pinning.
+- **Leaving the browser:** no links handed to other applications (locked:
+  they would connect without Tor); no PDF scripts, DRM, media plugins, or
+  service workers.
+- **Nothing kept:** permissions in memory only, downloads ask where and start
+  in the temporary directory, no clipboard history, thumbnails, autofill, or
+  session form data.
+
+Left out, deliberately:
+
+- prefs only Tor Browser's patches read (letterboxing centering and
+  gradient, canvas-randomization lock, offscreen canvas, asm.js, and others);
+- bundled fonts and their allow lists: Tor Browser ships its own fonts;
+- `privacy.firstparty.isolate`: Aequera keeps Firefox's dynamic partitioning
+  (Strict tracking protection), which Firefox now builds on;
+- Tor Browser's "no tracking protection": Aequera keeps Strict tracking
+  protection and Ad Veil, as Mullvad Browser keeps uBlock Origin.
+
+### Security levels
+
+The Tor panel offers Tor Browser's **Standard / Safer / Safest**
+(`SecurityLevel.sys.mjs`, `kSecuritySettings`):
+
+| | Standard | Safer | Safest |
+|---|---|---|---|
+| JavaScript JIT (Ion, Baseline, native regexp) | on | off | off |
+| WebAssembly | on | off | off |
+| MathML, Graphite and SVG fonts | on | off | off |
+| Autoplay (audible and inaudible) | Firefox's | off | off |
+| SVG | on | on | off |
+| JavaScript | on | on | off |
+| Web fonts | on | on | off |
+
+Tor Browser has NoScript allow JavaScript on HTTPS sites at Safer and block
+media and fonts per site. Aequera has no NoScript, so it sets these for every
+site at the level: WebAssembly and autoplay go at Safer, and JavaScript and
+web fonts at Safest. HTTPS-only already keeps plain-HTTP pages out. The level
+is remembered for the next Tor session in `<profile>/tor/settings.json`, and
+it applies to pages loaded after the change.
+
 ## What it protects, and what not
 
 Protects: the IP address and DNS lookups from sites and the local network;
 linking sites through shared circuits; local services from pages; anything
-kept after the session (history, cookies, cache: the profile is thrown away).
+kept after the session (history, cookies, cache: the profile is thrown away);
+much of what fingerprinting reads (above).
 
-Does not protect: fingerprinting (Aequera's own protections apply, Tor
-Browser's uniformity does not); what the user tells a site; downloads opened
-in other applications, which connect without Tor; the fact that tor runs on
-this machine (visible to the network unless bridges are used, a later
-slice).
+Does not protect: membership in Tor Browser's crowd. Pages can still tell an
+Aequera Tor window from Tor Browser (another Firefox version, system fonts
+rather than bundled ones, Ad Veil's blocking). Also not covered: what the
+user tells a site; downloads opened in other applications, which connect
+without Tor; the fact that tor runs on this machine (visible to the network
+unless bridges are used, a later slice).
 
 ## Verification
 

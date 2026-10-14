@@ -24,6 +24,10 @@ const {
   launchArgs,
   isTorOpenableUrl,
   searchEngine,
+  SECURITY_LEVELS,
+  SECURITY_LEVEL_PREF,
+  securityLevel,
+  securityLevelPrefs,
 } = model;
 
 const SOCKET = "/run/user/1000/aequera-tor-ab12cd34/socks";
@@ -265,6 +269,64 @@ test("the session's search engine: DuckDuckGo's onion service by default", () =>
     { name: "x", url: "https://e.org/?q={searchTerms}" },
     "a bad suggestion URL is dropped"
   );
+});
+
+test("hardening from Tor Browser: fingerprinting resistance, HTTPS-only, no external apps, all locked", () => {
+  const required = new Set(requiredNames());
+  for (const name of [
+    "privacy.resistFingerprinting",
+    "privacy.resistFingerprinting.exemptedDomains",
+    "privacy.resistFingerprinting.letterboxing",
+    "dom.security.https_only_mode",
+    "dom.security.https_only_mode_pbm",
+    "network.protocol-handler.external-default",
+  ]) {
+    assert.ok(required.has(name), `${name} is locked and checked`);
+  }
+  const value = name => PREFS.find(p => p.name === name)?.value;
+  assert.equal(value("privacy.resistFingerprinting"), true);
+  assert.equal(value("privacy.resistFingerprinting.exemptedDomains"), "");
+  assert.equal(value("webgl.enable-webgl2"), false);
+  assert.equal(value("security.webauth.webauthn"), false);
+  assert.equal(value("dom.security.https_only_mode.upgrade_onion"), false, "http .onion still works");
+  assert.equal(value("privacy.firstparty.isolate"), undefined, "Firefox's partitioning, not first-party isolation");
+});
+
+test("security levels: Tor Browser's table, plus what NoScript would block", () => {
+  assert.deepEqual(SECURITY_LEVELS, ["standard", "safer", "safest"]);
+  const at = level => Object.fromEntries(securityLevelPrefs(level));
+  const standard = at("standard");
+  const safer = at("safer");
+  const safest = at("safest");
+  // Standard: Firefox's defaults.
+  assert.equal(standard["javascript.options.ion"], true);
+  assert.equal(standard["javascript.enabled"], true);
+  assert.equal(standard["svg.disabled"], false);
+  // Safer: no JIT, no WebAssembly, no MathML, no SVG/Graphite fonts, no autoplay.
+  for (const jit of ["javascript.options.ion", "javascript.options.baselinejit", "javascript.options.native_regexp", "javascript.options.wasm"]) {
+    assert.equal(safer[jit], false, jit);
+  }
+  assert.equal(safer["mathml.disabled"], true);
+  assert.equal(safer["gfx.font_rendering.opentype_svg.enabled"], false);
+  assert.equal(safer["media.autoplay.default"], 5);
+  assert.equal(safer["javascript.enabled"], true, "scripts still run at Safer");
+  // Safest: also no JavaScript, no SVG, no remote fonts.
+  assert.equal(safest["javascript.enabled"], false);
+  assert.equal(safest["svg.disabled"], true);
+  assert.equal(safest["gfx.downloadable_fonts.enabled"], false);
+  // Unknown levels are Standard; every level sets the same prefs.
+  assert.deepEqual(at("bogus"), standard);
+  assert.deepEqual(Object.keys(safer), Object.keys(standard));
+});
+
+test("the instance starts at its security level", () => {
+  const prefs = new Map(instancePrefs({ socksPath: SOCKET, socksUrl: URL_, level: "safest" }));
+  assert.equal(prefs.get(SECURITY_LEVEL_PREF), "safest");
+  assert.equal(prefs.get("javascript.enabled"), false);
+  const standard = new Map(instancePrefs({ socksPath: SOCKET, socksUrl: URL_ }));
+  assert.equal(standard.get(SECURITY_LEVEL_PREF), "standard");
+  assert.equal(standard.get("javascript.enabled"), true);
+  assert.equal(securityLevel("nonsense"), "standard");
 });
 
 test("only web URLs are handed to a Tor window", () => {

@@ -698,6 +698,84 @@ add_task(async function test_search_default() {
   }
 });
 
+// Security levels.
+
+/** Runs `fn` with the level's prefs and settings file restored afterwards
+ *  (this test browser must keep its JavaScript engine). */
+async function withSecurityLevels(fn) {
+  const settings = PathUtils.join(PathUtils.tempDir, "aequera-tor-test-settings.json");
+  const saved = AequeraTorDaemon.settingsPath;
+  AequeraTorDaemon.settingsPath = () => settings;
+  // Restored exactly as they were (the test profile sets some of them).
+  const prefs = Services.prefs;
+  const before = [AequeraTorModel.SECURITY_LEVEL_PREF, ...AequeraTorModel.securityLevelPrefs("standard").map(([n]) => n)].map(name => {
+    const type = prefs.getPrefType(name);
+    const user = prefs.prefHasUserValue(name);
+    const value = !user
+      ? null
+      : type == prefs.PREF_BOOL
+        ? prefs.getBoolPref(name)
+        : type == prefs.PREF_INT
+          ? prefs.getIntPref(name)
+          : prefs.getStringPref(name);
+    return { name, user, value };
+  });
+  try {
+    await fn(settings);
+  } finally {
+    AequeraTorDaemon.settingsPath = saved;
+    for (const { name, user, value } of before) {
+      if (!user) {
+        prefs.clearUserPref(name);
+      } else if (typeof value == "boolean") {
+        prefs.setBoolPref(name, value);
+      } else if (typeof value == "number") {
+        prefs.setIntPref(name, value);
+      } else {
+        prefs.setStringPref(name, value);
+      }
+    }
+    await IOUtils.remove(settings, { ignoreAbsent: true });
+  }
+}
+
+add_task(async function test_security_level_switch() {
+  await withSecurityLevels(async settings => {
+    is(AequeraTorDaemon.securityLevel(), "standard", "Standard unless chosen");
+    await AequeraTorDaemon.setSecurityLevel("safer");
+    is(AequeraTorDaemon.securityLevel(), "safer");
+    is(Services.prefs.getBoolPref("javascript.options.ion"), false, "no JIT");
+    is(Services.prefs.getBoolPref("javascript.options.wasm"), false, "no WebAssembly");
+    is(Services.prefs.getBoolPref("mathml.disabled"), true, "no MathML");
+    is(Services.prefs.getIntPref("media.autoplay.default"), 5, "no autoplay");
+    is(Services.prefs.getBoolPref("javascript.enabled"), true, "scripts still run at Safer");
+    Assert.deepEqual(await IOUtils.readJSON(settings), { securityLevel: "safer" }, "remembered for the next Tor session");
+
+    await AequeraTorDaemon.setSecurityLevel("nonsense");
+    is(AequeraTorDaemon.securityLevel(), "standard", "an unknown level is Standard");
+    is(Services.prefs.getBoolPref("javascript.options.ion"), true, "JIT back");
+  });
+});
+
+add_task(async function test_new_session_starts_at_the_remembered_level() {
+  await IOUtils.makeDirectory(TOR_BASE);
+  await IOUtils.writeJSON(PathUtils.join(TOR_BASE, "settings.json"), { securityLevel: "safest" });
+  AequeraTorLauncher.spawn = instanceSpawn([]);
+  try {
+    await AequeraTorLauncher.openWindow();
+    const profileDir = PathUtils.join(TOR_BASE, "profile");
+    const prefs = readUserJs(await IOUtils.readUTF8(PathUtils.join(profileDir, "user.js")));
+    is(prefs.get("aequera.tor.securityLevel"), "safest", "the level the last session chose");
+    is(prefs.get("javascript.enabled"), false, "its prefs from the start");
+    is(prefs.get("svg.disabled"), true);
+    is(prefs.get("privacy.resistFingerprinting"), true, "fingerprinting resistance at every level");
+    await removeSocketDirOf(profileDir);
+  } finally {
+    await resetLauncher();
+    await IOUtils.remove(PathUtils.join(TOR_BASE, "settings.json"), { ignoreAbsent: true });
+  }
+});
+
 // The indicator (in the Tor instance only; mounted here by hand).
 
 add_task(async function test_indicator_renders_state() {
@@ -732,6 +810,24 @@ add_task(async function test_indicator_renders_state() {
     is(button.getAttribute("label"), "Tor");
     await TestUtils.waitForCondition(() => !gNotificationBox.getNotificationWithValue("aequera-tor-status"), "notification gone");
     ok(!panel.querySelector(".aequera-tor-new-circuit").hidden, "new circuit offered");
+
+    // The security level radios show the session's level and switch it.
+    const radios = [...panel.querySelectorAll(".aequera-tor-security input[type=radio]")];
+    Assert.deepEqual(radios.map(r => r.value), ["standard", "safer", "safest"], "Tor Browser's three levels");
+    is(radios.find(r => r.checked)?.value, "standard", "Standard checked");
+    await withSecurityLevels(async () => {
+      const opened = BrowserTestUtils.waitForEvent(panel, "popupshown");
+      AequeraTor.togglePanel();
+      await opened;
+      const safer = radios.find(r => r.value == "safer");
+      safer.click();
+      await TestUtils.waitForCondition(() => AequeraTorDaemon.securityLevel() == "safer", "level switched");
+      is(Services.prefs.getBoolPref("javascript.options.ion"), false, "Safer's prefs applied");
+      ok(safer.checked, "Safer checked");
+      const closed = BrowserTestUtils.waitForEvent(panel, "popuphidden");
+      panel.hidePopup();
+      await closed;
+    });
     ok(panel.querySelector(".aequera-tor-progress").hidden, "no progress once connected");
   } finally {
     button?.remove();

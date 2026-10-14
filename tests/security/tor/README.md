@@ -58,7 +58,13 @@ cache stays in `<main profile>/tor/data`.
 
 ## Last run
 
-2026-10-14, Linux (NixOS, steam-run), tor 0.4.9.14: live check 15/15 and
-handoff passed, before and after the code review fixes. Crash recovery,
-"checks never run" and refusal were checked by hand (`docs/design/TOR.md`,
-Verification).
+2026-10-14, Linux (NixOS, steam-run), the bundled tor 0.4.9.14: live check
+19/19, now with fingerprinting resistance, HTTPS-only, Safest, and an onion
+search. The handoff passed before and after the code review fixes. Crash
+recovery, "checks never run" and refusal were checked by hand
+(`docs/design/TOR.md`, Verification).
+
+Page-side values come from the page's own script (it writes them to the
+title). Marionette's scripts run in a realm of their own, which
+fingerprinting resistance does not cover; read there, the timezone is the
+system's.

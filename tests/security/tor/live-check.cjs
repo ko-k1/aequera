@@ -112,6 +112,37 @@ function json(text) {
   const webrtc = await m.cmd("WebDriver:ExecuteScript", { script: "return typeof RTCPeerConnection;", args: [] });
   check("no WebRTC in pages", webrtc.value == "undefined", webrtc.value);
 
+  // Tor Browser's hardening, as a page's own script sees it (it writes its
+  // findings to the title: Marionette's scripts run in a realm of their own,
+  // which fingerprinting resistance does not cover).
+  const probe = `document.title = JSON.stringify({
+        tz: new Date().getTimezoneOffset(),
+        zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        lang: navigator.language,
+        webgl2: !!document.createElement("canvas").getContext("webgl2"),
+        serviceWorker: "serviceWorker" in navigator,
+        webauthn: typeof PublicKeyCredential,
+        cores: navigator.hardwareConcurrency,
+        inner: [innerWidth, innerHeight],
+        screen: [screen.width, screen.height],
+      })`;
+  const fp = json((await load(m, `data:text/html,<title>x</title><script>${encodeURIComponent(probe)}</script>`)).title) ?? {};
+  check(
+    "fingerprinting resistance: UTC, English, no WebGL 2, service workers, or WebAuthn",
+    fp.tz == 0 && /UTC|Atlantic\/Reykjavik/.test(fp.zone) && fp.lang == "en-US" && !fp.webgl2 && !fp.serviceWorker && fp.webauthn == "undefined",
+    JSON.stringify(fp),
+  );
+  const upgraded = await load(m, "http://check.torproject.org/api/ip");
+  check("HTTPS-only: an http address loads over HTTPS", upgraded.documentURI.startsWith("https://check.torproject.org/"), upgraded.documentURI.slice(0, 60));
+
+  // Safest: no page script runs. (Standard again afterwards.)
+  const SCRIPTED = `data:text/html,<title>no-script</title><script>document.title="script-ran"</script>`;
+  const standardTitle = (await load(m, SCRIPTED)).title;
+  await chrome(m, `${DAEMON} await D.setSecurityLevel("safest");`);
+  const safestTitle = (await load(m, SCRIPTED)).title;
+  await chrome(m, `${DAEMON} await D.setSecurityLevel("standard");`);
+  check("Safest: page scripts do not run (Standard: they do)", standardTitle == "script-ran" && safestTitle == "no-script", `${standardTitle} / ${safestTitle}`);
+
   const other = json((await load(m, "https://api.ipify.org/?format=json")).text);
   const keys = await chrome(m, `${DAEMON} return [...D.nonces.keys()];`);
   check("each site has its own circuit", keys.includes("torproject.org") && keys.includes("ipify.org"), keys.join(", "));

@@ -174,7 +174,8 @@ var AequeraTor = (() => {
       about.className = "aequera-tor-about";
       about.textContent =
         "Sites and your network see a Tor address, not yours, and each site gets its own circuits. " +
-        "Nothing from this window is kept. Sites can still tell this browser apart from Tor Browser.";
+        "Fingerprinting is resisted as in Tor Browser, and nothing from this window is kept. " +
+        "Sites can still tell this browser apart from Tor Browser.";
       const actions = document.createElement("div");
       actions.className = "aequera-tor-actions";
       const circuit = document.createElement("button");
@@ -186,10 +187,47 @@ var AequeraTor = (() => {
       restart.textContent = "Restart Tor";
       restart.addEventListener("click", () => AequeraTorDaemon.restart());
       actions.append(circuit, restart);
-      body.append(title, status, progress, detail, actions, about);
+      body.append(title, status, progress, detail, actions, this.securityLevelGroup(), about);
       panel.append(body);
       document.getElementById("mainPopupSet").append(panel);
       this.panel = panel;
+    },
+
+    /** Tor Browser's security levels (tor-model.js SECURITY_LEVELS). */
+    securityLevelGroup() {
+      const levels = {
+        standard: ["Standard", "Every site works as in Firefox."],
+        safer: ["Safer", "No JavaScript JIT or WebAssembly, no MathML or SVG fonts, no autoplay."],
+        safest: ["Safest", "Also no JavaScript, SVG, or web fonts. Many sites break."],
+      };
+      const group = document.createElement("fieldset");
+      group.className = "aequera-tor-security";
+      const legend = document.createElement("legend");
+      legend.textContent = "Security level";
+      group.append(legend);
+      for (const [level, [name, description]] of Object.entries(levels)) {
+        const label = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "aequera-tor-security-level";
+        input.value = level;
+        input.addEventListener("change", () => {
+          if (input.checked) {
+            AequeraTorDaemon.setSecurityLevel(level);
+          }
+        });
+        const text = document.createElement("span");
+        const strong = document.createElement("strong");
+        strong.textContent = name;
+        text.append(strong, document.createElement("br"), description);
+        label.append(input, text);
+        group.append(label);
+      }
+      const hint = document.createElement("p");
+      hint.className = "aequera-tor-security-hint";
+      hint.textContent = "Applies to pages you load from now on; reload open pages.";
+      group.append(hint);
+      return group;
     },
 
     togglePanel() {
@@ -233,6 +271,10 @@ var AequeraTor = (() => {
         this.panel.querySelector(".aequera-tor-detail").textContent = state.detail;
         this.panel.querySelector(".aequera-tor-new-circuit").hidden = !connected;
         this.panel.querySelector(".aequera-tor-restart").hidden = state.status != "failed";
+        const level = AequeraTorDaemon.securityLevel();
+        for (const input of this.panel.querySelectorAll(".aequera-tor-security input")) {
+          input.checked = input.value == level;
+        }
       }
 
       if (state.status == "failed") {

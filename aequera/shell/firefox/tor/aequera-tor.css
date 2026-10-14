@@ -104,6 +104,51 @@
     font-size: var(--font-size-small);
   }
 
+  .aequera-tor-security {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xsmall);
+    margin: 0;
+    padding: var(--space-small) 0 0;
+    border: none;
+    border-top: 1px solid var(--panel-separator-color, color-mix(in srgb, currentColor 15%, transparent));
+
+    legend {
+      padding: 0;
+      font-weight: var(--font-weight-semibold);
+    }
+
+    label {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-small);
+      font-size: var(--font-size-small);
+
+      > span {
+        color: var(--text-color-deemphasized);
+      }
+
+      strong {
+        color: var(--text-color);
+      }
+    }
+
+    /* One size whether checked or not (the native radio shrinks when not),
+     * so the three descriptions line up. */
+    input {
+      flex: none;
+      width: 16px;
+      height: 16px;
+      margin: 1px 0 0;
+      accent-color: var(--aequera-tor-accent);
+    }
+  }
+
+  .aequera-tor-security-hint {
+    color: var(--text-color-deemphasized);
+    font-size: var(--font-size-small);
+  }
+
   .aequera-tor-progress {
     width: 100%;
     accent-color: var(--aequera-tor-accent);

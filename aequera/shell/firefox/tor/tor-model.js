@@ -117,7 +117,137 @@ var AequeraTorModel = (() => {
     { name: "browser.cache.disk.enable", value: false, why: "no disk cache" },
     { name: "signon.rememberSignons", value: false, why: "no saved logins" },
     { name: "browser.formfill.enable", value: false, why: "no form history" },
+
+    // Hardening from Tor Browser and Mullvad Browser: their shared
+    // base-browser profile (tor-browser 140.17.0esr-15.0,
+    // browser/app/profile/001-base-profile.js), the prefs Firefox 157 knows.
+    // Left out: prefs only Tor Browser's patches read (letterboxing
+    // gradient and centering, canvas randomization lock, offscreen canvas,
+    // asm.js), bundled fonts (Tor Browser ships its own), and first-party
+    // isolation (Aequera keeps Firefox's dynamic partitioning, Strict
+    // tracking protection, instead of privacy.firstparty.isolate).
+    //
+    // Fingerprinting: Firefox's resistFingerprinting, as Tor Browser locks
+    // it (time, screen, fonts, canvas, user agent, language, ...).
+    { name: "privacy.resistFingerprinting", value: true, required: true, why: "Firefox's fingerprinting resistance (Tor Browser's, locked)" },
+    { name: "privacy.resistFingerprinting.exemptedDomains", value: "", required: true, why: "no site is exempt from it" },
+    { name: "privacy.resistFingerprinting.letterboxing", value: true, required: true, why: "page sizes in steps, so the window size does not identify" },
+    { name: "privacy.resistFingerprinting.skipEarlyBlankFirstPaint", value: true, why: "no blank first window (Tor Browser)" },
+    { name: "privacy.resistFingerprinting.block_mozAddonManager", value: true, why: "sites cannot list add-ons" },
+    { name: "privacy.spoof_english", value: 2, why: "pages see English, whatever the user's language" },
+    { name: "webgl.disable-fail-if-major-performance-caveat", value: true, why: "WebGL does not reveal a weak graphics card" },
+    { name: "webgl.enable-webgl2", value: false, why: "no WebGL 2 (Tor Browser: not audited)" },
+    { name: "dom.disable_window_move_resize", value: true, why: "pages cannot move or resize windows" },
+    { name: "browser.link.open_newwindow.restriction", value: 0, why: "pop-ups open as tabs, never sized windows" },
+    { name: "media.hevc.enabled", value: false, why: "HEVC support reveals the hardware and codecs" },
+    { name: "dom.webmidi.enabled", value: false, why: "no Web MIDI" },
+    { name: "media.devices.enumerate.legacy.enabled", value: false, why: "no device IDs" },
+    { name: "media.navigator.enabled", value: false, why: "no camera or microphone APIs (WebRTC is off)" },
+    { name: "dom.vr.enabled", value: false, why: "no WebVR" },
+    { name: "security.webauth.webauthn", value: false, why: "no Web Authentication (it identifies authenticators)" },
+    { name: "dom.postMessage.sharedArrayBuffer.withCOOP_COEP", value: false, why: "no SharedArrayBuffer (high-resolution timers)" },
+    { name: "dom.use_components_shim", value: false, why: "no Components in content" },
+    { name: "dom.netinfo.enabled", value: false, why: "no Network Information API" },
+    { name: "dom.text-recognition.enabled", value: false, why: "no platform text recognition" },
+    { name: "browser.display.document_color_use", value: 1, why: "no forced system colors" },
+    { name: "widget.non-native-theme.use-theme-accent", value: false, why: "form controls do not show the system accent color" },
+    { name: "widget.wayland.vsync.enabled", value: false, why: "no Wayland vsync: the refresh rate does not leak" },
+    { name: "javascript.options.spectre.disable_for_isolated_content", value: false, why: "Spectre mitigations stay on" },
+    // Requests and headers.
+    { name: "network.http.referer.defaultPolicy", value: 2, why: "Referer: origin when cross-origin" },
+    { name: "network.http.referer.defaultPolicy.pbmode", value: 2, why: "the same in private windows" },
+    { name: "network.http.referer.XOriginTrimmingPolicy", value: 2, why: "cross-origin Referer is only scheme, host, port" },
+    { name: "network.auth.subresource-http-auth-allow", value: 1, why: "no login dialogs from cross-origin subresources" },
+    { name: "network.http.tailing.enabled", value: true, why: "the same load order as every Tor Browser" },
+    { name: "network.socket.ip_addr_any.disabled", value: true, why: "no requests to 0.0.0.0" },
+    { name: "dom.prefetch_dns_for_anchor_http_document", value: false, why: "no DNS prefetch for links" },
+    { name: "dom.prefetch_dns_for_anchor_https_document", value: false, why: "the same on HTTPS pages" },
+    { name: "privacy.query_stripping.enabled", value: true, why: "tracking parameters stripped from links" },
+    { name: "privacy.query_stripping.enabled.pbmode", value: true, why: "the same in private windows" },
+    { name: "network.http.max-persistent-connections-per-proxy", value: 256, why: "every site has its own circuit: no shared connection cap (Tor Browser)" },
+    { name: "network.http.connection-retry-timeout", value: 0, why: "no racing a second connection over tor (Tor Browser)" },
+    // HTTPS and certificates.
+    { name: "dom.security.https_only_mode", value: true, required: true, why: "HTTPS only: exits cannot read or change pages" },
+    { name: "dom.security.https_only_mode_pbm", value: true, required: true, why: "the same in private windows" },
+    { name: "dom.security.https_only_mode.upgrade_onion", value: false, why: "onion sites are encrypted already: http .onion works" },
+    { name: "dom.security.https_first_add_exception_on_failure", value: false, why: "no automatic HTTP exceptions" },
+    { name: "security.ssl.require_safe_negotiation", value: true, why: "no servers vulnerable to renegotiation attacks" },
+    { name: "security.tls.version.enable-deprecated", value: false, why: "no TLS 1.0 or 1.1" },
+    { name: "security.ssl.disable_session_identifiers", value: true, why: "no TLS session IDs to link visits" },
+    { name: "security.cert_pinning.enforcement_level", value: 2, why: "certificate pins enforced strictly" },
+    { name: "security.osclientcerts.autoload", value: false, why: "no system client certificates" },
+    { name: "security.enterprise_roots.enabled", value: false, why: "no system or enterprise roots (interception)" },
+    { name: "security.certerrors.mitm.priming.enabled", value: false, why: "no interception probe" },
+    { name: "security.certerrors.mitm.auto_enable_enterprise_roots", value: false, why: "never trust enterprise roots on an error" },
+    { name: "security.nocertdb", value: true, why: "no certificate database written" },
+    // Leaving the browser: other applications connect without Tor.
+    { name: "network.protocol-handler.external-default", value: false, required: true, why: "no links handed to other applications (they would connect without Tor)" },
+    { name: "network.protocol-handler.external.mailto", value: false, why: "not mailto: either" },
+    { name: "network.protocol-handler.warn-external-default", value: true, why: "ask before any that is allowed" },
+    { name: "pdfjs.enableScripting", value: false, why: "no scripts in PDFs" },
+    { name: "media.gmp-provider.enabled", value: false, why: "no media plugins (downloaded from Mozilla)" },
+    { name: "media.eme.enabled", value: false, why: "no DRM" },
+    { name: "browser.eme.ui.enabled", value: false, why: "nor its UI" },
+    { name: "svg.context-properties.content.allowed-domains", value: "", why: "no site styles icons with context properties" },
+    { name: "dom.serviceWorkers.enabled", value: false, why: "no service workers (they do not work in private windows)" },
+    // Nothing kept, nothing shared.
+    { name: "permissions.memory_only", value: true, why: "site permissions only in memory" },
+    { name: "browser.download.useDownloadDir", value: false, why: "ask where to save each download" },
+    { name: "browser.download.always_ask_before_handling_new_types", value: true, why: "ask before opening new file types" },
+    { name: "browser.download.start_downloads_in_tmp_dir", value: true, why: "downloads start in the temporary directory" },
+    { name: "browser.helperApps.deleteTempFileOnExit", value: true, why: "and are removed from it on exit" },
+    { name: "browser.download.manager.addToRecentDocs", value: false, why: "not listed in the system's recent files" },
+    { name: "clipboard.copyPrivateDataToClipboardCloudOrHistory", value: false, why: "copied text stays out of clipboard history and cloud" },
+    { name: "browser.sessionstore.privacy_level", value: 2, why: "no form data or cookies in session state" },
+    { name: "browser.privatebrowsing.forceMediaMemoryCache", value: true, why: "media cached in memory only" },
+    { name: "browser.pagethumbnails.capturing_disabled", value: true, why: "no page thumbnails" },
+    { name: "signon.autofillForms", value: false, why: "no autofill" },
+    { name: "extensions.formautofill.addresses.enabled", value: false, why: "no address autofill" },
+    { name: "extensions.formautofill.creditCards.enabled", value: false, why: "no card autofill" },
+    { name: "browser.urlbar.suggest.topsites", value: false, why: "no top sites in the address bar" },
+    { name: "browser.urlbar.quicksuggest.enabled", value: false, why: "no Firefox Suggest" },
+    { name: "browser.tabs.searchclipboardfor.middleclick", value: false, why: "middle-click on new tab never searches the clipboard" },
   ];
+
+  // Security levels: Tor Browser's Standard, Safer, Safest
+  // (toolkit/components/securitylevel/SecurityLevel.sys.mjs, kSecuritySettings),
+  // as prefs. Tor Browser also has NoScript block JavaScript on HTTP sites
+  // (Safer) or everywhere (Safest), WebAssembly, media, and fonts per site.
+  // Without NoScript, Aequera turns those off for every site at that level:
+  // WebAssembly and autoplay at Safer; JavaScript and remote fonts at Safest.
+  // HTTPS-only already keeps plain-HTTP pages from loading at all.
+  const SECURITY_LEVELS = ["standard", "safer", "safest"];
+  const SECURITY_LEVEL_PREF = "aequera.tor.securityLevel";
+  /** name: [standard, safer, safest] */
+  const SECURITY_LEVEL_PREFS = {
+    "javascript.options.ion": [true, false, false],
+    "javascript.options.baselinejit": [true, false, false],
+    "javascript.options.native_regexp": [true, false, false],
+    "mathml.disabled": [false, true, true],
+    "gfx.font_rendering.graphite.enabled": [true, false, false],
+    "gfx.font_rendering.opentype_svg.enabled": [true, false, false],
+    "svg.disabled": [false, false, true],
+    "javascript.options.wasm": [true, false, false],
+    "media.autoplay.default": [1, 5, 5],
+    "javascript.enabled": [true, true, false],
+    "gfx.downloadable_fonts.enabled": [true, true, false],
+  };
+
+  /** A known level, else "standard". */
+  function securityLevel(level) {
+    return SECURITY_LEVELS.includes(level) ? level : "standard";
+  }
+
+  /**
+   * The prefs of a security level.
+   *
+   * @param {string} level  "standard" | "safer" | "safest" (else standard)
+   * @returns {[string, boolean|number][]}
+   */
+  function securityLevelPrefs(level) {
+    const i = SECURITY_LEVELS.indexOf(securityLevel(level));
+    return Object.entries(SECURITY_LEVEL_PREFS).map(([name, values]) => [name, values[i]]);
+  }
 
   /** Whether a path is an absolute POSIX path. */
   function isAbsolutePosix(path) {
@@ -176,7 +306,7 @@ var AequeraTorModel = (() => {
    *   network.proxy.socks takes.
    * @returns {[string, boolean|number|string][]}
    */
-  function instancePrefs({ socksPath, socksUrl, dataDir = "", executable = "" }) {
+  function instancePrefs({ socksPath, socksUrl, dataDir = "", executable = "", level = "standard" }) {
     if (!String(socksUrl).startsWith("file:///")) {
       throw new Error(`not a file URL: ${socksUrl}`);
     }
@@ -188,6 +318,10 @@ var AequeraTorModel = (() => {
       ["network.proxy.socks", socksUrl],
       ["network.proxy.socks_port", 0],
       ...PREFS.map(p => [p.name, p.value]),
+      // The security level from the start (the JavaScript engine reads its
+      // prefs when a content process starts).
+      [SECURITY_LEVEL_PREF, securityLevel(level)],
+      ...securityLevelPrefs(level),
     ];
   }
 
@@ -429,6 +563,10 @@ var AequeraTorModel = (() => {
     launchArgs,
     isTorOpenableUrl,
     searchEngine,
+    SECURITY_LEVELS,
+    SECURITY_LEVEL_PREF,
+    securityLevel,
+    securityLevelPrefs,
   };
 })();
 

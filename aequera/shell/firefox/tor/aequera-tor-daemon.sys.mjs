@@ -193,6 +193,46 @@ export const AequeraTorDaemon = {
     await search.setDefaultPrivate(engine, reason);
   },
 
+  /** The session's security level (tor-model.js SECURITY_LEVELS). */
+  securityLevel() {
+    this.model ??= torModel();
+    return this.model.securityLevel(Services.prefs.getStringPref(this.model.SECURITY_LEVEL_PREF, ""));
+  },
+
+  /**
+   * Switch the security level: its prefs now (pages loaded from now on
+   * follow them; the JavaScript engine's in new content processes), and
+   * remembered for the next Tor session in <profile>/tor/settings.json (the
+   * Tor profile itself is thrown away).
+   *
+   * @param {string} level  "standard" | "safer" | "safest"
+   */
+  async setSecurityLevel(level) {
+    this.model ??= torModel();
+    level = this.model.securityLevel(level);
+    const prefs = Services.prefs;
+    for (const [name, value] of this.model.securityLevelPrefs(level)) {
+      if (typeof value == "boolean") {
+        prefs.setBoolPref(name, value);
+      } else {
+        prefs.setIntPref(name, value);
+      }
+    }
+    prefs.setStringPref(this.model.SECURITY_LEVEL_PREF, level);
+    try {
+      await IOUtils.writeJSON(this.settingsPath(), { securityLevel: level });
+    } catch (error) {
+      console.error("aequera-tor: cannot remember the security level", error);
+    }
+    this.setState({});
+  },
+
+  /** What Tor sessions remember: <ordinary profile>/tor/settings.json (the
+   *  instance's profile is <ordinary profile>/tor/profile). */
+  settingsPath() {
+    return PathUtils.join(PathUtils.parent(PathUtils.profileDir), "settings.json");
+  },
+
   /** Listen to state changes; returns the unsubscribe function. */
   subscribe(listener) {
     this.listeners.add(listener);
