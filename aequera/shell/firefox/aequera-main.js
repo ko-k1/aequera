@@ -10,6 +10,7 @@
 // bootstrap.
 for (const name of [
   "aequera-frame.js",
+  "aequera-hover.js",
   "workspaces/workspace-model.js",
   "workspaces/site-sort-model.js",
   "rail/aequera-rail.js",

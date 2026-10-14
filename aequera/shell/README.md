@@ -17,6 +17,7 @@ pref-gated browser patches. No telemetry, no network.
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
 | `aequera-frame.js` | `AequeraFrame`: publishes motion tokens and the frame material from prefs, owns the page's top inset |
+| `aequera-hover.js` | `AequeraHover`: hover tracking shared by the rail and the bookmarks drawer (hover delays; an open surface coming to lie under a resting pointer is hovered only once the pointer moves, presses, or scrolls) |
 | `fullscreen/` | `AequeraFullscreen`: popups open whole in Wayland fullscreen |
 | `rail/` | The tab rail |
 | `workspaces/` | Workspaces + dock, sort tabs by site |

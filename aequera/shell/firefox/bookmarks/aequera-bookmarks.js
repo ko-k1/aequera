@@ -18,11 +18,10 @@
 //     menu, a folder), and while the address bar is focused or keyboard focus
 //     (:focus-visible) is in the top bar; a mouse-clicked button never holds
 //     it open, and a menu never opens it;
-//   - an open drawer the pointer is not on may come to lie under it while it
-//     rests (address-bar focus opened it, a window retile), and the pointer
-//     hovers it only once it moves, presses, or scrolls; focus holds only in
-//     the active window (a background window keeps its focused element but
-//     shows no caret or focus ring);
+//   - hover is AequeraHover's (aequera-hover.js), which keeps an open drawer
+//     coming to lie under a resting pointer from counting as hovered; focus
+//     holds only in the active window (a background window keeps its
+//     focused element but shows no caret or focus ring);
 //   - closes after the linger delay once none of that holds.
 // The page card clips back from the top while it is open (AequeraFrame), so
 // the drawer sits on the frame material and the page never reflows.
@@ -33,22 +32,19 @@ var AequeraBookmarks = (() => {
   const VISIBILITY_PREF = "browser.toolbars.bookmarks.visibility";
   const OPEN_DELAY_PREF = "aequera.hover.openDelayMs";
   const CLOSE_DELAY_PREF = "aequera.hover.closeDelayMs";
-  /** What the pointer does, as opposed to what moves under it. */
-  const POINTER_ACTS = ["mousemove", "mousedown", "wheel"];
   const ROOT = document.documentElement;
 
   const drawer = {
     toolbar: null,
     toolbox: null,
-    hovered: false,
+    /** AequeraHover tracker for the top bar and drawer. */
+    hover: null,
     open: false,
     /** Menus and panels opened from the top bar or drawer while it was open. */
     openPopups: new Set(),
     height: 0,
     timer: 0,
     customizing: false,
-    /** Open, pointer not on it: mouseover is not hover until it acts. */
-    awaitingPointer: false,
 
     /** Peek mode applies only on top of Firefox's "always" visibility. */
     get active() {
@@ -74,7 +70,7 @@ var AequeraBookmarks = (() => {
     },
 
     wantsOpen() {
-      return this.active && (this.hovered || this.openPopups.size > 0 || this.focusIntent());
+      return this.active && (this.hover.hovered || this.openPopups.size > 0 || this.focusIntent());
     },
 
     /** A menu or panel of the top bar or drawer (not a tooltip). */
@@ -105,38 +101,7 @@ var AequeraBookmarks = (() => {
         ROOT.toggleAttribute("aequera-bookmarks-open", open);
         AequeraFrame.setTop(open ? this.height : 0);
       }
-      this.syncAwaitingPointer();
-    },
-
-    /** While the drawer is open and the pointer is not on it, the drawer can
-     * come to lie under a resting pointer (opening on address-bar focus, a
-     * window retile), and Gecko then sends that pointer a mouseover (a
-     * synthesized move after layout), which would hold the drawer open after
-     * the address bar blurs. So in that state mouseover is not hover; the
-     * pointer moving, pressing, or scrolling is (synthesized moves never
-     * reach the DOM as mousemove). The listeners exist only in that state,
-     * so pointer moves cost nothing otherwise. */
-    syncAwaitingPointer() {
-      const on = this.open && !this.hovered;
-      if (on === this.awaitingPointer) {
-        return;
-      }
-      this.awaitingPointer = on;
-      for (const type of POINTER_ACTS) {
-        if (on) {
-          this.toolbox.addEventListener(type, this, { passive: true });
-        } else {
-          this.toolbox.removeEventListener(type, this, { passive: true });
-        }
-      }
-    },
-
-    enter() {
-      if (!this.hovered) {
-        this.hovered = true;
-        this.syncAwaitingPointer();
-        this.settle(Services.prefs.getIntPref(OPEN_DELAY_PREF, 40));
-      }
+      this.hover.setExposed(this.open);
     },
 
     refreshMode() {
@@ -147,33 +112,6 @@ var AequeraBookmarks = (() => {
 
     handleEvent(event) {
       switch (event.type) {
-        // mouseover/mouseout (not the slower mouseenter/leave, which Gecko
-        // flags in chrome): entering is the first over; leaving is an out
-        // whose destination is outside the top bar.
-        case "mouseover":
-          if (!this.awaitingPointer) {
-            this.enter();
-          }
-          break;
-        // Only while awaiting the pointer (syncAwaitingPointer). A motion
-        // event without motion (a platform can send one when surfaces change
-        // under the pointer) is not the pointer acting.
-        case "mousemove":
-          if (event.movementX || event.movementY) {
-            this.enter();
-          }
-          break;
-        case "mousedown":
-        case "wheel":
-          this.enter();
-          break;
-        case "mouseout":
-          if (!this.toolbox.contains(event.relatedTarget)) {
-            this.hovered = false;
-            this.syncAwaitingPointer();
-            this.settle(Services.prefs.getIntPref(CLOSE_DELAY_PREF, 150));
-          }
-          break;
         case "focusin":
           // Address bar focus is an explicit intent: open now.
           if (gURLBar.focused) {
@@ -221,11 +159,10 @@ var AequeraBookmarks = (() => {
         console.error("aequera-bookmarks: toolbar/toolbox missing; drawer disabled");
         return;
       }
+      this.hover = AequeraHover.track(this.toolbox, delay => this.settle(delay));
       // Customize mode's events are dispatched on the toolbox (as
       // CustomizableUI listens for them), so everything registers there.
       for (const type of [
-        "mouseover",
-        "mouseout",
         "focusin",
         "focusout",
         "customizationstarting",

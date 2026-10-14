@@ -5,6 +5,7 @@ browser.jar:
     content/browser/aequera/aequera-shell.js                   (aequera-shell.js)
     content/browser/aequera/aequera-main.js                    (aequera-main.js)
     content/browser/aequera/aequera-frame.js                   (aequera-frame.js)
+    content/browser/aequera/aequera-hover.js                   (aequera-hover.js)
     content/browser/aequera/rail/aequera-rail.js               (rail/aequera-rail.js)
     content/browser/aequera/rail/aequera-rail.css              (rail/aequera-rail.css)
     content/browser/aequera/rail/aequera-essentials.css        (rail/aequera-essentials.css)
