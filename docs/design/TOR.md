@@ -179,10 +179,10 @@ slice).
   environment, refusal of non-web URLs, the running instance's profile
   untouched), the circuit filter on real channels, tor's lifecycle with a fake
   tor (real `Subprocess`), the search default, and the Tor button and panel.
-- Live check, 2026-10-14, tor 0.4.9.14 from nixpkgs (`.tmp/e2e` scripts:
-  Marionette into both instances; headless sway for the window manager).
-  15 of 15 passed:
-  - tor bootstraps (10.5 s on first start, 2.5 s with the kept directory);
+- Live check (`tests/security/tor`: Marionette into both instances, a
+  headless sway as the window system), 2026-10-14, tor 0.4.9.14 from
+  nixpkgs. 15 of 15 passed:
+  - tor bootstraps (10.5 and 12.8 s on first starts, 2.5 s with the kept directory);
   - required prefs are locked, and a write to `network.proxy.type` has no effect;
   - local DNS fails (`NS_ERROR_UNKNOWN_PROXY_HOST`);
   - check.torproject.org reports `IsTor: true`;
@@ -206,7 +206,7 @@ slice).
 Re-check what can route around the proxy: new prefs in
 `network.proxy.*`, `network.dns.*`, HTTP/3 and WebTransport, WebRTC, new
 `registerChannelFilter` callers, and new direct-connection paths in
-`ServiceRequest`. Then run the live check.
+`ServiceRequest`. Then run the live check (`tests/security/tor/README.md`).
 
 ## Slices
 

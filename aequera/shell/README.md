@@ -625,7 +625,7 @@ locked. Linux and macOS (`aequera.tor.enabled`; tor from
 
 Tests: `tests/browser/browser_aequera_tor.js` (launcher with a fake spawn,
 the circuit filter on real channels, tor's lifecycle with a fake tor, the
-panel); the live check through the Tor network is in `docs/design/TOR.md`.
+panel); the live check through the Tor network: `tests/security/tor`.
 
 ## Robustness
 
