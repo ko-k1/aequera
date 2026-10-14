@@ -156,18 +156,36 @@ export const AequeraTorDaemon = {
     this.setSearchDefault().catch(error => console.error("aequera-tor: search default not set", error));
   },
 
-  /** The session's search engine (aequera.tor.searchEngine), for normal and
-   *  private use alike (every window is private). Missing: Firefox's. */
+  /**
+   * The session's search engine (tor-model.js searchEngine: by default
+   * DuckDuckGo's onion service, added as a user engine), for normal and
+   * private use alike (every window is private). It falls back to the
+   * built-in DuckDuckGo, then to Firefox's default.
+   */
   async setSearchDefault() {
-    const name = Services.prefs.getStringPref("aequera.tor.searchEngine", "");
-    if (!name) {
+    const prefs = Services.prefs;
+    this.model ??= torModel();
+    const wanted = this.model.searchEngine({
+      name: prefs.getStringPref("aequera.tor.searchEngine", ""),
+      url: prefs.getStringPref("aequera.tor.searchURL", ""),
+      suggestUrl: prefs.getStringPref("aequera.tor.searchSuggestURL", ""),
+    });
+    if (!wanted) {
       return;
     }
     const search = lazy.SearchService;
     await search.init();
-    const engine = search.getEngineByName(name);
+    let engine = search.getEngineByName(wanted.name);
+    if (!engine && wanted.url) {
+      try {
+        engine = await search.addUserEngine(wanted);
+      } catch (error) {
+        console.error(`aequera-tor: cannot add the ${wanted.name} search engine`, error);
+      }
+    }
+    engine ??= search.getEngineByName("DuckDuckGo");
     if (!engine) {
-      console.warn(`aequera-tor: no search engine named ${name}`);
+      console.warn(`aequera-tor: no search engine named ${wanted.name}`);
       return;
     }
     const reason = search.CHANGE_REASON.UNKNOWN;

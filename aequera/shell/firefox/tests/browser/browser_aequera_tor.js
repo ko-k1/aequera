@@ -643,6 +643,46 @@ add_task(async function test_search_default() {
     is((await SearchService.getDefaultPrivate()).name, "DuckDuckGo", "in private windows too");
     await SpecialPowers.popPrefEnv();
 
+    // The Tor profile's default: DuckDuckGo's onion service, added as an
+    // engine of its own, with its suggestions.
+    const onion = "duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion";
+    const onionPrefs = AequeraTorModel.PREFS.filter(p => /^aequera\.tor\.search/.test(p.name)).map(p => [p.name, p.value]);
+    await SpecialPowers.pushPrefEnv({ set: onionPrefs });
+    try {
+      await AequeraTorDaemon.setSearchDefault();
+      await AequeraTorDaemon.setSearchDefault();
+      const engine = await SearchService.getDefaultPrivate();
+      is(engine.name, "DuckDuckGo (Onion)", "the onion engine is the default");
+      is((await SearchService.getDefault()).name, "DuckDuckGo (Onion)", "for every window");
+      is(engine.getSubmission("tor windows").uri.spec, `https://${onion}/?q=tor+windows`, "searches go to the onion service");
+      is(
+        engine.getSubmission("tor", "application/x-suggestions+json")?.uri.spec,
+        `https://${onion}/ac/?q=tor&type=list`,
+        "and so do suggestions",
+      );
+      is((await SearchService.getEngines()).filter(e => e.name == engine.name).length, 1, "added once");
+    } finally {
+      const added = SearchService.getEngineByName("DuckDuckGo (Onion)");
+      await SearchService.setDefault(before, SearchService.CHANGE_REASON.UNKNOWN);
+      await SearchService.setDefaultPrivate(beforePrivate, SearchService.CHANGE_REASON.UNKNOWN);
+      if (added) {
+        await SearchService.removeEngine(added, SearchService.CHANGE_REASON.UNKNOWN);
+      }
+      await SpecialPowers.popPrefEnv();
+    }
+
+    // A URL that is not a search template: no engine is added, Firefox's
+    // default stays.
+    await SpecialPowers.pushPrefEnv({
+      set: [
+        ["aequera.tor.searchEngine", "Broken"],
+        ["aequera.tor.searchURL", "https://example.com/no-terms"],
+      ],
+    });
+    await AequeraTorDaemon.setSearchDefault();
+    is((await SearchService.getDefault()).name, before.name, "an invalid engine changes nothing");
+    await SpecialPowers.popPrefEnv();
+
     // Empty: Firefox's default stays.
     await SearchService.setDefault(before, SearchService.CHANGE_REASON.UNKNOWN);
     await SpecialPowers.pushPrefEnv({ set: [["aequera.tor.searchEngine", ""]] });

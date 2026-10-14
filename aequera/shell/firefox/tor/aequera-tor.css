@@ -17,24 +17,59 @@
   list-style-image: url("chrome://browser/content/aequera/tor/tor.svg");
   -moz-context-properties: fill, fill-opacity;
   fill: var(--aequera-tor-accent);
+  /* On the button, not the label: Firefox mixes the hover and press
+   * backgrounds from each child's currentColor, so the icon and the label
+   * need the same one or the pill has two shades. */
+  color: var(--aequera-tor-accent);
+
+  /* One pill for icon and label. Firefox paints hover, press, and focus on
+   * each child of a toolbar button with its own rounded corners
+   * (toolbarbuttons.css), which drew two shapes here. The inner corners are
+   * square and the children touch, so the two read as one; the focus ring
+   * is drawn once, around both. */
+  > .toolbarbutton-icon {
+    width: calc(16px + var(--toolbarbutton-padding-inner) + var(--space-xxsmall));
+    padding-inline-end: var(--space-xxsmall);
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
 
   /* The label is the state ("Tor", "Tor 45%", "Tor offline"): always
-   * shown, unlike other toolbar buttons'. */
+   * shown, unlike other toolbar buttons'. Same height as the icon. */
   > .toolbarbutton-text {
     display: flex;
-    padding-inline-start: var(--space-xsmall);
-    color: var(--aequera-tor-accent);
+    align-items: center;
+    padding-block: 0;
+    padding-inline: var(--space-xxsmall) var(--toolbarbutton-padding-inner);
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
     font-weight: var(--font-weight-semibold);
     font-variant-numeric: tabular-nums;
+  }
+
+  &:focus-visible {
+    > .toolbarbutton-icon,
+    > .toolbarbutton-text {
+      outline: none;
+    }
+
+    > .toolbarbutton-icon {
+      box-shadow: inset var(--focus-outline-width) 0 0 var(--focus-outline-color),
+        inset 0 var(--focus-outline-width) 0 var(--focus-outline-color),
+        inset 0 calc(-1 * var(--focus-outline-width)) 0 var(--focus-outline-color);
+    }
+
+    > .toolbarbutton-text {
+      box-shadow: inset calc(-1 * var(--focus-outline-width)) 0 0 var(--focus-outline-color),
+        inset 0 var(--focus-outline-width) 0 var(--focus-outline-color),
+        inset 0 calc(-1 * var(--focus-outline-width)) 0 var(--focus-outline-color);
+    }
   }
 
   &[tor-status="failed"],
   &[tor-status="refused"] {
     fill: var(--icon-color-critical);
-
-    > .toolbarbutton-text {
-      color: var(--text-color-error);
-    }
+    color: var(--text-color-error);
   }
 }
 

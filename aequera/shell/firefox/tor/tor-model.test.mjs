@@ -23,6 +23,7 @@ const {
   isolationKey,
   launchArgs,
   isTorOpenableUrl,
+  searchEngine,
 } = model;
 
 const SOCKET = "/run/user/1000/aequera-tor-ab12cd34/socks";
@@ -240,6 +241,29 @@ test("launch arguments: identity ini, profile, private window, optional URL", ()
     launchArgs({ profileDir: "/p", start: true }),
     ["-profile", "/p", "-offline", "-private-window"],
     "a new instance starts offline (fail closed until its checks pass)"
+  );
+});
+
+test("the session's search engine: DuckDuckGo's onion service by default", () => {
+  const value = name => PREFS.find(p => p.name === name).value;
+  const engine = searchEngine({
+    name: value("aequera.tor.searchEngine"),
+    url: value("aequera.tor.searchURL"),
+    suggestUrl: value("aequera.tor.searchSuggestURL"),
+  });
+  assert.deepEqual(engine, {
+    name: "DuckDuckGo (Onion)",
+    url: "https://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/?q={searchTerms}",
+    suggestUrl: "https://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/ac/?q={searchTerms}&type=list",
+  });
+  assert.equal(searchEngine({ name: "  " }), null, "empty name: Firefox's default");
+  assert.deepEqual(searchEngine({ name: "DuckDuckGo" }), { name: "DuckDuckGo" }, "a built-in engine by name");
+  assert.equal(searchEngine({ name: "x", url: "https://e.org/?q=static" }), null, "a URL without {searchTerms}");
+  assert.equal(searchEngine({ name: "x", url: "javascript:{searchTerms}" }), null, "not a web URL");
+  assert.deepEqual(
+    searchEngine({ name: "x", url: "https://e.org/?q={searchTerms}", suggestUrl: "file:///{searchTerms}" }),
+    { name: "x", url: "https://e.org/?q={searchTerms}" },
+    "a bad suggestion URL is dropped"
   );
 });
 

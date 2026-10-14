@@ -36,6 +36,10 @@ var AequeraTorModel = (() => {
   const SOCKET_DIR_PATTERN = /^aequera-tor-[0-9a-f]{8}$/;
   const SOCKET_NAME = "socks";
 
+  /** DuckDuckGo's onion service (its own address, served over HTTPS with a
+   *  certificate for it). */
+  const DDG_ONION = "duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion";
+
   /** The circuit key of channels with no site (browser requests). */
   const UNKNOWN_SITE = "--unknown--";
 
@@ -93,11 +97,15 @@ var AequeraTorModel = (() => {
     { name: "dom.securecontext.allowlist_onions", value: true, why: "onion sites are end-to-end encrypted: secure contexts" },
     { name: "network.http.referer.hideOnionSource", value: true, why: "an onion address never leaves in a Referer" },
 
-    // Search: an engine that answers Tor exits without captchas (Brave's and
-    // Tor Browser's choice). Aequera's own pref: the instance makes it the
-    // default for the session (aequera-tor-daemon.sys.mjs); empty keeps
-    // Firefox's default. The user can still pick another one.
-    { name: "aequera.tor.searchEngine", value: "DuckDuckGo", why: "searches from Tor windows go to DuckDuckGo" },
+    // Search: DuckDuckGo's onion service (Tor Browser offers the same):
+    // answers Tor without captchas, and the search never leaves the Tor
+    // network (no exit relay sees it). Aequera's own prefs: the instance adds
+    // the engine and makes it the default for the session
+    // (aequera-tor-daemon.sys.mjs); an empty name keeps Firefox's default.
+    // The user can still pick another engine.
+    { name: "aequera.tor.searchEngine", value: "DuckDuckGo (Onion)", why: "searches from Tor windows go to DuckDuckGo's onion service" },
+    { name: "aequera.tor.searchURL", value: `https://${DDG_ONION}/?q={searchTerms}`, why: "its search URL" },
+    { name: "aequera.tor.searchSuggestURL", value: `https://${DDG_ONION}/ac/?q={searchTerms}&type=list`, why: "its suggestions (asked only where suggestions are on)" },
 
     // A fresh profile on every start: no first-run pages, no default-browser
     // prompt, nothing restored.
@@ -367,6 +375,38 @@ var AequeraTorModel = (() => {
     return /^(https?):\/\/[^\s]+$/i.test(String(url ?? ""));
   }
 
+  /** A search URL template: http(s), with {searchTerms}, no whitespace. */
+  function isSearchTemplate(url) {
+    return isTorOpenableUrl(url) && String(url).includes("{searchTerms}");
+  }
+
+  /**
+   * The session's search engine from its prefs (aequera.tor.searchEngine,
+   * searchURL, searchSuggestURL): the engine's form (Firefox's
+   * SearchService.addUserEngine), or only its name when no URL is given (a
+   * built-in engine). null: keep Firefox's default.
+   *
+   * @param {{ name?: string, url?: string, suggestUrl?: string }} prefs
+   * @returns {null | { name: string, url?: string, suggestUrl?: string }}
+   */
+  function searchEngine({ name = "", url = "", suggestUrl = "" }) {
+    name = String(name).trim();
+    if (!name) {
+      return null;
+    }
+    if (!url) {
+      return { name };
+    }
+    if (!isSearchTemplate(url)) {
+      return null;
+    }
+    const engine = { name, url };
+    if (suggestUrl && isSearchTemplate(suggestUrl)) {
+      engine.suggestUrl = suggestUrl;
+    }
+    return engine;
+  }
+
   return {
     INSTANCE_PREF,
     SOCKS_PATH_PREF,
@@ -388,6 +428,7 @@ var AequeraTorModel = (() => {
     isolationKey,
     launchArgs,
     isTorOpenableUrl,
+    searchEngine,
   };
 })();
 

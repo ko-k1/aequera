@@ -32,7 +32,7 @@ user, and Tor for ordinary windows.
 | Tor window toolbar | The Tor button at its start: "Tor 45%" while connecting, "Tor" once connected, "Tor offline" on failure |
 | Tor button panel | Status, bootstrap progress, tor's last warning, "New circuit for this site", "Restart Tor" after a failure, and what a Tor window does and does not protect |
 | Notification | Only when tor stopped or the window refused to browse |
-| Search | DuckDuckGo for the session (Brave's and Tor Browser's choice; Google answers Tor exits with captchas) |
+| Search | DuckDuckGo's onion service for the session, `duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion`, search and suggestions (Tor Browser offers the same; the search never leaves the Tor network, and Google answers Tor exits with captchas) |
 
 A page opened before tor finished connecting shows Firefox's proxy error.
 That tab reloads by itself once tor is connected.
@@ -180,7 +180,8 @@ Nothing ever falls back to a direct connection. Tabs that failed with
 |---|---|---|---|
 | `aequera.tor.enabled` | ordinary | true | Off: no entry points |
 | `aequera.tor.executable` | ordinary | "" | tor's absolute path; empty: the bundled tor, else `tor` on PATH |
-| `aequera.tor.searchEngine` | Tor (`user.js`) | DuckDuckGo | The session's search engine; empty keeps Firefox's |
+| `aequera.tor.searchEngine` | Tor (`user.js`) | DuckDuckGo (Onion) | The session's search engine; empty keeps Firefox's; without a URL, a built-in engine by name |
+| `aequera.tor.searchURL`, `aequera.tor.searchSuggestURL` | Tor (`user.js`) | DuckDuckGo's onion service (`/?q=`, `/ac/?…&type=list`) | Its search and suggestion templates (`{searchTerms}`); the engine is added for the session. If it cannot be added, the built-in DuckDuckGo is used |
 
 ## What it protects, and what not
 
@@ -218,7 +219,7 @@ slice).
   - `127.0.0.1` is unreachable (a local server got no request);
   - `RTCPeerConnection` is undefined;
   - with tor stopped, loads end in `proxyConnectFailure`, and the tab reloads after reconnecting;
-  - DuckDuckGo is the default.
+  - DuckDuckGo is the default (from 2026-10-14 its onion service; a search returns its results).
 
   In a real window session: Alt+Shift+N started the Tor instance in 0.9 s
   without Marionette in its environment, and "New Tor window" while it ran
@@ -256,7 +257,7 @@ Re-check what can route around the proxy: new prefs in
 
 | Slice | Content | State |
 |---|---|---|
-| 1 Tor windows | Two instances, required prefs locked, per-site circuits, tor child, Tor button and panel, entry points, DuckDuckGo | done (Linux; macOS unverified) |
+| 1 Tor windows | Two instances, required prefs locked, per-site circuits, tor child, Tor button and panel, entry points, DuckDuckGo (onion) | done (Linux; macOS unverified) |
 | 2 Onion-Location | Ordinary windows: the address bar offers ".onion available" for sites that send `Onion-Location`; `.onion` links open in a Tor window | design |
 | 3 Bridges | Settings for built-in bridges (obfs4, Snowflake) and custom bridge lines; pluggable transports found like tor | design |
 | 4 Packaging | tor (and transports) bundled, signature-checked, updated with Aequera | builds: done (`tools/tor`, Tor Browser 15.0.25's expert bundle; Linux verified, macOS pinned); release installers: design |

@@ -91,7 +91,7 @@ function json(text) {
      const { SearchService } = ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs");
      const t = Date.now();
      let search = (await SearchService.getDefaultPrivate())?.name;
-     while (search != "DuckDuckGo" && Date.now() - t < 10000) {
+     while (search != "DuckDuckGo (Onion)" && Date.now() - t < 10000) {
        await new Promise(r => setTimeout(r, 200));
        search = (await SearchService.getDefaultPrivate())?.name;
      }
@@ -103,7 +103,7 @@ function json(text) {
   check("a write to network.proxy.type has no effect", env.proxyType == 1);
   check("no local DNS", env.dns.startsWith("failed"), env.dns);
   check("every window is private", env.private === true);
-  check("searches go to DuckDuckGo", env.search == "DuckDuckGo", env.search);
+  check("searches go to DuckDuckGo's onion service", env.search == "DuckDuckGo (Onion)", env.search);
   check("the Tor button says connected", env.button == "Tor", env.button);
 
   const first = json((await load(m, "https://check.torproject.org/api/ip")).text);
@@ -124,11 +124,25 @@ function json(text) {
   const onion = await load(m, ONION, 120000);
   check("an onion site loads", /Tor Project/i.test(onion.title + onion.text), onion.title);
 
+  // A search with the session's engine lands on the onion service's results.
+  const query = await chrome(
+    m,
+    `const { SearchService } = ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs");
+     return (await SearchService.getDefaultPrivate()).getSubmission("aequera browser").uri.spec;`,
+  );
+  const searchPage = await load(m, query, 120000);
+  check(
+    "a search returns the onion service's results",
+    searchPage.documentURI.startsWith("https://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/") && /DuckDuckGo/i.test(searchPage.title),
+    `${searchPage.title} ${searchPage.documentURI.slice(0, 70)}`,
+  );
+
   const local = await load(m, `http://127.0.0.1:${server.address().port}/`, 60000);
   check("localhost is unreachable", localHits == 0 && !/^local$/.test(local.text), `hits=${localHits} ${local.documentURI.slice(0, 50)}`);
 
   await chrome(m, `${DAEMON} await D.stopTor();`);
-  const down = await load(m, "https://example.com/", 60000);
+  // A URL never loaded before: nothing can come from a cache.
+  const down = await load(m, `https://example.com/?live-check=${Date.now()}`, 60000);
   check("with tor stopped nothing loads", down.documentURI.startsWith("about:neterror"), down.documentURI.slice(0, 60));
   const back = await chrome(
     m,
