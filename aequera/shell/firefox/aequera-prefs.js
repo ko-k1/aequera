@@ -88,6 +88,10 @@ pref("browser.fullscreen.autohide", false);
 // window and discard the other workspaces.
 pref("browser.tabs.parkedHiddenSources", "aequera-workspaces", locked);
 
+// Middle-clicking a workspace in the dock closes it and its tabs; with more
+// than one tab it asks first. Unchecking the prompt's box sets this false.
+pref("aequera.workspaces.warnOnClose", true);
+
 // Sort Tabs by Site (Ctrl+Alt+S, the tab context menu, the command surface;
 // never automatic): a site with more than this many tabs in the workspace
 // moves to a workspace named after it. 0 sorts without moving; a negative

@@ -390,3 +390,160 @@ add_task(async function test_sort_cost_with_many_tabs() {
   );
   await resetWorkspaces();
 });
+
+// Digit shortcuts and closing a workspace (the model's digit and close rules
+// have node tests).
+const DIGIT_MODIFIERS = AppConstants.platform == "win" ? { altKey: true } : { ctrlKey: true };
+const dockButtonFor = id => document.querySelector(`#aequera-workspace-dock button[data-ws="${id}"]`);
+/** Three workspaces: Personal (with the window's first tab), Work, Play. */
+function threeWorkspaces() {
+  for (const name of ["Work", "Play"]) {
+    const { state } = AequeraWorkspaceModel.createWorkspace(ws().state, name);
+    ws().state = state;
+  }
+  ws().save();
+  ws().render();
+  return ws().state.workspaces.map(w => w.id);
+}
+
+/**
+ * A key pressed with focus in chrome: shortcuts run at once. (From web
+ * content they run once the content process hands the key back.)
+ */
+function pressInChrome(key, modifiers) {
+  document.querySelector("#aequera-workspace-dock button").focus();
+  EventUtils.synthesizeKey(key, modifiers);
+}
+
+add_task(async function test_digit_shortcuts_switch_workspaces() {
+  const [personal, work, play] = threeWorkspaces();
+  pressInChrome("2", DIGIT_MODIFIERS);
+  is(ws().state.active, work, "digit 2: the second workspace");
+  pressInChrome("9", DIGIT_MODIFIERS);
+  is(ws().state.active, play, "digit 9: the last workspace");
+  pressInChrome("1", DIGIT_MODIFIERS);
+  is(ws().state.active, personal, "digit 1: the first workspace");
+  pressInChrome("5", DIGIT_MODIFIERS);
+  is(ws().state.active, personal, "no 5th workspace: nothing happens");
+
+  // From a web page, as when reading one.
+  const browser = gBrowser.selectedBrowser;
+  BrowserTestUtils.startLoadingURIString(browser, "data:text/html,<p>page</p>");
+  await BrowserTestUtils.browserLoaded(browser);
+  browser.focus();
+  EventUtils.synthesizeKey("2", DIGIT_MODIFIERS);
+  await TestUtils.waitForCondition(() => ws().state.active == work, "works with focus in a web page");
+
+  const label = ShortcutUtils.prettifyShortcut(document.getElementById("aequera-key-workspace-2"));
+  is(dockButtonFor(work).title, `Work (${label})`, "the dock row names its shortcut");
+  is(
+    dockButtonFor(work).getAttribute("aria-keyshortcuts"),
+    `${AppConstants.platform == "win" ? "Alt" : "Control"}+2`,
+    "and exposes it to assistive technology"
+  );
+
+  if (AppConstants.platform == "linux") {
+    // Firefox's own tab digits (Alt+1..9 on Linux) keep working.
+    gBrowser.selectedTab = await openTab();
+    isnot(gBrowser.selectedTab, gBrowser.visibleTabs[0], "a later tab is selected");
+    pressInChrome("1", { altKey: true });
+    is(gBrowser.selectedTab, gBrowser.visibleTabs[0], "Alt+1 still selects the first tab");
+  }
+  await resetWorkspaces();
+});
+
+/**
+ * Waits for the close prompt, reads its title, sets "ask again", and accepts
+ * or cancels it.
+ */
+async function answerClosePrompt({ accept, askAgain = true }) {
+  const dialogWin = await BrowserTestUtils.promiseAlertDialogOpen();
+  const doc = dialogWin.document;
+  const title = doc.getElementById("infoTitle").textContent;
+  // The dialog records the box on its command event, as a click sends it.
+  const checkbox = doc.getElementById("checkbox");
+  checkbox.checked = askAgain;
+  checkbox.doCommand();
+  const dialog = doc.querySelector("dialog");
+  if (accept) {
+    dialog.acceptDialog();
+  } else {
+    dialog.cancelDialog();
+  }
+  return title;
+}
+
+add_task(async function test_middle_click_closes_a_workspace_with_one_tab_at_once() {
+  const [personal, work] = threeWorkspaces();
+  ws().switchTo(work);
+  const workTab = gBrowser.selectedTab;
+  BrowserTestUtils.startLoadingURIString(workTab.linkedBrowser, "data:text/html,<title>Work page</title>");
+  await BrowserTestUtils.browserLoaded(workTab.linkedBrowser);
+  ws().switchTo(personal);
+
+  EventUtils.synthesizeMouseAtCenter(dockButtonFor(work), { button: 1 });
+  await TestUtils.waitForCondition(() => !workspaceNamed("Work"), "the workspace closes without asking");
+  ok(!workTab.isConnected, "its tab closed");
+  // SessionStore keeps a just-loaded page once its final state arrives.
+  await TestUtils.waitForCondition(
+    () => SessionStore.getClosedTabDataForWindow(window)[0]?.title == "Work page",
+    "into recently closed tabs"
+  );
+  is(ws().state.active, personal, "the active workspace stays");
+  ok(!dockButtonFor(work), "its dock row is gone");
+  await resetWorkspaces();
+});
+
+add_task(async function test_closing_a_workspace_with_several_tabs_asks_first() {
+  const [personal, work] = threeWorkspaces();
+  ws().switchTo(work);
+  const workTabs = [gBrowser.selectedTab, await openTab(), await openTab()];
+
+  let answered = answerClosePrompt({ accept: false });
+  EventUtils.synthesizeMouseAtCenter(dockButtonFor(work), { button: 1 });
+  is(await answered, "Close “Work” and its 3 tabs?", "the prompt names the workspace and its tabs");
+  await TestUtils.waitForTick();
+  ok(workspaceNamed("Work"), "cancel keeps the workspace");
+  ok(workTabs.every(t => t.isConnected), "and its tabs");
+  is(ws().state.active, work, "still active");
+
+  answered = answerClosePrompt({ accept: true });
+  EventUtils.synthesizeMouseAtCenter(dockButtonFor(work), { button: 1 });
+  await answered;
+  await TestUtils.waitForCondition(() => !workspaceNamed("Work"), "accept closes it");
+  ok(workTabs.every(t => !t.isConnected), "with its tabs");
+  is(ws().state.active, ws().state.workspaces[1].id, "the next workspace (Play) takes over");
+  ok(!gBrowser.selectedTab.hidden, "with a visible selected tab");
+  ok(Services.prefs.getBoolPref("aequera.workspaces.warnOnClose"), "asking stays on");
+  ws().switchTo(personal);
+  await resetWorkspaces();
+});
+
+add_task(async function test_unchecking_ask_turns_the_prompt_off() {
+  const [, work, play] = threeWorkspaces();
+  ws().switchTo(work);
+  await openTab();
+  ws().switchTo(play);
+  await openTab();
+
+  const answered = answerClosePrompt({ accept: true, askAgain: false });
+  EventUtils.synthesizeMouseAtCenter(dockButtonFor(work), { button: 1 });
+  await answered;
+  await TestUtils.waitForCondition(() => !workspaceNamed("Work"), "closed");
+  ok(!Services.prefs.getBoolPref("aequera.workspaces.warnOnClose"), "asking is off");
+
+  await ws().closeWorkspace(play);
+  ok(!workspaceNamed("Play"), "the next one closes without a prompt");
+  Services.prefs.clearUserPref("aequera.workspaces.warnOnClose");
+  await resetWorkspaces();
+});
+
+add_task(async function test_the_only_workspace_never_closes() {
+  const tab = gBrowser.selectedTab;
+  const id = ws().state.active;
+  EventUtils.synthesizeMouseAtCenter(dockButtonFor(id), { button: 1 });
+  await TestUtils.waitForTick();
+  is(ws().state.workspaces.length, 1, "it stays");
+  ok(tab.isConnected, "with its tab");
+  await resetWorkspaces();
+});

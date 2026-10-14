@@ -16,6 +16,11 @@
 // Sort tabs by site (site-sort-model.js) runs only on request: Ctrl+Alt+S
 // (Cmd+Opt+S on macOS), the end of the tab context menu, or the
 // command surface.
+//
+// Ctrl+1..8 switch to workspace 1..8 and Ctrl+9 to the last one (Alt+digit
+// on Windows, where Firefox's tabs own Ctrl+digit). Middle-clicking a dock
+// row closes that workspace and its tabs, asking first when it holds more
+// than one.
 
 var AequeraWorkspaces = (() => {
   const WINDOW_KEY = "aequera-workspaces";
@@ -23,10 +28,24 @@ var AequeraWorkspaces = (() => {
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const SORT_OVER_PREF = "aequera.tabs.sortBySite.over";
   const SORT_KEY_ID = "aequera-key-sort-tabs";
+  const WARN_CLOSE_PREF = "aequera.workspaces.warnOnClose";
+  // Firefox selects tabs with Alt+1..9 on Linux and Cmd+1..9 on macOS, so
+  // Ctrl+digit is free there; on Windows its tabs take Ctrl+digit.
+  const DIGIT_MODIFIER = AppConstants.platform == "win" ? "alt" : "control";
 
   // Loaded before this script by aequera-main.js.
-  const { WORKSPACE_SOURCE, normalizeState, createWorkspace, withActive, membershipOf, planSwitch } =
-    AequeraWorkspaceModel;
+  const {
+    WORKSPACE_SOURCE,
+    normalizeState,
+    createWorkspace,
+    withActive,
+    workspaceForDigit,
+    digitForWorkspace,
+    planClose,
+    removeWorkspace,
+    membershipOf,
+    planSwitch,
+  } = AequeraWorkspaceModel;
   const { DEFAULT_OVER, planSort } = AequeraSiteSortModel;
 
   const controller = {
@@ -37,6 +56,8 @@ var AequeraWorkspaces = (() => {
     newButton: null,
     /** workspace id -> WeakRef(tab) last selected there (this session). */
     lastSelected: new Map(),
+    /** digit -> { label (as menus show it), aria (aria-keyshortcuts) }. */
+    digitShortcuts: new Map(),
     /** Resolves once state is loaded and the dock is mounted. */
     ready: null,
 
@@ -45,7 +66,8 @@ var AequeraWorkspaces = (() => {
       await SessionStore.promiseInitialized;
       this.reload();
       this.mountDock();
-      this.mountSortCommand();
+      this.mountKeys();
+      this.mountSortMenuItem();
       gBrowser.tabContainer.addEventListener("TabOpen", this);
       gBrowser.tabContainer.addEventListener("TabSelect", this);
       gBrowser.tabContainer.addEventListener("TabClose", this);
@@ -132,6 +154,84 @@ var AequeraWorkspaces = (() => {
       this.state = state;
       this.save();
       this.switchTo(workspace.id);
+    },
+
+    planCloseOf(id) {
+      const tabs = gBrowser.tabs.filter(t => !t.closing);
+      return planClose(this.state, tabs.map(t => this.tabInfo(t)), id);
+    },
+
+    /**
+     * Close workspace `id` and its tabs (they go to recently closed tabs,
+     * like any closed tab). The window's only workspace never closes. With
+     * more than one tab it asks first (aequera.workspaces.warnOnClose).
+     * A page that asks before being left can keep its tab; the workspace then
+     * stays with what remains.
+     */
+    async closeWorkspace(id) {
+      let plan = this.planCloseOf(id);
+      if (!plan) {
+        return;
+      }
+      if (plan.close.length > 1 && Services.prefs.getBoolPref(WARN_CLOSE_PREF, true)) {
+        if (!(await this.confirmClose(id, plan.close.length))) {
+          return;
+        }
+        // The prompt is async: plan again from what is there now.
+        plan = this.planCloseOf(id);
+        if (!plan) {
+          return;
+        }
+      }
+      if (plan.switchTo) {
+        // Park the closing tabs first: no visible tab closes, so Firefox
+        // never walks the selection through them.
+        this.switchTo(plan.switchTo);
+      }
+      if (plan.close.length) {
+        const close = () => gBrowser.removeTabs(plan.close, { animate: false });
+        if (window.AequeraTabs) {
+          AequeraTabs.batch(close);
+        } else {
+          close();
+        }
+      }
+      if (plan.close.some(tab => tab.isConnected && !tab.closing)) {
+        this.render();
+        return;
+      }
+      this.state = removeWorkspace(this.state, id);
+      this.lastSelected.delete(id);
+      this.save();
+      // Repair: a beforeunload prompt may have switched to the closing
+      // workspace while its tabs closed.
+      this.apply(this.state.active);
+      this.render();
+    },
+
+    /** "Close “Work” and its 9 tabs?" with Firefox's window-modal prompt;
+     *  unchecking the box turns the question off. */
+    async confirmClose(id, count) {
+      const name = this.state.workspaces.find(w => w.id === id)?.name ?? "";
+      const prompt = Services.prompt;
+      const result = await prompt.asyncConfirmEx(
+        window.browsingContext,
+        prompt.MODAL_TYPE_INTERNAL_WINDOW,
+        `Close “${name}” and its ${count} tabs?`,
+        null,
+        prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_0 + prompt.BUTTON_TITLE_CANCEL * prompt.BUTTON_POS_1,
+        "Close Workspace",
+        null,
+        null,
+        "Ask before closing a workspace with several tabs",
+        true
+      );
+      const bag = result.QueryInterface(Ci.nsIPropertyBag2);
+      const confirmed = bag.get("buttonNumClicked") == 0;
+      if (confirmed && !bag.get("checked")) {
+        Services.prefs.setBoolPref(WARN_CLOSE_PREF, false);
+      }
+      return confirmed;
     },
 
     /** Registrable domain of a web page (the host where there is none, as
@@ -232,22 +332,44 @@ var AequeraWorkspaces = (() => {
     },
 
     /**
-     * Ctrl+Alt+S (a keyset of its own, like extension shortcuts) and a "Sort
-     * Tabs by Site" item at the end of the tab context menu. The end is the
+     * The window's Aequera shortcuts, in a keyset of their own (as WebExtension
+     * shortcuts are): Ctrl+Alt+S sorts tabs by site; Ctrl+1..8 switch to
+     * workspace 1..8 and Ctrl+9 to the last one (Alt+digit on Windows).
+     */
+    mountKeys() {
+      const keyset = document.createXULElement("keyset");
+      keyset.id = "aequera-keyset";
+      const addKey = (id, char, modifiers, run) => {
+        const key = document.createXULElement("key");
+        key.id = id;
+        key.setAttribute("key", char);
+        key.setAttribute("modifiers", modifiers);
+        key.addEventListener("command", run);
+        keyset.append(key);
+        return key;
+      };
+      addKey(SORT_KEY_ID, "S", "accel,alt", () => this.sortBySite());
+      for (let digit = 1; digit <= 9; digit++) {
+        const key = addKey(`aequera-key-workspace-${digit}`, String(digit), DIGIT_MODIFIER, () => {
+          const id = workspaceForDigit(this.state, digit);
+          if (id) {
+            this.switchTo(id);
+          }
+        });
+        this.digitShortcuts.set(digit, {
+          label: ShortcutUtils.prettifyShortcut(key),
+          aria: `${DIGIT_MODIFIER == "alt" ? "Alt" : "Control"}+${digit}`,
+        });
+      }
+      document.documentElement.append(keyset);
+    },
+
+    /**
+     * "Sort Tabs by Site" at the end of the tab context menu. The end is the
      * menu's open section, where WebExtension items go: Firefox's menu layout
      * (TabContextMenu.MENU_SECTIONS) refuses unknown items anywhere else.
      */
-    mountSortCommand() {
-      const keyset = document.createXULElement("keyset");
-      keyset.id = "aequera-keyset";
-      const key = document.createXULElement("key");
-      key.id = SORT_KEY_ID;
-      key.setAttribute("key", "S");
-      key.setAttribute("modifiers", "accel,alt");
-      key.addEventListener("command", () => this.sortBySite());
-      keyset.append(key);
-      document.documentElement.append(keyset);
-
+    mountSortMenuItem() {
       const item = document.createXULElement("menuitem");
       item.id = "aequera-context-sort-tabs";
       item.setAttribute("label", "Sort Tabs by Site");
@@ -327,6 +449,15 @@ var AequeraWorkspaces = (() => {
           this.newWorkspace();
         }
       });
+      // Middle-click closes a workspace, as it closes a tab.
+      dock.addEventListener("auxclick", event => {
+        const button = event.target.closest("button");
+        if (event.button == 1 && button?.dataset.ws) {
+          this.closeWorkspace(button.dataset.ws).catch(error => {
+            console.error("aequera-workspaces: close failed", error);
+          });
+        }
+      });
       const add = this.createButton("aequera-ws-name");
       add.classList.add("aequera-ws-new");
       add.dataset.action = "new-workspace";
@@ -398,7 +529,13 @@ var AequeraWorkspaces = (() => {
         const count = counts.get(w.id);
         button.setAttribute("aria-selected", String(w.id === this.state.active));
         button.setAttribute("aria-label", `${w.name}, ${count} tabs`);
-        button.title = w.name;
+        const shortcut = this.digitShortcuts.get(digitForWorkspace(this.state, w.id));
+        button.title = shortcut ? `${w.name} (${shortcut.label})` : w.name;
+        if (shortcut) {
+          button.setAttribute("aria-keyshortcuts", shortcut.aria);
+        } else {
+          button.removeAttribute("aria-keyshortcuts");
+        }
         setText(button.querySelector(".aequera-ws-name"), w.name);
         setText(button.querySelector(".aequera-ws-count"), String(count));
         return button;

@@ -275,7 +275,7 @@ the rest are parked with Firefox's native hidden tabs.
 
 | File | Role |
 |---|---|
-| `workspace-model.js` | Pure model: state validation/recovery, switch plans. A classic script (the bootstrap loads it uncached) that also exports itself as CommonJS; node tests: `node --test aequera/shell/firefox/workspaces/workspace-model.test.mjs` |
+| `workspace-model.js` | Pure model: state validation/recovery, switch plans, digit shortcuts, close plans. A classic script (the bootstrap loads it uncached) that also exports itself as CommonJS; node tests: `node --test aequera/shell/firefox/workspaces/workspace-model.test.mjs` |
 | `aequera-workspaces.js` | Window controller: applies plans via gBrowser, persists with SessionStore (window value `aequera-workspaces`, tab value `aequera-workspace`), renders the dock |
 | `aequera-workspaces.css` | Dock: one layout in both states ("icons never move": each dot stays centered on the collapsed icon column); names and counts are always laid out and fade in/out, revealed by the widening rail and clipped away by the narrowing one |
 
@@ -289,6 +289,23 @@ the rest are parked with Firefox's native hidden tabs.
   (`patches/browser/workspace-hooks/0001`, pref
   `browser.tabs.parkedHiddenSources`).
 - Corrupt persisted state recovers to one workspace with every tab reachable.
+- Ctrl+1..8 switch to workspace 1..8 and Ctrl+9 to the last one (the tab
+  strip's convention). Firefox selects tabs with Alt+digit on Linux and
+  Cmd+digit on macOS, so Ctrl+digit is free there; on Windows Firefox's tabs
+  own Ctrl+digit, so workspaces use Alt+digit. A missing workspace does
+  nothing. Each dock row names its shortcut in its tooltip and
+  `aria-keyshortcuts`. Keys live in Aequera's own keyset (`#aequera-keyset`).
+- Middle-click on a dock row closes that workspace, as it closes a tab: its
+  tabs close into recently closed tabs (Ctrl+Shift+T reopens them; a whole
+  tab group is saved, as Firefox does). With more than one tab it asks first
+  ("Close “Work” and its 3 tabs?", Firefox's window-modal prompt); unchecking
+  "Ask before closing a workspace with several tabs" sets
+  `aequera.workspaces.warnOnClose` to false. Closing the active workspace
+  switches to the next one (the previous one for the last) before any tab
+  closes, so the selection never walks through closing tabs. The window's
+  only workspace never closes. A page that asks before being left can keep
+  its tab; the workspace then stays with what remains. Closed workspace ids
+  are never reused.
 
 ### Sort tabs by site
 

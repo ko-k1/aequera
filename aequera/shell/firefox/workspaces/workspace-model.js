@@ -104,6 +104,91 @@ var AequeraWorkspaceModel = (() => {
   }
 
   /**
+   * The workspace a digit shortcut reaches: 1..8 the workspace in that
+   * position, 9 the last one (the tab strip's convention). Null when there is
+   * none.
+   *
+   * @param {State} state
+   * @param {number} digit
+   * @returns {string|null}
+   */
+  function workspaceForDigit(state, digit) {
+    if (!Number.isInteger(digit) || digit < 1 || digit > 9) {
+      return null;
+    }
+    const list = state.workspaces;
+    return (digit === 9 ? list[list.length - 1] : list[digit - 1])?.id ?? null;
+  }
+
+  /**
+   * The digit shortcut shown for a workspace: its position for the first 8,
+   * 9 for the last one, null for the rest.
+   *
+   * @returns {number|null}
+   */
+  function digitForWorkspace(state, id) {
+    const index = state.workspaces.findIndex(w => w.id === id);
+    if (index < 0) {
+      return null;
+    }
+    if (index < 8) {
+      return index + 1;
+    }
+    return index === state.workspaces.length - 1 ? 9 : null;
+  }
+
+  /** The workspace that takes over when `id` closes: the next one, else the
+   *  previous one. Null when `id` is unknown or the only workspace. */
+  function neighborOf(state, id) {
+    const index = state.workspaces.findIndex(w => w.id === id);
+    if (index < 0 || state.workspaces.length < 2) {
+      return null;
+    }
+    return (state.workspaces[index + 1] ?? state.workspaces[index - 1]).id;
+  }
+
+  /**
+   * What closing workspace `id` does, or null when it cannot close (unknown,
+   * or the window's only workspace). The controller switches to `switchTo`
+   * first when it is set (the closing workspace is active), so the closing
+   * tabs are parked, then closes `close`.
+   *
+   * @param {State} state
+   * @param {TabInfo[]} tabs
+   * @param {string} id
+   * @returns {{ switchTo: string|null, close: *[] } | null}
+   */
+  function planClose(state, tabs, id) {
+    const neighbor = neighborOf(state, id);
+    if (!neighbor) {
+      return null;
+    }
+    return {
+      switchTo: state.active === id ? neighbor : null,
+      close: tabs.filter(t => !t.pinned && membershipOf(t, state) === id).map(t => t.key),
+    };
+  }
+
+  /**
+   * The state without workspace `id`; if it was active, its neighbor is.
+   * Ids are never reused (nextId stays), so a tab still naming the closed
+   * workspace never joins a later one.
+   *
+   * @returns {State}
+   */
+  function removeWorkspace(state, id) {
+    const neighbor = neighborOf(state, id);
+    if (!neighbor) {
+      throw new Error(`cannot remove workspace ${id}`);
+    }
+    return {
+      ...state,
+      workspaces: state.workspaces.filter(w => w.id !== id),
+      active: state.active === id ? neighbor : state.active,
+    };
+  }
+
+  /**
    * The workspace a tab belongs to. Tabs with no or a stale workspace id
    * belong to the first workspace, so no tab is ever orphaned.
    */
@@ -165,6 +250,10 @@ var AequeraWorkspaceModel = (() => {
     normalizeState,
     createWorkspace,
     withActive,
+    workspaceForDigit,
+    digitForWorkspace,
+    planClose,
+    removeWorkspace,
     membershipOf,
     planSwitch,
   };

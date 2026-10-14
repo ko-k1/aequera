@@ -9,6 +9,10 @@ const {
   normalizeState,
   initialState,
   createWorkspace,
+  workspaceForDigit,
+  digitForWorkspace,
+  planClose,
+  removeWorkspace,
   membershipOf,
   planSwitch,
 } = model;
@@ -142,4 +146,91 @@ test("planSwitch to the active workspace is a visibility repair, not a selection
 
 test("planSwitch to an unknown workspace is refused", () => {
   assert.throws(() => planSwitch(two(), [], "nope"), /unknown workspace/);
+});
+
+/** A state with `count` workspaces ws-1..ws-count. */
+const withWorkspaces = count => {
+  let state = initialState();
+  while (state.workspaces.length < count) {
+    state = createWorkspace(state).state;
+  }
+  return state;
+};
+
+test("digits 1..8 reach that workspace and 9 the last one", () => {
+  const three = withWorkspaces(3);
+  assert.equal(workspaceForDigit(three, 1), "ws-1");
+  assert.equal(workspaceForDigit(three, 3), "ws-3");
+  assert.equal(workspaceForDigit(three, 4), null, "no 4th workspace");
+  assert.equal(workspaceForDigit(three, 9), "ws-3", "9 is the last");
+  const twelve = withWorkspaces(12);
+  assert.equal(workspaceForDigit(twelve, 8), "ws-8");
+  assert.equal(workspaceForDigit(twelve, 9), "ws-12");
+  for (const bad of [0, 10, 1.5, "1", NaN]) {
+    assert.equal(workspaceForDigit(three, bad), null);
+  }
+});
+
+test("the digit shown for a workspace is the one that reaches it", () => {
+  const three = withWorkspaces(3);
+  assert.deepEqual(
+    three.workspaces.map(w => digitForWorkspace(three, w.id)),
+    [1, 2, 3],
+    "with 8 or fewer, each shows its position"
+  );
+  const ten = withWorkspaces(10);
+  assert.deepEqual(
+    ten.workspaces.map(w => digitForWorkspace(ten, w.id)),
+    [1, 2, 3, 4, 5, 6, 7, 8, null, 9]
+  );
+  assert.equal(digitForWorkspace(three, "nope"), null);
+  for (const state of [three, ten, withWorkspaces(9)]) {
+    for (const w of state.workspaces) {
+      const digit = digitForWorkspace(state, w.id);
+      if (digit) {
+        assert.equal(workspaceForDigit(state, digit), w.id, `${w.id} via ${digit}`);
+      }
+    }
+  }
+});
+
+test("planClose closes the workspace's tabs; pinned and other tabs stay", () => {
+  const state = withWorkspaces(3);
+  const tabs = [
+    tab("a1", "ws-1"),
+    tab("b1", "ws-2", { hidden: true, hiddenBy: WORKSPACE_SOURCE }),
+    tab("b2", "ws-2", { hidden: true, hiddenBy: WORKSPACE_SOURCE }),
+    tab("pin", null, { pinned: true }),
+  ];
+  assert.deepEqual(planClose(state, tabs, "ws-2"), { switchTo: null, close: ["b1", "b2"] });
+  assert.deepEqual(planClose(state, [], "ws-3"), { switchTo: null, close: [] }, "an empty one closes too");
+});
+
+test("closing the active workspace switches to the next one, else the previous one", () => {
+  const state = withWorkspaces(3);
+  assert.equal(planClose({ ...state, active: "ws-2" }, [], "ws-2").switchTo, "ws-3");
+  assert.equal(planClose({ ...state, active: "ws-3" }, [], "ws-3").switchTo, "ws-2");
+  assert.equal(planClose({ ...state, active: "ws-1" }, [], "ws-1").switchTo, "ws-2");
+});
+
+test("tabs with a stale workspace close with the first workspace (where they belong)", () => {
+  const state = withWorkspaces(2);
+  assert.deepEqual(planClose(state, [tab("old", "ws-gone"), tab("a", "ws-1")], "ws-1").close, ["old", "a"]);
+});
+
+test("the only workspace and unknown ones cannot close", () => {
+  assert.equal(planClose(initialState(), [tab("a", "ws-1")], "ws-1"), null);
+  assert.equal(planClose(withWorkspaces(2), [], "nope"), null);
+  assert.throws(() => removeWorkspace(initialState(), "ws-1"), /cannot remove/);
+});
+
+test("removeWorkspace keeps order, moves the active one, and never reuses ids", () => {
+  const state = { ...withWorkspaces(3), active: "ws-2" };
+  const after = removeWorkspace(state, "ws-2");
+  assert.deepEqual(after.workspaces.map(w => w.id), ["ws-1", "ws-3"]);
+  assert.equal(after.active, "ws-3");
+  assert.equal(removeWorkspace(state, "ws-3").active, "ws-2", "closing another keeps the active one");
+  const { workspace } = createWorkspace(after);
+  assert.equal(workspace.id, "ws-4", "a new workspace does not take the closed one's id");
+  assert.equal(state.workspaces.length, 3, "input not mutated");
 });
