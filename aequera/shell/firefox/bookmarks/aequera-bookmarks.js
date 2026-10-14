@@ -18,6 +18,10 @@
 //     menu, a folder), and while the address bar is focused or keyboard focus
 //     (:focus-visible) is in the top bar; a mouse-clicked button never holds
 //     it open, and a menu never opens it;
+//   - hover is the pointer moving onto the top bar or drawer, never the
+//     drawer opening under a resting pointer; focus holds only in the
+//     active window (a background window keeps its focused element but shows
+//     no caret or focus ring);
 //   - closes after the linger delay once none of that holds.
 // The page card clips back from the top while it is open (AequeraFrame), so
 // the drawer sits on the frame material and the page never reflows.
@@ -50,8 +54,12 @@ var AequeraBookmarks = (() => {
       );
     },
 
-    /** Address bar focus, or keyboard focus anywhere in the top bar. */
+    /** Address bar focus, or keyboard focus anywhere in the top bar, in the
+     * active window. */
     focusIntent() {
+      if (Services.focus.activeWindow !== window) {
+        return false;
+      }
       if (gURLBar.focused) {
         return true;
       }
@@ -102,10 +110,14 @@ var AequeraBookmarks = (() => {
 
     handleEvent(event) {
       switch (event.type) {
-        // mouseover/mouseout (not the slower mouseenter/leave, which Gecko
-        // flags in chrome): entering is the first over; leaving is an out
-        // whose destination is outside the top bar.
-        case "mouseover":
+        // mousemove/mouseout (not the slower mouseenter/leave, which Gecko
+        // flags in chrome): entering is the first move; leaving is an out
+        // whose destination is outside the top bar. Not mouseover: Gecko
+        // also sends it when the drawer opens under a resting pointer (a
+        // synthesized move after layout), which would then hold the drawer
+        // open after the address bar blurs; synthesized moves never reach
+        // the DOM as mousemove.
+        case "mousemove":
           if (!this.hovered) {
             this.hovered = true;
             this.settle(Services.prefs.getIntPref(OPEN_DELAY_PREF, 40));
@@ -127,6 +139,12 @@ var AequeraBookmarks = (() => {
           break;
         case "focusout":
           this.settle(Services.prefs.getIntPref(CLOSE_DELAY_PREF, 150));
+          break;
+        // Focus holds follow the window's activation. Gecko fires deactivate
+        // before it clears the active window, so re-decide a tick later.
+        case "activate":
+        case "deactivate":
+          this.settle(0);
           break;
         case "popupshown":
           // Holds an open drawer while in use; never opens a closed one (a
@@ -167,7 +185,7 @@ var AequeraBookmarks = (() => {
       // Customize mode's events are dispatched on the toolbox (as
       // CustomizableUI listens for them), so everything registers there.
       for (const type of [
-        "mouseover",
+        "mousemove",
         "mouseout",
         "focusin",
         "focusout",
@@ -180,6 +198,8 @@ var AequeraBookmarks = (() => {
       // panels) or are shown outside it, so listen document-wide.
       document.addEventListener("popupshown", this);
       document.addEventListener("popuphidden", this);
+      window.addEventListener("activate", this);
+      window.addEventListener("deactivate", this);
       const prefs = [PEEK_PREF, VISIBILITY_PREF];
       for (const pref of prefs) {
         Services.prefs.addObserver(pref, this);
@@ -226,6 +246,8 @@ var AequeraBookmarks = (() => {
           cancelAnimationFrame(startFrame);
           document.removeEventListener("popupshown", this);
           document.removeEventListener("popuphidden", this);
+          window.removeEventListener("activate", this);
+          window.removeEventListener("deactivate", this);
           heightObserver.disconnect();
           startObserver.disconnect();
           for (const pref of prefs) {

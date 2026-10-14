@@ -245,3 +245,47 @@ add_task(async function test_rail_is_the_same_material_as_the_top_bar() {
   }
   await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
 });
+
+add_task(async function test_widening_under_a_still_pointer_is_not_hover() {
+  // The pointer rests on the page where the widened rail will reach (Ctrl+L
+  // or a new tab with the mouse left there): the rail widening under it is
+  // not the pointer moving onto it.
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.expandOnAddressFocus", true]] });
+  await collapse();
+  EventUtils.synthesizeMouse(tabbox(), 100, 200, { type: "mousemove" });
+  gURLBar.focus();
+  ok(isExpanded(), "the address bar widens the rail");
+  await wait(300); // past the width transition: the rail is under the pointer
+  gBrowser.selectedBrowser.focus();
+  await TestUtils.waitForCondition(
+    isFullyCollapsed,
+    "collapses once the address bar blurs, although the rail is under the resting pointer"
+  );
+
+  // A real move onto the rail widened that way is hover and holds it.
+  gURLBar.focus();
+  await wait(300);
+  EventUtils.synthesizeMouse(container(), 100, 210, { type: "mousemove" });
+  gBrowser.selectedBrowser.focus();
+  await wait(450);
+  ok(isExpanded(), "a move onto the rail holds it after the address bar blurs");
+  await collapse();
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function test_background_window_releases_the_address_bar_hold() {
+  // The address bar keeps its focus in a window sent to the background, but
+  // shows no caret or focus ring there: it must not hold the rail open.
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.expandOnAddressFocus", true]] });
+  leaveRail();
+  gURLBar.focus();
+  ok(isExpanded(), "widened while the address bar is focused");
+  const other = await BrowserTestUtils.openNewBrowserWindow();
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapses when the window goes to the background");
+  ok(gURLBar.focused, "the address bar is still this window's focused element");
+  await BrowserTestUtils.closeWindow(other);
+  await SimpleTest.promiseFocus(window);
+  await TestUtils.waitForCondition(isExpanded, "widens again when the window comes back to the front");
+  await collapse();
+  await SpecialPowers.popPrefEnv();
+});

@@ -247,3 +247,45 @@ add_task(async function test_widened_rail_and_open_drawer_do_not_overlap() {
   );
   await SpecialPowers.popPrefEnv();
 });
+
+add_task(async function test_opening_under_a_still_pointer_is_not_hover() {
+  // The pointer rests on the page just below the top bar, where the drawer
+  // opens (Ctrl+L or a new tab with the mouse left there): the drawer
+  // appearing under it is not the pointer moving onto it.
+  await closeDrawer();
+  EventUtils.synthesizeMouse(tabbox(), tabbox().getBoundingClientRect().width / 2, 8, {
+    type: "mousemove",
+  });
+  gURLBar.focus();
+  ok(isOpen(), "the address bar opens the drawer");
+  await wait(300); // past the wipe: the drawer is under the pointer
+  gBrowser.selectedBrowser.focus();
+  await TestUtils.waitForCondition(
+    () => !isOpen(),
+    "closes once the address bar blurs, although the drawer is under the resting pointer"
+  );
+
+  // A real move onto the drawer opened that way is hover and holds it.
+  gURLBar.focus();
+  await wait(300);
+  moveOntoDrawer(0.5);
+  gBrowser.selectedBrowser.focus();
+  await wait(450);
+  ok(isOpen(), "a move onto the drawer holds it after the address bar blurs");
+  await closeDrawer();
+});
+
+add_task(async function test_background_window_releases_the_address_bar_hold() {
+  // The address bar keeps its focus in a window sent to the background, but
+  // shows no caret or focus ring there: it must not hold the drawer open.
+  leaveTopBar();
+  gURLBar.focus();
+  ok(isOpen(), "open while the address bar is focused");
+  const other = await BrowserTestUtils.openNewBrowserWindow();
+  await TestUtils.waitForCondition(() => !isOpen(), "closes when the window goes to the background");
+  ok(gURLBar.focused, "the address bar is still this window's focused element");
+  await BrowserTestUtils.closeWindow(other);
+  await SimpleTest.promiseFocus(window);
+  await TestUtils.waitForCondition(isOpen, "opens again when the window comes back to the front");
+  await closeDrawer();
+});

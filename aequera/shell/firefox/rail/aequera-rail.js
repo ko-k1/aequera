@@ -21,7 +21,10 @@
 //   - holds: keyboard focus (:focus-visible) in the rail, a popup opened from
 //     the rail (e.g. the tab context menu), the address bar when
 //     aequera.rail.expandOnAddressFocus is on (prototype unified search), a
-//     tab row being dragged (aequera-tabs.js);
+//     tab row being dragged (aequera-tabs.js); focus holds only in the active
+//     window (a background window keeps its focused element but shows no
+//     caret or focus ring); hover is the pointer moving onto the rail, never
+//     the rail widening under a resting pointer;
 //   - pinned (aequera.rail.pinned): always expanded, taking layout space;
 //   - two states: the TARGET (:root[aequera-rail-expanded]) flips at once and
 //     drives the width, the page clip, and the drawer edge; the CONTENT
@@ -77,6 +80,9 @@ var AequeraRail = (() => {
       // is outside it (tear-off): coming back must find the same rows.
       if (this.pinned || this.hovered || this.openPopups.size || window.AequeraTabs?._drag) {
         return true;
+      }
+      if (Services.focus.activeWindow !== window) {
+        return false;
       }
       if (Services.prefs.getBoolPref(PREFS.addressFocus, true) && gURLBar.focused) {
         return true;
@@ -146,10 +152,14 @@ var AequeraRail = (() => {
 
     handleEvent(event) {
       switch (event.type) {
-        // mouseover/mouseout rather than the slower mouseenter/leave (Gecko
-        // flags those in chrome): entering is the first over; leaving is an
-        // out whose destination is outside the rail.
-        case "mouseover":
+        // mousemove/mouseout rather than the slower mouseenter/leave (Gecko
+        // flags those in chrome): entering is the first move; leaving is an
+        // out whose destination is outside the rail. Not mouseover: Gecko
+        // also sends it when the rail widens under a resting pointer (a
+        // synthesized move after layout), which would then hold the rail
+        // open after the address bar blurs; synthesized moves never reach
+        // the DOM as mousemove.
+        case "mousemove":
           if (!this.hovered) {
             this.hovered = true;
             this.settle(this.delay(PREFS.openDelay, 40));
@@ -171,6 +181,12 @@ var AequeraRail = (() => {
           break;
         case "focusout":
           this.settle(this.delay(PREFS.closeDelay, 150));
+          break;
+        // Focus holds follow the window's activation. Gecko fires deactivate
+        // before it clears the active window, so re-decide a tick later.
+        case "activate":
+        case "deactivate":
+          this.settle(0);
           break;
         case "popupshown":
           if (this.container.contains(event.target.triggerNode)) {
@@ -229,7 +245,7 @@ var AequeraRail = (() => {
         console.error("aequera-rail: #sidebar-container missing; rail disabled");
         return;
       }
-      this.container.addEventListener("mouseover", this);
+      this.container.addEventListener("mousemove", this);
       this.container.addEventListener("mouseout", this);
       for (const type of ["dragenter", "dragleave", "drop", "dragend"]) {
         this.container.addEventListener(type, this);
@@ -238,6 +254,8 @@ var AequeraRail = (() => {
       // watched window-wide.
       window.addEventListener("focusin", this);
       window.addEventListener("focusout", this);
+      window.addEventListener("activate", this);
+      window.addEventListener("deactivate", this);
       document.addEventListener("popupshown", this);
       document.addEventListener("popuphidden", this);
       const prefs = Object.values(PREFS);
