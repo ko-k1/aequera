@@ -14,11 +14,15 @@
 //   the frame material (docs/design/MATERIAL.md): aequera.material.frame
 //     resolved to :root[aequera-material="solid"|"glass"], and
 //     aequera.material.opacity to --aequera-material-opacity (aequera-shell.css
-//     paints it). "auto" picks glass only where the desktop is known to blur
-//     what shows through a translucent window (Hyprland, which blurs windows
-//     by default); elsewhere a translucent frame would put chrome text on a
-//     sharp wallpaper, so it stays solid. Read from the local environment
-//     once per window; nothing leaves the machine.
+//     paints it). "auto" is the platform's own frame: Mica on Windows 11,
+//     vibrancy on macOS, and on Linux glass only where the desktop blurs what
+//     shows through a translucent window (Hyprland always; any compositor
+//     offering ext-background-effect-v1 blur, which Gecko then requests);
+//     elsewhere a translucent frame would put chrome text on a sharp
+//     wallpaper, so it stays solid. On Windows the OS draws the backdrop, so
+//     the material also selects it: Mica for auto, Acrylic (a live blur of
+//     what is behind the window) for glass, none for solid. Read from the
+//     local environment; nothing leaves the machine.
 
 // Locked shell prefs (aequera-prefs.js) unlock only for the test gate, which
 // must be able to turn the revamp on to run Firefox's own tests. An
@@ -59,6 +63,7 @@ var AequeraFrame = (() => {
   const frame = {
     tabbox: null,
     top: 0,
+    blurQuery: null,
 
     /** Configured easing, or the fallback when it is not a CSS easing. */
     easing() {
@@ -90,23 +95,61 @@ var AequeraFrame = (() => {
 
     /** The desktop blurs what shows through a translucent window. */
     desktopBlurs() {
-      return AppConstants.platform == "linux" && !!Services.env.get("HYPRLAND_INSTANCE_SIGNATURE");
+      switch (AppConstants.platform) {
+        case "macosx":
+          // The window server blurs the desktop behind vibrant regions.
+          return true;
+        case "linux":
+          return (
+            !!Services.env.get("HYPRLAND_INSTANCE_SIGNATURE") ||
+            window.matchMedia("(-moz-gtk-background-blur-available)").matches
+          );
+        default:
+          return false;
+      }
     },
 
-    /** Configured frame material, resolved to "solid" or "glass". */
-    material() {
-      let material = Services.prefs.getCharPref(MATERIAL_PREF, "auto");
+    /** Configured frame material: "auto", "glass" or "solid". */
+    configured() {
+      const material = Services.prefs.getCharPref(MATERIAL_PREF, "auto");
       if (!MATERIALS.has(material)) {
         console.error(`aequera: invalid ${MATERIAL_PREF} "${material}", using auto`);
-        material = "auto";
-      }
-      if (material == "auto") {
-        material = this.desktopBlurs() ? "glass" : "solid";
+        return "auto";
       }
       return material;
     },
 
+    /** Configured frame material, resolved to "solid" or "glass". */
+    material() {
+      const material = this.configured();
+      if (material != "auto") {
+        return material;
+      }
+      // Windows 11's own backdrop (Mica) is translucent by design.
+      return AppConstants.platform == "win" || this.desktopBlurs() ? "glass" : "solid";
+    },
+
+    /**
+     * Windows: DWM draws the backdrop behind the window, selected by
+     * Firefox's own prefs. Set on the default branch, so it is recomputed
+     * every start and a user value in about:config still wins.
+     *   auto:  Mica (widget.windows.mica.toplevel-backdrop 0: Firefox's
+     *          default, the Mica Alt variant);
+     *   glass: Acrylic (2), a live blur of what is behind the window;
+     *   solid: no backdrop.
+     */
+    publishWindowsBackdrop() {
+      if (AppConstants.platform != "win") {
+        return;
+      }
+      const material = this.configured();
+      const defaults = Services.prefs.getDefaultBranch("");
+      defaults.setBoolPref("widget.windows.mica", material != "solid");
+      defaults.setIntPref("widget.windows.mica.toplevel-backdrop", material == "glass" ? 2 : 0);
+    },
+
     publishMaterial() {
+      this.publishWindowsBackdrop();
       ROOT.setAttribute("aequera-material", this.material());
       const opacity = Math.min(100, Math.max(MIN_OPACITY, Services.prefs.getIntPref(OPACITY_PREF, 80)));
       ROOT.style.setProperty("--aequera-material-opacity", `${opacity}%`);
@@ -136,6 +179,11 @@ var AequeraFrame = (() => {
       }
       this.publishMotion();
       this.publishMaterial();
+      if (AppConstants.platform == "linux") {
+        // The compositor can start or stop offering blur while we run.
+        this.blurQuery = window.matchMedia("(-moz-gtk-background-blur-available)");
+        this.blurQuery.addEventListener("change", () => this.publishMaterial());
+      }
       const prefs = [DURATION_PREF, EASING_PREF, MATERIAL_PREF, OPACITY_PREF];
       for (const pref of prefs) {
         Services.prefs.addObserver(pref, this);

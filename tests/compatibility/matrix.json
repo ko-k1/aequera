@@ -43,17 +43,19 @@
         "cli-smoke (PR CI + local)",
         "patch check: full series applies cleanly against the locked base",
         "artifact build + run (NixOS 26.05 and 26.11)",
-        "shell mochitests (aequera + upstream suites): 868 passed, 0 failed (NixOS 26.05 and 26.11)"
+        "shell mochitests (aequera + upstream suites): 868 passed, 0 failed (NixOS 26.05 and 26.11)",
+        "compiled build (NixOS 26.11, Mozilla bootstrap toolchains + linux64-rust-1.95 under steam-run): builds, runs on Wayland (KWin 6.7.5 and Hyprland 0.56.2, nested in headless sway), aequera mochitests 760/760 (2026-10-14)"
       ],
       "known_deviations": [
-        "compiled build not exercised yet: artifact builds run Mozilla's prebuilt binary",
-        "D-Bus / portal / MPRIS / search-provider rename (patches/toolkit/linux-desktop) is C++, so artifact builds do not exercise it; textually validated only until a compiled build runs",
+        "compiled build run only in nested test compositors so far, not as a daily browser",
+        "D-Bus / portal / MPRIS / search-provider rename (patches/toolkit/linux-desktop) is C++: now compiled, but the owned bus names have not been checked on a session bus yet",
         "desktop entry, hicolor icons, and search-provider files ship as source; no installer copies them yet"
       ],
       "workarounds": [
         "NixOS: Mozilla's prebuilt binaries need an FHS environment; use tools/build/test-shell-nixos.sh and aequera-run-nixos.sh (steam-run, setup in nixos-env.sh)",
         "NixOS 26.11+: the steam FHS no longer ships GTK 3; add gtk3, at-spi2-core, and libxcomposite via programs.steam.package extraLibraries",
-        "NixOS: after switching system generations, move .tmp/nixos/cache/fontconfig aside; a cache written by another fontconfig version crashes startup"
+        "NixOS: after switching system generations, move .tmp/nixos/cache/fontconfig aside; a cache written by another fontconfig version crashes startup",
+        "NixOS compiled build: --enable-bootstrap plus Mozilla's linux64-rust-1.95 on PATH (tools/build/README.md, Compiled build)"
       ]
     },
     {
@@ -99,7 +101,12 @@
     {
       "id": "tab-rail",
       "validated_on": ["windows-x86_64"],
-      "note": "unvalidated elsewhere; material falls back to opaque toolbar color off Windows"
+      "note": "unvalidated elsewhere; the rail paints nothing, like the toolbox, so it is always the frame material"
+    },
+    {
+      "id": "frame-material",
+      "validated_on": ["linux-x86_64"],
+      "note": "Linux: compositor blur validated on a compiled build in KWin 6.7.5 and Hyprland 0.56.2 (patches/gecko/background-blur). Windows Mica/Acrylic switching and macOS vibrancy + Liquid Glass (patches/gecko/macos-glass) are unvalidated: no Windows run yet, and the macOS patch has not been compiled (needs the macOS 26 SDK). See docs/design/MATERIAL.md"
     },
     {
       "id": "workspaces",

@@ -12,8 +12,8 @@ pref-gated browser patches. No telemetry, no network.
 
 | File | Role |
 |---|---|
-| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (Mica on Windows; Linux glass on blurring desktops, opaque elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on |
-| `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome; the glass frame material |
+| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (`aequera.material.frame`: Mica/Acrylic on Windows, vibrancy or Liquid Glass on macOS, Linux glass on blurring desktops, opaque elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on |
+| `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome; the glass frame material (Linux and macOS tint, macOS vibrant layer) |
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
 | `aequera-frame.js` | `AequeraFrame`: publishes motion tokens and the frame material from prefs, owns the page's top inset |
@@ -77,9 +77,9 @@ keeps its far edge on the rail's outer edge so the widening reveals it in
 place.
 
 The rail is on the frame material with the top bar (Firefox's legacy sidebar
-color is removed): it paints nothing on Windows (Mica) and under the glass
-material, and the top bar's opaque toolbar color elsewhere, so collapsed,
-widened, and the top bar are one material (see Frame material). Its state
+color is removed): like the toolbox, it paints nothing, so collapsed, widened,
+and the top bar are one material whatever the frame is (see Frame material).
+Its state
 is split: the target (`aequera-rail-expanded`) drives width, page clip, and
 drawer edge at once; the content (`aequera-rail-content-expanded` +
 `tabbrowser-tabs[expanded]`: tab rows, essentials, dock) widens at once but
@@ -248,25 +248,53 @@ in layout and are untouched. Test: `browser_aequera_fullscreen.js`.
 ### Frame material
 
 The prototype's one glass layer behind all chrome (`#frame`: blur 24,
-saturate 1.5) maps to an OS backdrop, never to an in-page blur: Windows 11
-Mica (`widget.windows.mica`); on Linux, the compositor's own blur behind a
-translucent window. `aequera.material.frame`:
+saturate 1.5) maps to an OS backdrop, never to an in-page blur.
+`aequera.material.frame`, resolved in `aequera-frame.js` to
+`:root[aequera-material]` (`glass` or `solid`; an invalid value falls back to
+`auto`):
 
-| Value | Linux frame |
-|---|---|
-| `auto` (default) | `glass` on a desktop that blurs translucent windows by default (Hyprland, seen as `HYPRLAND_INSTANCE_SIGNATURE` in the local environment), else `solid` |
-| `glass` | `body`, the frame behind every chrome surface, paints the theme's own toolbox color at `aequera.material.opacity` percent (default 80, clamped to 60-100 so a bright wallpaper cannot wash out chrome text); the rail paints nothing |
-| `solid` | The opaque frame |
+| Value | Windows 11 | macOS | Linux |
+|---|---|---|---|
+| `auto` (default) | Mica | glass | `glass` on a desktop that blurs (below), else `solid` |
+| `glass` | Acrylic | vibrancy behind the whole frame | the compositor's blur behind a translucent frame |
+| `solid` | no backdrop | opaque, upstream's toolbox vibrancy off too | the opaque frame |
 
-The root paints nothing on Linux, so Gecko already gives the window an alpha
-channel there; glass is paint only (no patch, no backdrop-filter). It needs
-`-moz-gtk-csd-transparency-available` (a compositing desktop), skips themes
-with their own colors or images (lwtheme), and keeps the page card and popups
-opaque (no stacked blur, `docs/design/MATERIAL.md`). On a desktop that does
-not blur (GNOME, KDE without the blur protocol, sway) an explicit `glass` is
-translucent but unblurred, which is why `auto` does not pick it there.
-Resolved in `aequera-frame.js` to `:root[aequera-material]`; an invalid value
-falls back to `auto`. Test: `browser_aequera_material.js`.
+Under glass, `body`, the frame behind every chrome surface, paints the
+theme's own toolbox color at `aequera.material.opacity` percent (default 80,
+clamped to 60-100 so a bright wallpaper cannot wash out chrome text; Linux and
+macOS). The rail and the toolbox paint nothing, so they are the frame. Glass
+skips themes with their own colors or images (lwtheme)
+and keeps the page card and popups opaque (no stacked blur,
+`docs/design/MATERIAL.md`).
+
+- Windows: DWM draws the backdrop. `aequera-frame.js` sets Firefox's
+  `widget.windows.mica` and `widget.windows.mica.toplevel-backdrop` (0 Mica,
+  2 Acrylic) on the default branch per material, so a user value in
+  about:config still wins; upstream's `(-moz-windows-mica)` styles make the
+  frame transparent to it.
+- macOS: `body::before` carries the titlebar vibrancy
+  (`-moz-window-titlebar`, the material upstream puts behind the toolbox) over
+  the whole frame, blending behind the window
+  (`widget.macos.titlebar-blend-mode.behind-window`), off in native
+  fullscreen like upstream's. On macOS 26+ the titlebar region is Liquid Glass
+  (`NSGlassEffectView`) when `widget.macos.titlebar-glass.enabled` (read at
+  startup, `patches/gecko/macos-glass`).
+- Linux: the root paints nothing, so Gecko already gives the window an alpha
+  channel; glass needs `-moz-gtk-csd-transparency-available` (a compositing
+  desktop). A desktop blurs when it is Hyprland (blurs every translucent
+  window, seen as `HYPRLAND_INSTANCE_SIGNATURE`) or offers
+  `ext-background-effect-v1` blur (KDE Plasma 6.7+, GNOME): with
+  `widget.wayland.background-blur.enabled` Gecko then asks the compositor to
+  blur exactly the window's translucent parts (client area minus the opaque
+  region and the rounded corners, `patches/gecko/background-blur`) and
+  reports it as `(-moz-gtk-background-blur-available)`, which `auto` follows
+  live. Elsewhere (sway, X11) an explicit `glass` is translucent but
+  unblurred, which is why `auto` does not pick it there.
+
+The macOS and Linux blur requests are Gecko patches: they need a compiled
+build (`tools/build/mozconfig.compiled`). An artifact build runs Mozilla's
+prebuilt binary, where Linux `auto` is glass on Hyprland only and macOS stays
+on plain vibrancy. Test: `browser_aequera_material.js`.
 
 ## Workspaces (`workspaces/`)
 

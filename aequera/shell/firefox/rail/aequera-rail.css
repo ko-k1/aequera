@@ -38,25 +38,14 @@
   /* sidebar.css clips the launcher container (overflow: clip); the rail
    * widens beyond its layout width, so it must not be clipped. */
   overflow: visible;
-  /* sidebar.css paints the container with the opaque legacy sidebar color;
-   * the rail is chrome on the one window backdrop like the top bar, so where
-   * such a backdrop exists (Windows 11 Mica, see aequera-prefs.js; the
-   * Linux glass material, aequera-shell.css) it paints nothing and collapsed
-   * and widened read as the same material. Everywhere else it wears the
-   * opaque toolbar color — the top bar's own paint — so chrome stays
-   * seamless without depending on a backdrop that may not exist (a solid
-   * Linux frame, no vibrancy wiring on macOS yet). */
-  background-color: var(--toolbar-bgcolor);
+  /* sidebar.css paints the container with the opaque legacy sidebar color.
+   * The rail paints nothing instead, like the toolbox (the top bar): both
+   * sit on the one window frame (body, aequera-shell.css), so collapsed,
+   * widened, and the top bar read as the same material whatever the frame
+   * is (solid, glass, Windows' Mica or Acrylic, a theme's own colors). */
+  background-color: transparent;
   width: var(--aequera-rail-collapsed-width);
   z-index: var(--browser-area-z-index-sidebar-expand-on-hover, 3);
-}
-
-/* Window backdrop: see the note above. Scoped to Windows so other platforms
- * keep the opaque fallback even if a same-named pref ever appears there. */
-@media (-moz-platform: windows) {
-  :root[aequera-rail] #sidebar-container {
-    background-color: transparent;
-  }
 }
 
 :root[aequera-rail-pinned] #sidebar-container {

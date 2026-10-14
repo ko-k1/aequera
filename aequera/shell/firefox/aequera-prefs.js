@@ -161,23 +161,36 @@ pref("ui.systemUsesDarkTheme", 1);
 // (Settings > General > "Open previous windows and tabs").
 pref("browser.startup.page", 3);
 
-// Frame material: one OS backdrop behind all chrome. On Windows 11 that is
-// Mica (widget.windows.mica below), the native counterpart of the
-// prototype's single #frame glass layer. On Linux it is the compositor's
-// blur behind a translucent frame (aequera.material.frame below), chosen
-// only where the desktop is known to blur. macOS (vibrancy) has no
-// counterpart yet. Without a backdrop the rail falls back to the opaque
-// toolbar color (aequera-rail.css), the same paint as the top bar, so chrome
-// stays seamless without depending on a backdrop that may not exist. Solid
-// chrome there, never floating text.
-pref("widget.windows.mica", true);
-// Linux frame material (aequera-frame.js, aequera-shell.css): "glass" makes
-// the frame translucent so the compositor blurs the desktop behind the
-// chrome; "solid" keeps the opaque frame; "auto" picks glass only on a
-// desktop that blurs translucent windows by default (Hyprland). Opacity is
-// the frame tint in percent, clamped to 60-100 for readability.
+// Frame material: one OS backdrop behind all chrome, the native counterpart
+// of the prototype's single #frame glass layer (docs/design/MATERIAL.md).
+// aequera.material.frame (aequera-frame.js, aequera-shell.css):
+//   "auto":  the platform's own frame: Mica on Windows 11, vibrancy on macOS
+//            (Liquid Glass on macOS 26+), glass on Linux where the desktop
+//            blurs translucent windows, solid elsewhere;
+//   "glass": a live blur of what is behind the window: Acrylic on Windows
+//            11, vibrancy or Liquid Glass on macOS, the compositor's blur on
+//            Linux (only where the window can show transparency);
+//   "solid": an opaque frame, no OS backdrop.
+// Opacity is the frame tint over the blur in percent (Linux, macOS), clamped
+// to 60-100 for readability. The rail paints nothing, like the toolbox
+// (aequera-rail.css), so all chrome is the one frame; where no blur exists
+// the frame is solid, never chrome text over a sharp wallpaper.
 pref("aequera.material.frame", "auto");
 pref("aequera.material.opacity", 80);
+// Windows: DWM backdrop for auto; aequera-frame.js switches it per material
+// (default branch, so a user value here still wins).
+pref("widget.windows.mica", true);
+// macOS: the titlebar vibrancy (upstream's, behind the toolbox, and the
+// frame's) blurs the desktop behind the window instead of only the window's
+// own background, and is Liquid Glass on macOS 26+ (patches/gecko/
+// macos-glass; read at startup).
+pref("widget.macos.titlebar-blend-mode.behind-window", true);
+pref("widget.macos.titlebar-glass.enabled", true);
+// Linux (Wayland): ask the compositor to blur what is behind the frame's
+// translucent parts (ext-background-effect-v1, patches/gecko/
+// background-blur). Off: only desktops that blur every translucent window
+// (Hyprland) get glass under auto.
+pref("widget.wayland.background-blur.enabled", true);
 
 // Ad Veil (docs/design/ADS.md): Aequera's built-in ad and tracker blocker
 // (EasyList, EasyPrivacy). Requests the lists match are cancelled and ads
