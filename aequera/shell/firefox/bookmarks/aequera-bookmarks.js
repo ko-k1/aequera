@@ -37,6 +37,10 @@ var AequeraBookmarks = (() => {
   const drawer = {
     toolbar: null,
     toolbox: null,
+    /** The floating notification cards (notifications/): in the top bar's
+     * subtree, but not the top bar: hovering or focusing them never opens or
+     * holds the drawer, which would push them away from the pointer. */
+    notifications: null,
     /** AequeraHover tracker for the top bar and drawer. */
     hover: null,
     open: false,
@@ -66,7 +70,12 @@ var AequeraBookmarks = (() => {
         return true;
       }
       const el = document.activeElement;
-      return !!el && this.toolbox.contains(el) && el.matches(":focus-visible");
+      return (
+        !!el &&
+        this.toolbox.contains(el) &&
+        !this.notifications?.contains(el) &&
+        el.matches(":focus-visible")
+      );
     },
 
     wantsOpen() {
@@ -159,7 +168,10 @@ var AequeraBookmarks = (() => {
         console.error("aequera-bookmarks: toolbar/toolbox missing; drawer disabled");
         return;
       }
-      this.hover = AequeraHover.track(this.toolbox, delay => this.settle(delay));
+      this.notifications = document.getElementById("notifications-toolbar");
+      this.hover = AequeraHover.track(this.toolbox, delay => this.settle(delay), {
+        ignore: this.notifications,
+      });
       // Customize mode's events are dispatched on the toolbox (as
       // CustomizableUI listens for them), so everything registers there.
       for (const type of [
