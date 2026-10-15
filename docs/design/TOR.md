@@ -1,7 +1,8 @@
 # Tor Windows
 
-Status: proposed (ADR 0004). Slice 1 (Tor windows on Linux and macOS) is
-implemented in `aequera/shell/firefox/tor`; later slices are design.
+Status: proposed (ADR 0004). Slice 1 (Tor windows on Linux and macOS) and
+slice 5 (Windows) are implemented in `aequera/shell/firefox/tor`; the other
+slices are design.
 
 A Tor window is a private window whose traffic goes through the Tor network,
 opened beside ordinary windows: Brave's "New Private Window with Tor"
@@ -171,7 +172,8 @@ Nothing ever falls back to a direct connection. Tabs that failed with
   expert bundle (Tor Browser's tor). A build gets it from
   `tools/tor/fetch-bundle.sh`, pinned and signature-checked
   (`tools/tor/README.md`). It is run with its own libraries
-  (`LD_LIBRARY_PATH`, as Tor Browser does) and its own GeoIP databases. Else
+  (`LD_LIBRARY_PATH`, as Tor Browser does; Windows: `tor.exe`, see Windows)
+  and its own GeoIP databases. Else
   `tor` on `PATH`. The browser never downloads tor. If none is found, the
   window says "Tor offline" with the reason.
 - Configuration `P/tor/torrc`, read alone (`-f`, empty `--defaults-torrc`):
@@ -267,6 +269,131 @@ one of its prefs cannot be set, every pref is put back and the panel says
 so. One that applies but cannot be remembered is shown as a warning. A
 `settings.json` that cannot be read, or names no known level, starts the
 next session at Safest, never a silent Standard.
+
+## Windows (slice 5)
+
+Status: implemented 2026-10-16 (reviewed design). Everything above holds on
+Windows except the parts that assume Unix, which change as follows.
+
+### The SOCKS endpoint is a loopback TCP port
+
+Firefox reaches a local SOCKS proxy on Windows only over TCP or a named pipe,
+and tor offers no named pipe. So the Tor instance uses
+`SocksPort 127.0.0.1:<port> IsolateSOCKSAuth`:
+
+- **Who picks the port.** The launcher (ordinary instance) asks the OS for a
+  free loopback port (a listening `nsIServerSocket` on port -1, loopback
+  only, closed again at once), then writes it to `torrc` and to the
+  required prefs in `user.js`: `network.proxy.socks` `127.0.0.1`,
+  `network.proxy.socks_port` `<port>`. The prefs keep their final values
+  from the first byte, are locked at the first window, and `checkRequired`
+  checks them like every other required pref. The socket-directory rule
+  becomes: `socks` is exactly `127.0.0.1` and `socks_port` an integer in
+  1024-65535 equal to the port in `torrc`.
+- **Fail closed needs more than on Unix.** A Unix socket that does not exist
+  fails every load. A TCP proxy setting does not fail safe: with no port
+  Firefox's proxy service uses no proxy at all (DIRECT), and a port that tor
+  has not bound may be bound by another program. So on Windows the instance
+  goes online **only once tor reports its listener** on its own stdout
+  (`Opened Socks listener connection (ready) on 127.0.0.1:<port>`, from the
+  tor child the instance started), not after the pref checks alone. When
+  tor is stopped (Restart Tor, quit, a failure) the instance goes offline
+  before tor is killed. When tor dies by itself, the instance goes offline
+  as soon as its exit is seen, and no listener line read after that counts;
+  in the moment between a crash and that, a program that binds the freed
+  port could receive SOCKS requests (host names and circuit keys), never a
+  direct connection. "Restart Tor" brings it back online after the new tor
+  reports the same listener. Tabs that failed with `netOffline` reload as on
+  Unix.
+- **The port is taken.** If another program took the port between the
+  launcher's check and tor's start, tor cannot bind it and never reports
+  the listener: the instance stays offline and the panel says "Tor offline"
+  with tor's error. A new Tor session (close every Tor window, open one
+  again) picks a new port. Nothing loads through a listener tor did not
+  report.
+- **The circuit filter** is unchanged: every channel gets
+  `127.0.0.1:<port>` with its circuit credentials.
+
+### Who can reach the port
+
+| Who | What they can do | Answer |
+|---|---|---|
+| The Tor instance's own pages | Reach local services | Unchanged: `allow_hijacking_localhost` sends `127.0.0.1` to tor, which refuses it |
+| Pages in ordinary windows | Probe `127.0.0.1:<port>` to learn that tor runs | Firefox's Local Network Access (`network.lna.enabled`, `network.lna.blocking`, on in Firefox 158) asks before a public page reaches loopback; in addition the ordinary instance adds the port to `network.security.ports.banned` for the session (default branch, never saved), so its pages and requests never reach it even with that permission |
+| Programs of the same Windows user | Use tor, read the profile | Not a boundary: they can already read and change the profile, as with Tor Browser's port 9150 |
+| Programs of other Windows users | Connect to the port and use this tor as a client | Accepted and documented: they cannot see this session's traffic and cannot share its circuits (each circuit key's password is a random token they cannot guess). Tor Browser has the same exposure. Not verified: whether Windows stops another user's socket from taking over the port while tor holds it (tor binds without `SO_EXCLUSIVEADDRUSE`); if it can, that user receives this session's SOCKS requests. Open question, see Residual risks |
+
+### Liveness of a running Tor instance
+
+No `/proc` and no `ps`. A Tor instance runs when its profile is locked:
+Firefox holds `<profile>/parent.lock` open with no sharing while it runs and
+leaves the file behind when it exits (`nsProfileLock`, kept for its startup
+crash detection). A lock file that opens is not held; no lock file means not
+running; anything else (held, or an error that says neither) counts as
+running, as on Unix (the profile is never rewritten on a guess).
+
+### tor
+
+The bundled tor is `<app>/tor/tor.exe` from the Tor Project's Windows
+x86_64 expert bundle (the same Tor Browser release as Linux), pinned in
+`upstream/manifests/tor-expert-bundle.lock` and signature-checked by
+`tools/tor/fetch-bundle.sh` like the other platforms. The bundle's
+`tor.exe` is self-contained (no DLLs beside it), so no library path is
+set.
+`aequera.tor.executable` and `tor.exe` on `PATH` work as on Unix. There is
+no socket directory to create or remove; on quit or after a kill the
+marker is cleaned up as on Unix, and tor exits by itself once its owner is
+gone (`__OwningControllerProcess`). `taskkill /F` is the Windows SIGKILL.
+
+### Residual risks (Windows)
+
+- **Port takeover while tor holds it.** tor binds its SOCKS port without
+  `SO_EXCLUSIVEADDRUSE`. Whether a later socket of the same or another
+  Windows user (with `SO_REUSEADDR`) can take connections from it has not
+  been tested. Same user: not a boundary anyway. Another user: would see
+  this session's SOCKS requests (host names, circuit keys), not its other
+  traffic, and never cause a direct connection. To test, and if confirmed,
+  to close (an exclusive bind in tor's configuration is not available).
+- **The moment after a crash** (above): offline once the exit is seen.
+- **The ordinary instance's port ban** is a default-branch value: a user
+  value of `network.security.ports.banned` shadows it (logged), and Local
+  Network Access remains.
+
+### Verification
+
+- `tor-model.test.mjs`: the Windows `torrc` (`SocksPort 127.0.0.1:<port>`,
+  Windows paths quoted), the TCP required prefs and their checks (exactly
+  `127.0.0.1`, a port in range, the same in both port prefs), the listener
+  log line, and tor's CRLF line endings on Windows.
+- `browser_aequera_tor_windows.js` (gate, Windows only;
+  `browser_aequera_tor.js` keeps the Unix socket parts): the launcher writes
+  a loopback port and bans it in the ordinary instance (default branch,
+  never saved; once); free ports are unprivileged; the profile-lock liveness
+  against this test's own running profile and a left-behind lock; the
+  daemon stays offline until the current tor reports its listener on its
+  port (not another port, address, or tor), goes offline when tor stops,
+  when it dies (and ignores a listener line read after that), and when it
+  fails, does not wait on a log pipe held open after the exit, restarts once
+  per click and stays offline until the new listener, undoes Work Offline
+  without a listener, refuses a bad port or checks that throw, and gives
+  every channel `127.0.0.1:<port>` with its circuit; a locked profile counts
+  as running even without its marker.
+- Security review (2026-10-16): no critical or high findings; the exit-path
+  and failure-path findings were fixed with the tests above, and the
+  claims here corrected (Residual risks).
+- Live check on Windows 11, 2026-10-16, Tor Browser 15.0.25's `tor.exe`
+  (0.4.9.14), headless: 24 of 24 passed. tor connected in 38 s;
+  `IsTor: true`; separate exits per site and after "new circuit"; the
+  onion site and the onion search load; no local DNS, no WebRTC, localhost
+  unreachable, HTTPS-only; with tor stopped nothing loads and the tab
+  reloads after reconnecting. Windows only: online once tor listened;
+  offline the moment it stopped; with the port taken by another program
+  before tor started, tor failed, the instance stayed offline, and that
+  program got no connection; "Restart Tor" on the freed port connected; the
+  ordinary instance refused tor's port.
+- The first live run found that tor writes CRLF lines on Windows: no log
+  line parsed, so the listener was never seen and the instance stayed
+  offline (fail closed: nothing loaded). `parseLogLine` now drops the CR.
 
 ## What it protects, and what not
 
@@ -366,5 +493,5 @@ Re-check what can route around the proxy: new prefs in
 | 2 Onion-Location | Ordinary windows: the address bar offers ".onion available" for sites that send `Onion-Location`; `.onion` links open in a Tor window | design |
 | 3 Bridges | Settings for built-in bridges (obfs4, Snowflake) and custom bridge lines; pluggable transports found like tor | design |
 | 4 Packaging | tor (and transports) bundled, signature-checked, updated with Aequera | builds: done (`tools/tor`, Tor Browser 15.0.25's expert bundle; Linux verified, macOS pinned); release installers: design |
-| 5 Windows | A loopback TCP port in place of the Unix socket, with its own review | design |
+| 5 Windows | A loopback TCP port in place of the Unix socket, with its own review (see Windows above) | done (Windows 11 x86_64, live check 2026-10-16) |
 | 6 Tor page | The Tor window's private browsing page says it is a Tor window and shows the connection | design |

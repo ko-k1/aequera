@@ -21,7 +21,8 @@
         "cli-smoke (PR CI + local)",
         "artifact build + run",
         "compiled build + run",
-        "shell mochitests (aequera + upstream suites)"
+        "shell mochitests (aequera + upstream suites)",
+        "Tor windows: loopback TCP SOCKS port, bundled tor.exe 0.4.9.14, live check 24/24 (2026-10-16)"
       ],
       "known_deviations": [
         "158.0 (adopted 2026-10-16): artifact build and the full shell gate re-run on 158.0; the compiled build was last built on 157.0.1"

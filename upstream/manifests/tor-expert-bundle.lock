@@ -18,9 +18,10 @@ upstream:
   tor_browser_version: "15.0.25"
   tor_version: "0.4.9.14"
   signing_key: EF6E286DDA85EA2A4BA7DE684E2C6E8793298290
-  pinned_at: 2026-10-14
+  pinned_at: 2026-10-15
 
 bundles:
   linux-x86_64: 19cf18726eecb362e0f21d27afa9ea9efe5da928bfdfbb1ceb5fe54519e87f4a
   macos-aarch64: a3febb6179152b0b4f56a0f5cc57bf5cc8ecef7db35e7c3e9d5a044c8158c26c
   macos-x86_64: e1ae4d4a734d28bb590839188511deb3cebc26fcbce9df66d01b2c452060fe95
+  windows-x86_64: c1988c701de2f24f7d098d1d6d7f507b58f27740d097f29c246e0524d639b252

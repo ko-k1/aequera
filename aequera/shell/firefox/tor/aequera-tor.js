@@ -367,7 +367,11 @@ var AequeraTor = (() => {
       // none of it needs the window's markup, which is parsed after this
       // script runs.
       if (this.instance) {
-        AequeraTorDaemon.ensureStarted();
+        AequeraTorDaemon.ensureStarted()?.catch?.(error => console.error("aequera-tor: startup failed", error));
+      } else if (AppConstants.platform == "win" && !this.unavailable()) {
+        // A Tor instance can outlive this one: ban its port from the start,
+        // not only when the next Tor window is opened (idempotent).
+        AequeraTorLauncher.banTorPort().catch(error => console.error("aequera-tor: cannot ban tor's port", error));
       }
       window.addEventListener("load", () => this.mount(), { once: true });
     },

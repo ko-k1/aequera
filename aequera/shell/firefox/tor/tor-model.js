@@ -18,8 +18,18 @@ var AequeraTorModel = (() => {
 
   /** The instance's marker pref (user.js, then locked). */
   const INSTANCE_PREF = "aequera.tor.instance";
-  /** The SOCKS socket path the instance's tor listens on (user.js). */
+  /** The SOCKS socket path the instance's tor listens on (user.js); empty
+   *  where tor listens on a loopback TCP port instead (Windows). */
   const SOCKS_PATH_PREF = "aequera.tor.socksPath";
+  /** The loopback TCP port the instance's tor listens on (user.js); 0 where
+   *  it listens on a Unix socket. Windows: Firefox reaches a local SOCKS
+   *  proxy there only over TCP or a named pipe, and tor offers no pipe. */
+  const SOCKS_PORT_PREF = "aequera.tor.socksPort";
+  /** The only address a TCP SOCKS endpoint may have. */
+  const LOOPBACK = "127.0.0.1";
+  /** SOCKS ports the instance accepts: never a well-known service port. */
+  const MIN_SOCKS_PORT = 1024;
+  const MAX_SOCKS_PORT = 65535;
   /** tor's data directory, kept across sessions (user.js). */
   const DATA_DIR_PREF = "aequera.tor.dataDir";
   /** The tor executable; empty: `tor` on PATH (ordinary profile, copied). */
@@ -269,6 +279,47 @@ var AequeraTorModel = (() => {
     return typeof path == "string" && path.startsWith("/");
   }
 
+  /** Whether a path is absolute: POSIX, or a Windows drive path (C:\...). */
+  function isAbsolutePath(path) {
+    return isAbsolutePosix(path) || (typeof path == "string" && /^[A-Za-z]:[\\/]/.test(path));
+  }
+
+  /**
+   * Why a SOCKS port cannot be used, or null if it can.
+   *
+   * @param {*} port
+   * @returns {string|null}
+   */
+  function socksPortProblem(port) {
+    if (!Number.isInteger(port)) {
+      return "not an integer";
+    }
+    if (port < MIN_SOCKS_PORT || port > MAX_SOCKS_PORT) {
+      return `outside ${MIN_SOCKS_PORT}-${MAX_SOCKS_PORT}`;
+    }
+    return null;
+  }
+
+  /**
+   * The one SOCKS endpoint of an options object: a Unix socket
+   * ({ socksPath }) or a loopback TCP port ({ socksPort }), never both.
+   */
+  function endpointOf({ socksPath, socksPort }) {
+    const unix = socksPath !== undefined && socksPath !== null && socksPath !== "";
+    const tcp = socksPort !== undefined && socksPort !== null;
+    if (unix == tcp) {
+      throw new Error("give exactly one SOCKS endpoint: a socket path or a TCP port");
+    }
+    if (tcp) {
+      const problem = socksPortProblem(socksPort);
+      if (problem) {
+        throw new Error(`SOCKS port ${problem}`);
+      }
+      return { kind: "tcp", port: socksPort };
+    }
+    return { kind: "unix", path: socksPath };
+  }
+
   /** UTF-8 length of a string. */
   function utf8Length(text) {
     return new TextEncoder().encode(text).length;
@@ -314,24 +365,29 @@ var AequeraTorModel = (() => {
   }
 
   /**
-   * Every pref of the instance with its value, the socket included.
+   * Every pref of the instance with its value, the SOCKS endpoint included:
+   * a Unix socket (socksPath and its file: URL, the form network.proxy.socks
+   * takes for one, from Services.io.newFileURI) or a loopback TCP port
+   * (socksPort: 127.0.0.1 at that port).
    *
-   * @param {{ socksPath: string, socksUrl: string, dataDir?: string, executable?: string }} paths
-   *   socksUrl is the socket's file: URL (Services.io.newFileURI), the form
-   *   network.proxy.socks takes.
+   * @param {{ socksPath?: string, socksUrl?: string, socksPort?: number,
+   *           dataDir?: string, executable?: string, level?: string }} options
    * @returns {[string, boolean|number|string][]}
    */
-  function instancePrefs({ socksPath, socksUrl, dataDir = "", executable = "", level = "standard" }) {
-    if (!String(socksUrl).startsWith("file:///")) {
+  function instancePrefs({ socksPath, socksUrl, socksPort, dataDir = "", executable = "", level = "standard" }) {
+    const endpoint = endpointOf({ socksPath, socksPort });
+    if (endpoint.kind == "unix" && !String(socksUrl).startsWith("file:///")) {
       throw new Error(`not a file URL: ${socksUrl}`);
     }
+    const tcp = endpoint.kind == "tcp";
     return [
       [INSTANCE_PREF, true],
-      [SOCKS_PATH_PREF, socksPath],
+      [SOCKS_PATH_PREF, tcp ? "" : socksPath],
+      [SOCKS_PORT_PREF, tcp ? endpoint.port : 0],
       [DATA_DIR_PREF, dataDir],
       [EXECUTABLE_PREF, executable],
-      ["network.proxy.socks", socksUrl],
-      ["network.proxy.socks_port", 0],
+      ["network.proxy.socks", tcp ? LOOPBACK : socksUrl],
+      ["network.proxy.socks_port", tcp ? endpoint.port : 0],
       ...PREFS.map(p => [p.name, p.value]),
       // The security level from the start (the JavaScript engine reads its
       // prefs when a content process starts).
@@ -341,11 +397,12 @@ var AequeraTorModel = (() => {
   }
 
   /** The prefs the instance locks and checks: the instance marker, the
-   *  socket (both names), and PREFS marked required. */
+   *  endpoint (Aequera's names and Firefox's), and PREFS marked required. */
   function requiredNames() {
     return [
       INSTANCE_PREF,
       SOCKS_PATH_PREF,
+      SOCKS_PORT_PREF,
       "network.proxy.socks",
       "network.proxy.socks_port",
       ...PREFS.filter(p => p.required).map(p => p.name),
@@ -369,10 +426,21 @@ var AequeraTorModel = (() => {
         wrong.push(name);
       }
     }
-    if (!String(wanted.get("network.proxy.socks")).startsWith("file:///") && !wrong.includes("network.proxy.socks")) {
+    if (!endpointInForce(wanted) && !wrong.includes("network.proxy.socks")) {
       wrong.push("network.proxy.socks");
     }
     return wrong;
+  }
+
+  /** Whether wanted prefs name a usable endpoint: a file: socket URL, or
+   *  exactly 127.0.0.1 at a valid port that both port prefs agree on. */
+  function endpointInForce(wanted) {
+    const socks = String(wanted.get("network.proxy.socks"));
+    if (socks.startsWith("file:///")) {
+      return true;
+    }
+    const port = wanted.get("network.proxy.socks_port");
+    return socks === LOOPBACK && socksPortProblem(port) === null && wanted.get(SOCKS_PORT_PREF) === port;
   }
 
   /**
@@ -436,21 +504,24 @@ var AequeraTorModel = (() => {
    * The bundled tor (the Tor Project's expert bundle, tools/tor) brings its
    * own GeoIP databases; tor otherwise looks for them in system paths.
    *
-   * @param {{ dataDir: string, socksPath: string, ownerPid: number,
+   * @param {{ dataDir: string, socksPath?: string, socksPort?: number, ownerPid: number,
    *           geoipFile?: string|null, geoip6File?: string|null }} options
    */
-  function torrc({ dataDir, socksPath, ownerPid, geoipFile = null, geoip6File = null }) {
-    if (!isAbsolutePosix(dataDir)) {
+  function torrc({ dataDir, socksPath, socksPort, ownerPid, geoipFile = null, geoip6File = null }) {
+    if (!isAbsolutePath(dataDir)) {
       throw new Error("tor data directory must be an absolute path");
     }
     for (const file of [geoipFile, geoip6File]) {
-      if (file !== null && !isAbsolutePosix(file)) {
+      if (file !== null && !isAbsolutePath(file)) {
         throw new Error("GeoIP files must be absolute paths");
       }
     }
-    const problem = socketPathProblem(socksPath);
-    if (problem) {
-      throw new Error(`SOCKS socket path ${problem}`);
+    const endpoint = endpointOf({ socksPath, socksPort });
+    if (endpoint.kind == "unix") {
+      const problem = socketPathProblem(socksPath);
+      if (problem) {
+        throw new Error(`SOCKS socket path ${problem}`);
+      }
     }
     if (!Number.isInteger(ownerPid) || ownerPid <= 0) {
       throw new Error("owner pid must be a positive integer");
@@ -458,10 +529,13 @@ var AequeraTorModel = (() => {
     return [
       "# Aequera Tor window. Written by Aequera on every start.",
       `DataDirectory ${torQuote(dataDir)}`,
-      // Clients only, on a socket private to the user. IsolateSOCKSAuth (a
-      // default, spelled out) gives each SOCKS username/password its own
-      // circuits: the per-site circuits (isolationKey).
-      `SocksPort unix:${torQuote(socksPath)} IsolateSOCKSAuth`,
+      // Clients only, on a socket private to the user (Windows: loopback
+      // only). IsolateSOCKSAuth (a default, spelled out) gives each SOCKS
+      // username/password its own circuits: the per-site circuits
+      // (isolationKey).
+      endpoint.kind == "unix"
+        ? `SocksPort unix:${torQuote(socksPath)} IsolateSOCKSAuth`
+        : `SocksPort ${LOOPBACK}:${endpoint.port} IsolateSOCKSAuth`,
       "ControlPort 0",
       "ClientOnly 1",
       // tor exits when the browser instance does.
@@ -479,10 +553,12 @@ var AequeraTorModel = (() => {
    *
    * @param {string} line  e.g. "Oct 14 18:00:00.000 [notice] Bootstrapped 5% (conn): Connecting to a relay"
    * @returns {null | { kind: "bootstrap", progress: number, tag: string, summary: string }
+   *                | { kind: "listener", address: string, port: number }
    *                | { kind: "warn"|"err", message: string }}
    */
   function parseLogLine(line) {
-    const m = /\[(notice|warn|err)\]\s+(.*)$/.exec(String(line));
+    // tor on Windows ends its stdout lines with CRLF; `.` stops at the CR.
+    const m = /\[(notice|warn|err)\]\s+(.*)$/.exec(String(line).replace(/\r+$/, ""));
     if (!m) {
       return null;
     }
@@ -491,6 +567,12 @@ var AequeraTorModel = (() => {
     if (boot) {
       const progress = Math.min(100, Number(boot[1]));
       return { kind: "bootstrap", progress, tag: boot[2] ?? "", summary: boot[3].trim() };
+    }
+    // The SOCKS listener tor opened: over TCP, the instance goes online only
+    // once tor itself reports it (nothing else may hold the port).
+    const listener = /^Opened Socks listener(?: connection \(ready\))? on (.+):(\d{1,5})$/.exec(message.trim());
+    if (listener && level == "notice") {
+      return { kind: "listener", address: listener[1], port: Number(listener[2]) };
     }
     if (level == "warn" || level == "err") {
       return { kind: level, message: message.trim() };
@@ -533,7 +615,7 @@ var AequeraTorModel = (() => {
    * @returns {string[]}
    */
   function launchArgs({ appIni = null, profileDir, url = null }) {
-    if (!isAbsolutePosix(profileDir)) {
+    if (!isAbsolutePath(profileDir)) {
       throw new Error("the Tor profile must be an absolute path");
     }
     if (url !== null && !isTorOpenableUrl(url)) {
@@ -594,12 +676,16 @@ var AequeraTorModel = (() => {
   return {
     INSTANCE_PREF,
     SOCKS_PATH_PREF,
+    SOCKS_PORT_PREF,
+    LOOPBACK,
     DATA_DIR_PREF,
     EXECUTABLE_PREF,
     MAX_SOCKET_PATH_BYTES,
     UNKNOWN_SITE,
     PREFS,
     socketPathProblem,
+    socksPortProblem,
+    isAbsolutePath,
     socketDir,
     newSocketPath,
     instancePrefs,

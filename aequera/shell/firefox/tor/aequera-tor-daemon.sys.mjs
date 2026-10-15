@@ -24,6 +24,12 @@
 //
 // Until tor listens, its socket does not exist and every load fails: the
 // fail-closed state. Windows render `state` (aequera-tor.js).
+//
+// On Windows tor listens on a loopback TCP port instead (docs/design/TOR.md,
+// Windows). A TCP proxy setting does not fail closed by itself (no port means
+// no proxy; a port tor has not bound may be another program's), so there the
+// instance stays offline until the current tor reports its listener on that
+// port, and goes offline again the moment that tor stops.
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
@@ -39,6 +45,7 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
   SearchService: "moz-src:///toolkit/components/search/SearchService.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
   Subprocess: "resource://gre/modules/Subprocess.sys.mjs",
 });
 XPCOMUtils.defineLazyServiceGetter(
@@ -60,6 +67,11 @@ const REFUSED_SOCKET_URL = "file:///nonexistent/aequera-tor-refused/socks";
 const MAX_CIRCUIT_KEYS = 1000;
 
 const OFFLINE_TOPIC = "network:offline-status-changed";
+
+/** How long tor's last log lines are awaited after it exited. Bounded: a
+ *  process that inherited the pipe (a pluggable transport) can hold it open
+ *  after tor is gone. */
+const LAST_WORDS_MS = 2000;
 
 /** The site of a URI (eTLD+1, or the host for IP addresses and the like). */
 function siteOf(uri) {
@@ -91,11 +103,13 @@ function siteOfPartitionKey(key) {
   }
 }
 
-function proxyInfo(url, username, password) {
+/** SOCKS proxy info: a Unix socket's file: URL with port 0, or a host and
+ *  port. */
+function proxyInfo(host, port, username, password) {
   return lazy.proxyService.newProxyInfoWithAuth(
     "socks",
-    url,
-    0,
+    host,
+    port,
     username,
     password,
     "",
@@ -110,7 +124,7 @@ function proxyInfo(url, username, password) {
 const refusalFilter = {
   QueryInterface: ChromeUtils.generateQI(["nsIProtocolProxyChannelFilter"]),
   applyFilter(_channel, _defaultProxyInfo, callback) {
-    callback.onProxyFilterResult(proxyInfo(REFUSED_SOCKET_URL, "refused", ""));
+    callback.onProxyFilterResult(proxyInfo(REFUSED_SOCKET_URL, 0, "refused", ""));
   },
 };
 
@@ -138,6 +152,13 @@ export const AequeraTorDaemon = {
   proc: null,
   socksPath: "",
   socksUrl: "",
+  /** Windows: tor's loopback SOCKS port, and whether the current tor has
+   *  reported listening on it (the only state in which this goes online). */
+  socksPort: 0,
+  listening: false,
+  /** tor processes whose exit was seen: their buffered lines may still
+   *  name the listener, which no longer holds. */
+  exited: new WeakSet(),
   /** Per-site SOCKS passwords: a new one is a new circuit for the site. */
   nonces: new Map(),
 
@@ -146,6 +167,12 @@ export const AequeraTorDaemon = {
 
   svc() {
     return this.services ?? { prefs: Services.prefs, io: Services.io, proxy: lazy.proxyService, obs: Services.obs };
+  },
+
+  /** Whether tor listens on a loopback TCP port (Windows) rather than a
+   *  Unix socket. */
+  usesTcp() {
+    return AppConstants.platform == "win";
   },
 
   /** Whether this process is the Tor instance. */
@@ -189,7 +216,16 @@ export const AequeraTorDaemon = {
       return;
     }
     this.registerFilter();
-    io.offline = false;
+    if (this.usesTcp()) {
+      // Online only once tor reports its listener (onLogLine): nothing else
+      // brings it online meanwhile, neither the network link service nor
+      // Work Offline (observe).
+      io.manageOfflineStatus = false;
+      io.offline = true;
+      obs.addObserver(this, OFFLINE_TOPIC);
+    } else {
+      io.offline = false;
+    }
     this.startTor().catch(error => this.fail(String(error?.message ?? error)));
     this.setSearchDefault().catch(error => this.warn(`The search engine could not be set: ${error?.message ?? error}`));
   },
@@ -319,7 +355,9 @@ export const AequeraTorDaemon = {
     }
   },
 
+  /** tor failed: stopped (offline first) and the user told. */
   fail(summary) {
+    this.stopTor();
     this.setState({ status: "failed", summary });
   },
 
@@ -332,15 +370,25 @@ export const AequeraTorDaemon = {
    */
   check() {
     const { prefs, io } = this.svc();
-    this.socksPath = prefs.getStringPref(this.model.SOCKS_PATH_PREF, "");
-    const pathProblem = this.model.socketPathProblem(this.socksPath);
-    if (pathProblem) {
-      return [`aequera.tor.socksPath (${pathProblem})`];
+    let wanted;
+    if (this.usesTcp()) {
+      this.socksPort = prefs.getIntPref(this.model.SOCKS_PORT_PREF, 0);
+      const portProblem = this.model.socksPortProblem(this.socksPort);
+      if (portProblem) {
+        return [`aequera.tor.socksPort (${portProblem})`];
+      }
+      wanted = new Map(this.model.instancePrefs({ socksPort: this.socksPort, level: this.securityLevel() }));
+    } else {
+      this.socksPath = prefs.getStringPref(this.model.SOCKS_PATH_PREF, "");
+      const pathProblem = this.model.socketPathProblem(this.socksPath);
+      if (pathProblem) {
+        return [`aequera.tor.socksPath (${pathProblem})`];
+      }
+      this.socksUrl = io.newFileURI(new lazy.FileUtils.File(this.socksPath)).spec;
+      wanted = new Map(
+        this.model.instancePrefs({ socksPath: this.socksPath, socksUrl: this.socksUrl, level: this.securityLevel() }),
+      );
     }
-    this.socksUrl = io.newFileURI(new lazy.FileUtils.File(this.socksPath)).spec;
-    const wanted = new Map(
-      this.model.instancePrefs({ socksPath: this.socksPath, socksUrl: this.socksUrl, level: this.securityLevel() }),
-    );
     const defaults = prefs.getDefaultBranch("");
     const failed = new Set();
     for (const name of this.model.requiredNames()) {
@@ -364,7 +412,16 @@ export const AequeraTorDaemon = {
    * @returns {boolean} whether browsing may go on
    */
   enforce(alsoWrong = []) {
-    const wrong = [...alsoWrong, ...this.check()];
+    let checked;
+    try {
+      checked = this.check();
+    } catch (error) {
+      // A pref of the wrong type, or anything else that stops the check:
+      // not in force (refused), never an unchecked instance.
+      console.error("aequera-tor: the checks failed", error);
+      checked = [`the instance prefs (${error?.message ?? error})`];
+    }
+    const wrong = [...alsoWrong, ...checked];
     if (wrong.length) {
       this.setState({
         status: "refused",
@@ -442,7 +499,12 @@ export const AequeraTorDaemon = {
     } catch (error) {
       console.error("aequera-tor: circuit key failed", error);
     }
-    callback.onProxyFilterResult(proxyInfo(this.socksUrl, key, this.nonceFor(key)));
+    const nonce = this.nonceFor(key);
+    callback.onProxyFilterResult(
+      this.usesTcp()
+        ? proxyInfo(this.model.LOOPBACK, this.socksPort, key, nonce)
+        : proxyInfo(this.socksUrl, 0, key, nonce),
+    );
   },
 
   /** New circuits for a site: the next connections use new credentials. */
@@ -482,7 +544,7 @@ export const AequeraTorDaemon = {
       return { path: configured, bundle: null };
     }
     const bundle = this.bundleDir();
-    const bundled = PathUtils.join(bundle, "tor");
+    const bundled = PathUtils.join(bundle, AppConstants.platform == "win" ? "tor.exe" : "tor");
     if ((await IOUtils.exists(PathUtils.join(bundle, "aequera-tor-bundle.json"))) && (await IOUtils.exists(bundled))) {
       return { path: bundled, bundle };
     }
@@ -495,9 +557,17 @@ export const AequeraTorDaemon = {
 
   async startTor() {
     this.setState({ status: "starting", progress: 0, summary: "Starting Tor", detail: "" });
-    const pathProblem = this.model.socketPathProblem(this.socksPath);
-    if (pathProblem) {
-      throw new Error(`tor's socket path is ${pathProblem}`);
+    const tcp = this.usesTcp();
+    if (tcp) {
+      const portProblem = this.model.socksPortProblem(this.socksPort);
+      if (portProblem) {
+        throw new Error(`tor's SOCKS port is ${portProblem}`);
+      }
+    } else {
+      const pathProblem = this.model.socketPathProblem(this.socksPath);
+      if (pathProblem) {
+        throw new Error(`tor's socket path is ${pathProblem}`);
+      }
     }
     const dataDir = Services.prefs.getStringPref(this.model.DATA_DIR_PREF, "");
     if (!dataDir || !PathUtils.isAbsolute(dataDir)) {
@@ -506,10 +576,12 @@ export const AequeraTorDaemon = {
     const tor = await this.findTor();
     await IOUtils.makeDirectory(dataDir, { permissions: 0o700 });
     await IOUtils.setPermissions(dataDir, 0o700);
-    const socketDir = this.model.socketDir(this.socksPath);
-    await IOUtils.makeDirectory(socketDir, { permissions: 0o700 });
-    await IOUtils.setPermissions(socketDir, 0o700);
-    await IOUtils.remove(this.socksPath, { ignoreAbsent: true });
+    if (!tcp) {
+      const socketDir = this.model.socketDir(this.socksPath);
+      await IOUtils.makeDirectory(socketDir, { permissions: 0o700 });
+      await IOUtils.setPermissions(socketDir, 0o700);
+      await IOUtils.remove(this.socksPath, { ignoreAbsent: true });
+    }
 
     const configDir = PathUtils.parent(dataDir);
     const torrcPath = PathUtils.join(configDir, "torrc");
@@ -521,7 +593,7 @@ export const AequeraTorDaemon = {
     };
     const torrc = this.model.torrc({
       dataDir,
-      socksPath: this.socksPath,
+      ...(tcp ? { socksPort: this.socksPort } : { socksPath: this.socksPath }),
       ownerPid: Services.appinfo.processID,
       geoipFile: await bundleFile("geoip"),
       geoip6File: await bundleFile("geoip6"),
@@ -534,20 +606,36 @@ export const AequeraTorDaemon = {
       arguments: ["-f", torrcPath, "--defaults-torrc", defaultsPath],
       stderr: "stdout",
     };
-    if (tor.bundle) {
+    if (tor.bundle && !tcp) {
       // The expert bundle's tor has no RPATH: its libevent and OpenSSL sit
-      // beside it, found as Tor Browser finds them.
+      // beside it, found as Tor Browser finds them. (Windows: the bundle's
+      // tor.exe is self-contained.)
       const name = AppConstants.platform == "macosx" ? "DYLD_LIBRARY_PATH" : "LD_LIBRARY_PATH";
       options.environment = { [name]: tor.bundle };
       options.environmentAppend = true;
     }
-    const proc = await lazy.Subprocess.call(options);
+    await this.superviseTor(await lazy.Subprocess.call(options));
+  },
+
+  /**
+   * Follow a started tor until it exits. On exit: offline at once (Windows:
+   * the port is free), and its listener lines ignored from then on; its
+   * last lines (the error that ended it) are awaited, briefly, for the
+   * verdict.
+   */
+  async superviseTor(proc) {
     this.proc = proc;
     this.setState({ status: "bootstrapping", summary: "Connecting to the Tor network" });
     const reading = this.readLog(proc);
-    const { exitCode } = await proc.wait();
-    // Its last lines (the error that ended it) before the verdict.
-    await reading;
+    let exitCode = -1;
+    try {
+      ({ exitCode } = await proc.wait());
+    } catch {}
+    this.exited.add(proc);
+    if (this.proc === proc) {
+      this.setListening(false);
+    }
+    await Promise.race([reading, new Promise(resolve => lazy.setTimeout(resolve, LAST_WORDS_MS))]);
     // Not this anymore: stopped on purpose (restart, quit).
     if (this.proc === proc) {
       this.proc = null;
@@ -589,6 +677,20 @@ export const AequeraTorDaemon = {
     if (!entry) {
       return;
     }
+    if (entry.kind == "listener") {
+      // Over TCP: tor itself holds the port now (its own report, from the
+      // child this process started). Any other address or port is not ours,
+      // nor a line read after that tor exited.
+      if (
+        this.usesTcp() &&
+        !this.exited.has(proc) &&
+        entry.address == this.model.LOOPBACK &&
+        entry.port === this.socksPort
+      ) {
+        this.setListening(true);
+      }
+      return;
+    }
     if (entry.kind == "bootstrap") {
       const done = entry.progress >= 100;
       this.setState({
@@ -608,13 +710,30 @@ export const AequeraTorDaemon = {
     if (!this.started || this.state.status != "failed") {
       return;
     }
+    // Not "failed" from here on: a second click starts no second tor.
+    this.setState({ status: "starting", progress: 0, summary: "Starting Tor", detail: "" });
     await this.stopTor();
     this.startTor().catch(error => this.fail(String(error?.message ?? error)));
+  },
+
+  /**
+   * Windows: online exactly while the current tor reports its listener.
+   * Offline first when it stops, before anything else can bind the freed
+   * port. No effect over a Unix socket (online from startup) or when
+   * refused (offline for good).
+   */
+  setListening(listening) {
+    if (!this.usesTcp() || this.state.status == "refused") {
+      return;
+    }
+    this.listening = listening;
+    this.svc().io.offline = !listening;
   },
 
   async stopTor() {
     const proc = this.proc;
     this.proc = null;
+    this.setListening(false);
     try {
       await proc?.kill();
     } catch {}
@@ -634,8 +753,9 @@ export const AequeraTorDaemon = {
   observe(_subject, topic, data) {
     const { io, proxy, obs } = this.svc();
     if (topic == OFFLINE_TOPIC) {
-      // Refused: Work Offline cannot bring it online.
-      if (data == "online") {
+      // Refused, or (Windows) no listener reported: Work Offline cannot
+      // bring it online.
+      if (data == "online" && (this.state.status == "refused" || (this.usesTcp() && !this.listening))) {
         io.offline = true;
       }
       return;
@@ -644,18 +764,20 @@ export const AequeraTorDaemon = {
       return;
     }
     obs.removeObserver(this, "quit-application");
-    try {
-      if (this.state.status == "refused") {
-        obs.removeObserver(this, OFFLINE_TOPIC);
-        proxy.unregisterChannelFilter(refusalFilter);
-      } else {
-        proxy.unregisterChannelFilter(this);
-      }
-    } catch (error) {
-      console.error("aequera-tor: cannot unregister at quit", error);
+    // Each on its own: one that was never registered (a quit during the
+    // startup) does not keep the others registered.
+    const refused = this.state.status == "refused";
+    for (const unregister of [
+      () => obs.removeObserver(this, OFFLINE_TOPIC),
+      () => proxy.unregisterChannelFilter(refused ? refusalFilter : this),
+    ]) {
+      try {
+        unregister();
+      } catch {}
     }
     const proc = this.proc;
     this.proc = null;
+    this.setListening(false);
     try {
       proc?.kill()?.catch?.(() => {});
     } catch {}

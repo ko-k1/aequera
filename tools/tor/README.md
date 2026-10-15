@@ -49,11 +49,13 @@ when Tor Browser publishes one with a tor security fix.
 
 ## Platforms
 
-Linux x86_64: verified (2026-10-14, tor 0.4.9.14, in the live check). macOS
-arm64 and x86_64: pinned, unverified (the bundle's library lookup there and
-where an app bundle's `GreD` puts `tor/` are untested). Windows: no Tor
-windows yet. Release packaging (the installer's manifest) does not carry
-`tor/` yet: a packaging slice of its own.
+Linux x86_64: verified (2026-10-14, tor 0.4.9.14, in the live check).
+Windows x86_64: verified (2026-10-16, tor 0.4.9.14, live check 24/24); the
+bundle's `tor.exe` is self-contained (no DLLs beside it), and the scripts
+run in Git Bash or the MozillaBuild shell. macOS arm64 and x86_64: pinned,
+unverified (the bundle's library lookup there and where an app bundle's
+`GreD` puts `tor/` are untested). Release packaging (the installer's
+manifest) does not carry `tor/` yet: a packaging slice of its own.
 
 Licenses: `<app>/tor/licenses/` (tor: BSD-3-Clause; libevent: BSD-3-Clause;
 OpenSSL: Apache-2.0; lyrebird and conjure: the licenses of their Go

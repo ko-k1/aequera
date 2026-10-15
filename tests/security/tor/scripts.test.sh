@@ -134,10 +134,12 @@ mkdir -p "$FAKE_SERVE"
 NEW_LINUX="$(printf 'a%.0s' $(seq 64))"
 NEW_ARM="$(printf 'b%.0s' $(seq 64))"
 NEW_X86="$(printf 'c%.0s' $(seq 64))"
+NEW_WIN="$(printf 'd%.0s' $(seq 64))"
 cat > "$FAKE_SERVE/sha256sums-signed-build.txt" <<EOF
 $NEW_LINUX  tor-expert-bundle-linux-x86_64-15.0.30.tar.gz
 $NEW_ARM  tor-expert-bundle-macos-aarch64-15.0.30.tar.gz
 $NEW_X86  tor-expert-bundle-macos-x86_64-15.0.30.tar.gz
+$NEW_WIN  tor-expert-bundle-windows-x86_64-15.0.30.tar.gz
 EOF
 echo sig > "$FAKE_SERVE/sha256sums-signed-build.txt.asc"
 write_lock "$GOOD_SHA"
@@ -165,7 +167,7 @@ code=$?
 check "signed by the pinned key: exit 0" "[ $code -eq 0 ]"
 check "signed: header kept" "head -1 '$LOCK' | grep -q '^# test lock'"
 check "signed: new release pinned" "grep -q 'tor_browser_version: \"15.0.30\"' '$LOCK' && grep -q 'release_url: https://dist.torproject.org/torbrowser/15.0.30/' '$LOCK'"
-check "signed: every platform's hash" "grep -q \"linux-x86_64: $NEW_LINUX\" '$LOCK' && grep -q \"macos-aarch64: $NEW_ARM\" '$LOCK' && grep -q \"macos-x86_64: $NEW_X86\" '$LOCK'"
+check "signed: every platform's hash" "grep -q \"linux-x86_64: $NEW_LINUX\" '$LOCK' && grep -q \"macos-aarch64: $NEW_ARM\" '$LOCK' && grep -q \"macos-x86_64: $NEW_X86\" '$LOCK' && grep -q \"windows-x86_64: $NEW_WIN\" '$LOCK'"
 
 # The two scripts agree on the format: fetch-bundle reads what update-pin wrote.
 mkdir -p "$T/fixture2" && cp -R "$T/fixture/"* "$T/fixture2/"

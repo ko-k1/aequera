@@ -9,7 +9,8 @@
 # obj/firefox/artifact (the objdirs tools/build/aequera-run.sh picks from).
 # The archive is downloaded once into obj/tor-bundle/ and checked against
 # the pinned SHA-256 on every run; a mismatch is deleted and refused.
-# Linux x86_64 and macOS (arm64, x86_64); Windows has no Tor windows yet.
+# Linux x86_64, macOS (arm64, x86_64), and Windows x86_64 (Git Bash or the
+# MozillaBuild shell; a self-contained tor.exe).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -20,6 +21,7 @@ case "$(uname -s)-$(uname -m)" in
   Linux-x86_64) PLATFORM=linux-x86_64 ;;
   Darwin-arm64) PLATFORM=macos-aarch64 ;;
   Darwin-x86_64) PLATFORM=macos-x86_64 ;;
+  MINGW*-x86_64|MSYS*-x86_64|CYGWIN*-x86_64) PLATFORM=windows-x86_64 ;;
   *) echo "fetch-bundle: no pinned tor bundle for $(uname -s) $(uname -m)" >&2; exit 2 ;;
 esac
 
@@ -43,7 +45,7 @@ must_match release_url "$RELEASE_URL" "^https://dist\.torproject\.org/torbrowser
 # build when its binary exists, else the artifact build.
 if [ $# -gt 0 ]; then
   OBJDIR="$1"
-elif [ -x "$ROOT/obj/firefox/compiled/dist/bin/aequera" ]; then
+elif [ -x "$ROOT/obj/firefox/compiled/dist/bin/aequera" ] || [ -x "$ROOT/obj/firefox/compiled/dist/bin/aequera.exe" ]; then
   OBJDIR="$ROOT/obj/firefox/compiled"
 else
   OBJDIR="$ROOT/obj/firefox/artifact"

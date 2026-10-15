@@ -2,12 +2,15 @@
 // the real Tor network and checks that nothing reaches the network around
 // tor. Needs network access to the Tor network.
 //
-//   node tests/security/tor/live-check.cjs [Tor port=28282]
-// Exit 0 when every check passes.
+//   node tests/security/tor/live-check.cjs [Tor port=28282] [ordinary port=28281]
+// Exit 0 when every check passes. On Windows (tor on a loopback TCP port,
+// docs/design/TOR.md) it also checks the online gating and the port ban.
 const http = require("http");
+const net = require("net");
 const { Marionette } = require("./marionette.cjs");
 
 const torPort = Number(process.argv[2] ?? 28282);
+const mainPort = Number(process.argv[3] ?? 28281);
 const DAEMON = `const { AequeraTorDaemon: D } = ChromeUtils.importESModule("chrome://browser/content/aequera/tor/aequera-tor-daemon.sys.mjs");`;
 const ONION = "http://2gzyxa5ihm7nsggfxnu52rck2vv4rvmdlkiu3zzui5du4xyclen53wid.onion/"; // the Tor Project's
 
@@ -35,6 +38,63 @@ async function load(m, url, timeoutMs = 90000) {
     args: [],
   });
   return { documentURI: r.value[0], title: r.value[1], text: r.value[2] };
+}
+
+/** Windows: online only while tor reports its listener; a port taken before
+ *  tor starts keeps the instance offline; the ordinary instance cannot
+ *  reach tor's port. */
+async function windowsChecks(m, port) {
+  check("Windows: online with tor listening", (await chrome(m, "return Services.io.offline;")) === false);
+  await chrome(m, `${DAEMON} await D.stopTor();`);
+  check("Windows: offline the moment tor stops", (await chrome(m, "return Services.io.offline;")) === true);
+
+  // Another program holds the port before tor starts again.
+  let squatterHits = 0;
+  const squatter = net.createServer(socket => {
+    squatterHits++;
+    socket.destroy();
+  });
+  await new Promise(resolve => squatter.listen(port, "127.0.0.1", resolve));
+  const taken = await chrome(
+    m,
+    `${DAEMON}
+     D.startTor();
+     const start = Date.now();
+     while (D.state.status != "failed" && Date.now() - start < 30000) await new Promise(r => setTimeout(r, 250));
+     const b = Services.wm.getMostRecentWindow("navigator:browser").gBrowser.selectedBrowser;
+     b.loadURI(Services.io.newURI("https://example.org/?squatter=" + Date.now()), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
+     await new Promise(r => setTimeout(r, 3000));
+     return { status: D.state.status, detail: D.state.detail, offline: Services.io.offline };`,
+    60000,
+  );
+  check(
+    "Windows: a port taken before tor starts leaves it offline",
+    taken.status == "failed" && taken.offline === true && squatterHits == 0,
+    `${taken.status}, offline=${taken.offline}, squatter hits=${squatterHits}: ${taken.detail}`,
+  );
+  await new Promise(resolve => squatter.close(resolve));
+  const again = await chrome(
+    m,
+    `${DAEMON}
+     await D.restart();
+     const start = Date.now();
+     while (D.state.status != "connected" && Date.now() - start < 120000) await new Promise(r => setTimeout(r, 250));
+     return { status: D.state.status, offline: Services.io.offline };`,
+    150000,
+  );
+  check("Windows: Restart Tor on the freed port connects", again.status == "connected" && again.offline === false, JSON.stringify(again));
+
+  // The ordinary instance (prepare.cjs bans the port, as the launcher does).
+  const main = new Marionette(mainPort);
+  try {
+    await main.connect(10000);
+    await main.context("chrome");
+    const allowed = await main.run(`return Services.io.allowPort(${port}, "http") || Services.io.allowPort(${port}, "https");`);
+    check("Windows: the ordinary instance cannot reach tor's port", allowed === false);
+    main.close();
+  } catch (error) {
+    check("Windows: the ordinary instance cannot reach tor's port", false, `no ordinary instance on ${mainPort}: ${error.message}`);
+  }
 }
 
 function json(text) {
@@ -188,6 +248,11 @@ function json(text) {
     200000,
   );
   check("reconnected, the failed tab reloads", back.status == "connected" && back.uri.startsWith("https://example.com"), back.uri.slice(0, 50));
+
+  const win = await chrome(m, `${DAEMON} return { tcp: D.usesTcp(), port: D.socksPort };`);
+  if (win.tcp) {
+    await windowsChecks(m, win.port);
+  }
 
   server.close();
   m.close();

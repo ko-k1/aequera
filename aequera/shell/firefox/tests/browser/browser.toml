@@ -42,4 +42,7 @@ prefs = [
 ["browser_aequera_ai.js"]
 
 ["browser_aequera_tor.js"]
-skip-if = ["os == 'win'"] # Tor windows are Linux and macOS only (ADR 0004)
+skip-if = ["os == 'win'"] # The Unix socket parts; Windows: browser_aequera_tor_windows.js
+
+["browser_aequera_tor_windows.js"]
+run-if = ["os == 'win'"] # Loopback TCP port (docs/design/TOR.md, Windows)
