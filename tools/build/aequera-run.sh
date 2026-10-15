@@ -21,105 +21,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LAUNCHER=aequera-run
+. "$SCRIPT_DIR/launch-common.sh"
 # AEQUERA_WORKTREE=candidate runs the rebased candidate (aequera patch rebase).
-WORKTREE_NAME="${AEQUERA_WORKTREE:-firefox}"
-case "$WORKTREE_NAME" in
-  ""|.|..|*[!A-Za-z0-9._-]*)
-    echo "aequera-run: AEQUERA_WORKTREE must name a directory under worktree/ (got '$WORKTREE_NAME')" >&2
-    exit 1 ;;
-esac
-TOPSRCDIR="$ROOT/worktree/$WORKTREE_NAME"
+aequera_worktree
+TOPSRCDIR="$FIREFOX_DIR"
 if [ ! -d "$TOPSRCDIR" ]; then
   echo "aequera-run: no Firefox tree at $TOPSRCDIR; run \`aequera patch apply\` first." >&2
   exit 1
 fi
-
-EXE_SUFFIX=""
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) EXE_SUFFIX=".exe" ;;
-esac
-
-if [ -z "${MOZ_OBJDIR:-}" ]; then
-  # Same layout as the mozconfigs: obj/<worktree>/{compiled,artifact}.
-  OBJ_ROOT="$ROOT/obj/$(basename "$TOPSRCDIR")"
-  if [ -x "$OBJ_ROOT/compiled/dist/bin/aequera$EXE_SUFFIX" ]; then
-    OBJDIR="$OBJ_ROOT/compiled"
-  else
-    OBJDIR="$OBJ_ROOT/artifact"
-  fi
-else
-  case "$MOZ_OBJDIR" in
-    /*|[A-Za-z]:[\\/]*) OBJDIR="$MOZ_OBJDIR" ;;
-    *) # Relative: canonicalize (portable: GNU realpath -m, else python3)
-       # and require containment under the repo root.
-       _canonical() {
-         if command -v realpath >/dev/null 2>&1 && realpath -m / >/dev/null 2>&1; then
-           realpath -m "$1"
-         elif command -v python3 >/dev/null 2>&1; then
-           python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"
-         else
-           printf '%s\n' "$1"
-         fi
-       }
-       OBJDIR="$(_canonical "$TOPSRCDIR/$MOZ_OBJDIR")"
-       _TOP_CANON="$(_canonical "$ROOT")"
-       case "$OBJDIR" in
-         "$_TOP_CANON"/*) ;;
-         *) echo "aequera-run: MOZ_OBJDIR escapes repo root ($OBJDIR); refusing." >&2; exit 1 ;;
-       esac ;;
-  esac
-fi
-
+aequera_objdir MOZ_OBJDIR "${MOZ_OBJDIR:-}"
+aequera_find_exe
 BIN="$OBJDIR/dist/bin"
-EXE="$BIN/aequera$EXE_SUFFIX"
-[ -x "$EXE" ] || EXE="$BIN/firefox$EXE_SUFFIX"
-if [ ! -x "$EXE" ]; then
-  shopt -s nullglob
-  candidates=("$OBJDIR"/dist/*.app/Contents/MacOS/*)
-  shopt -u nullglob
-  APP_BIN=""
-  # Quoted expansion preserves spaces; length guard keeps `set -u`
-  # safe on older bash with an empty array.
-  if [ "${#candidates[@]}" -gt 0 ]; then
-    for c in "${candidates[@]}"; do
-      case "$c" in
-        *Aequera.app/Contents/MacOS/*) APP_BIN="$c"; break ;;
-      esac
-    done
-  fi
-  [ -n "$APP_BIN" ] || APP_BIN="${candidates[0]:-}"
-  if [ -n "$APP_BIN" ] && [ -x "$APP_BIN" ]; then
-    EXE="$APP_BIN"
-  fi
-fi
-[ -x "$EXE" ] || {
-  echo "aequera-run: no build in $BIN; see tools/build/README.md." >&2
-  exit 1
-}
+aequera_export_dev_dirs
 
-# Native Windows binaries need Windows-style paths when launched from a
-# POSIX shell; everywhere else absolute POSIX paths are correct as-is.
-to_native() {
-  if command -v cygpath >/dev/null 2>&1; then
-    cygpath -w "$1"
-  else
-    printf '%s\n' "$1"
-  fi
-}
-
-# Like `mach run`, advertise the developer dirs: local builds symlink
-# front-end files into dist, and the content-process sandbox only resolves
-# those links when the repo dir is advertised (upstream bug 1916286).
-export MOZ_DEVELOPER_REPO_DIR="$(to_native "$TOPSRCDIR")"
-export MOZ_DEVELOPER_OBJ_DIR="$(to_native "$OBJDIR")"
-
-if command -v python3 >/dev/null 2>&1; then
-  PYTHON=python3
-elif command -v python >/dev/null 2>&1; then
-  PYTHON=python
-else
-  PYTHON=""
-fi
 # Bundle binaries stage dist/bin into the .app, so the source ini may live
 # in either place; the launch ini goes next to the binary that uses it.
 # Unverified against a real Mac bundle layout (see tools/build/README.md).
@@ -129,22 +44,14 @@ case "$EXE" in
     APP_CONTENTS="$(dirname "$(dirname "$EXE")")"
     BUNDLE_RESOURCES="$APP_CONTENTS/Resources"
     INI="$BUNDLE_RESOURCES/browser/aequera-application.ini"
-    mkdir -p "$(dirname "$INI")"
     [ -f "$SRC_INI" ] || SRC_INI="$BUNDLE_RESOURCES/application.ini"
     ;;
   *)
     INI="$BIN/browser/aequera-application.ini"
-    mkdir -p "$(dirname "$INI")"
     ;;
 esac
-if [ -z "$PYTHON" ]; then
-  # Fail closed: never launch with a possibly stale (Firefox) identity.
-  echo "aequera-run: cannot verify \"$INI\" without python3; refusing to launch." >&2
-  exit 1
-else
-  "$PYTHON" "$ROOT/tools/build/aequera_app_ini.py" "$SRC_INI" "$INI"
-fi
-INI_NATIVE="$(to_native "$INI")"
+aequera_write_ini "$SRC_INI" "$INI"
+INI_NATIVE="$(aequera_to_native "$INI")"
 
 # Tor windows run the tor bundled into the build (tools/tor/fetch-bundle.sh);
 # without it they use tor from PATH or aequera.tor.executable.

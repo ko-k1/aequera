@@ -20,83 +20,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LAUNCHER=aequera
+. "$SCRIPT_DIR/launch-common.sh"
 # AEQUERA_WORKTREE=candidate starts the rebased candidate's build.
-WORKTREE_NAME="${AEQUERA_WORKTREE:-firefox}"
-case "$WORKTREE_NAME" in
-  ""|.|..|*[!A-Za-z0-9._-]*)
-    echo "aequera: AEQUERA_WORKTREE must name a directory under worktree/ (got '$WORKTREE_NAME')" 1>&2
-    exit 1 ;;
-esac
-FIREFOX_DIR="$REPO_ROOT/worktree/$WORKTREE_NAME"
-
-# Resolve the object directory: explicit override wins, else prefer the
-# compiled tree when it already holds a native binary.
-# Absolute means POSIX (`/*`) or Windows drive (`C:/...`, for Git Bash).
-if [ -n "${AEQUERA_OBJDIR:-}" ]; then
-  case "$AEQUERA_OBJDIR" in
-    /*|[A-Za-z]:[\\/]*) OBJDIR="$AEQUERA_OBJDIR" ;;
-    *) OBJDIR="$FIREFOX_DIR/$AEQUERA_OBJDIR" ;;
-  esac
-else
-  OBJ_ROOT="$REPO_ROOT/obj/$WORKTREE_NAME"
-  OBJDIR="$OBJ_ROOT/artifact"
-  if [ -x "$OBJ_ROOT/compiled/dist/bin/aequera" ] \
-    || [ -x "$OBJ_ROOT/compiled/dist/bin/aequera.exe" ] \
-    || [ -x "$OBJ_ROOT/compiled/dist/Aequera.app/Contents/MacOS/aequera" ]; then
-    OBJDIR="$OBJ_ROOT/compiled"
-  fi
-fi
-
-# Containment: a relative override with `..` must not escape the repo.
-# Absolute overrides are explicit user intent (allowed); relative ones are
-# canonicalized and required to stay under REPO_ROOT.
-# Portable canonicalizer: GNU realpath -m where it works, else python3
-# (macOS BSD readlink has no -m, so it is not used here).
-_canonical() {
-  if command -v realpath >/dev/null 2>&1 && realpath -m / >/dev/null 2>&1; then
-    realpath -m "$1"
-  elif command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"
-  else
-    printf '%s\n' "$1"
-  fi
-}
-if [ -n "${AEQUERA_OBJDIR:-}" ]; then
-  case "$AEQUERA_OBJDIR" in
-    /*|[A-Za-z]:[\\/]*) OBJDIR="$(_canonical "$OBJDIR")" ;;
-    *) _OBJDIR_CANON="$(_canonical "$OBJDIR")"
-       _REPO_CANON="$(_canonical "$REPO_ROOT")"
-       case "$_OBJDIR_CANON" in
-         "$_REPO_CANON"/*) ;;
-         *) echo "aequera: AEQUERA_OBJDIR escapes repo root ($_OBJDIR_CANON); refusing." 1>&2; exit 1 ;;
-       esac
-       OBJDIR="$_OBJDIR_CANON" ;;
-  esac
-fi
-
-# Locate the browser binary. Order: compiled identity first, then the
-# prebuilt artifact; inside each, native name before bundle layout.
-# (Windows Git Bash also matches the .exe entries when this script runs there.)
-EXE=""
-for candidate in \
-  "$OBJDIR/dist/bin/aequera" \
-  "$OBJDIR/dist/bin/aequera.exe" \
-  "$OBJDIR/dist/Aequera.app/Contents/MacOS/aequera" \
-  "$OBJDIR/dist/bin/firefox" \
-  "$OBJDIR/dist/bin/firefox.exe" \
-  "$OBJDIR/dist/Firefox.app/Contents/MacOS/firefox" \
-  ; do
-  if [ -x "$candidate" ]; then
-    EXE="$candidate"
-    break
-  fi
-done
-
-if [ -z "$EXE" ]; then
-  echo "aequera: no build in \"$OBJDIR\"; see tools/build/README.md." 1>&2
-  exit 1
-fi
+aequera_worktree
+aequera_objdir AEQUERA_OBJDIR "${AEQUERA_OBJDIR:-}"
+aequera_find_exe
 
 # The build's own application.ini carries the Aequera identity; copy it next
 # to the binary as browser/aequera-application.ini (verified there on every
@@ -113,39 +43,9 @@ case "$EXE" in
     ;;
 esac
 INI="$EXE_DIR/browser/aequera-application.ini"
-mkdir -p "$(dirname "$INI")"
-
-if command -v python3 >/dev/null 2>&1; then
-  PYTHON=python3
-elif command -v python >/dev/null 2>&1; then
-  PYTHON=python
-else
-  PYTHON=""
-fi
-if [ -z "$PYTHON" ]; then
-  # Fail closed: a stale INI could carry the wrong (Firefox) identity.
-  # Never launch with an unverified INI.
-  echo "aequera: cannot verify \"$INI\" without python3; refusing to launch with a possibly stale identity." 1>&2
-  exit 1
-else
-  "$PYTHON" "$SCRIPT_DIR/aequera_app_ini.py" "$SRC_INI" "$INI"
-fi
-
-# Like `mach run`, advertise the developer dirs: local builds symlink
-# front-end files into dist. On Windows the content-process sandbox only
-# resolves those links when MOZ_DEVELOPER_REPO_DIR is set (upstream bug
-# 1916286); elsewhere the native paths are correct as-is. When this script
-# runs under Windows Git/MozillaBuild bash, cygpath converts to the Windows
-# form the native .exe needs for -app and the sandbox vars.
-if command -v cygpath >/dev/null 2>&1; then
-  export MOZ_DEVELOPER_REPO_DIR="$(cygpath -w "$FIREFOX_DIR")"
-  export MOZ_DEVELOPER_OBJ_DIR="$(cygpath -w "$OBJDIR")"
-  INI_ARG="$(cygpath -w "$INI")"
-else
-  export MOZ_DEVELOPER_REPO_DIR="$FIREFOX_DIR"
-  export MOZ_DEVELOPER_OBJ_DIR="$OBJDIR"
-  INI_ARG="$INI"
-fi
+aequera_write_ini "$SRC_INI" "$INI"
+INI_ARG="$(aequera_to_native "$INI")"
+aequera_export_dev_dirs
 
 # Startup cache: purged only when the build changed since the last launch of
 # this profile (startup-cache.sh; the stamp is shared with
