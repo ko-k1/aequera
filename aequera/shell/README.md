@@ -28,6 +28,7 @@ pref-gated browser patches. No telemetry, no network.
 | `adveil/` | Ad Veil switch: `aequera.adveil.enabled` enables or disables the built-in ad blocker (`aequera/extensions/ad-veil`) |
 | `tor/` | Tor windows: a second instance on a throwaway profile, all traffic through tor (below) |
 | `bookmarks/` | Bookmarks drawer |
+| `notifications/` | Floating notification bars (stylesheet) |
 | `moz.build`, `jar.mn` | Build registration -> `chrome://browser/content/aequera/` |
 
 ### Startup cache
@@ -400,6 +401,26 @@ or scrolled. Focus holds only while the window is active. Firefox's own "Never" 
 behave natively; customize mode turns it off.
 
 Tests: `tests/browser/browser_aequera_bookmarks_drawer.js`.
+
+## Floating notification bars (`notifications/`)
+
+Firefox stacks its notification bars (a blocked pop-up, a crashed tab, a
+protocol handler offer, the window-wide `gNotificationBox` ones) in
+`#notifications-toolbar`, the top bar's last row, where each bar grew the top
+bar: the page card dropped and reflowed, and the bookmarks drawer hanging from
+the top bar moved with it. The row now leaves the flow and floats over the top
+of the page as cards on Firefox's popup surface tokens (`--panel-*`, forced
+colors included), so the top bar, the page, and the drawer never move. The
+cards keep Firefox's markup, buttons, focus order, and slide. The row has the
+drawer's geometry: it starts where the rail currently ends and slides below
+the open drawer, on the shared motion tokens (instant under reduced motion).
+Only the cards take the pointer; their gutters pass it to the page. While the
+top bar holds a notification it stacks above the browser area (Firefox's
+`--browser-area-z-index-toolbox-while-animating`, as for the open drawer); the
+widened rail still stacks above it. With the chrome hidden in fullscreen the
+cards go with the top bar, as in Firefox. Stylesheet only, no Firefox patch.
+
+Tests: `tests/browser/browser_aequera_notifications.js`.
 
 ## Command surface (`command/`)
 

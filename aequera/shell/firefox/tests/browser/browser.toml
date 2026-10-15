@@ -13,6 +13,8 @@ prefs = [
 
 ["browser_aequera_bookmarks_drawer.js"]
 
+["browser_aequera_notifications.js"]
+
 ["browser_aequera_chrome_rebuild.js"]
 
 ["browser_aequera_default_layout.js"]

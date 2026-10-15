@@ -1,0 +1,91 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Floating notification bars. Firefox stacks its notification bars (a
+ * blocked pop-up, a crashed tab, a protocol handler offer, the window-wide
+ * ones in gNotificationBox) in #notifications-toolbar, the last row of the
+ * top bar. In that flow each bar grows the top bar: the page card drops and
+ * reflows, and the bookmarks drawer, which hangs from the top bar's bottom
+ * edge, moves with it. Here the row leaves the flow and floats over the top
+ * of the page as cards on the popup surface, so neither ever moves.
+ *
+ * The cards keep Firefox's own markup, buttons, focus order, and slide
+ * (notificationbox.js animates margin-top inside each stack's clip, so the
+ * stack's padding is where a card's shadow fits). The row spans the page,
+ * not the rail, with the drawer's geometry: it starts where the rail
+ * currently ends (the page's resting edge, --aequera-content-start from
+ * aequera-bookmarks.js, plus the widened rail's overlay), so a widened rail
+ * and the cards meet instead of painting over each other. Only the cards
+ * take the pointer; the gutters around them pass it to the page. While the
+ * bookmarks drawer is open the cards slide below it. Both moves run on the
+ * shared motion tokens (instant under reduced motion). */
+
+#navigator-toolbox {
+  position: relative;
+}
+
+/* #browser (positioned, later in the tree) otherwise sits over the cards and
+ * takes their clicks: while the top bar holds a notification it stacks above
+ * the browser area, as for the open drawer (aequera-bookmarks.css), and must
+ * not clip what hangs below it (Firefox clips it under Nova and lwthemes). */
+#navigator-toolbox:has(> #notifications-toolbar notification-message) {
+  z-index: var(--browser-area-z-index-toolbox-while-animating, 4);
+  overflow: visible;
+}
+
+#notifications-toolbar {
+  position: absolute;
+  top: 100%;
+  inset-inline: calc(var(--aequera-content-start, 0px) + var(--aequera-rail-overlay, 0px)) 0;
+  z-index: 2;
+  /* No toolbar paint: the cards are the only surface. */
+  background: none;
+  border: none;
+  pointer-events: none;
+  transition:
+    inset-inline-start var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
+    translate var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out);
+
+  .notificationbox-stack {
+    padding: 0 var(--space-medium) var(--space-large);
+  }
+
+  notification-message {
+    /* The popup surface (Firefox's panel tokens, forced colors included)
+     * replaces the bar's toolbar-flat look (transparent under Nova). */
+    --info-bar-background-color: var(--panel-background-color);
+    --info-bar-text-color: var(--panel-text-color);
+    --message-bar-border-radius: var(--ae-rad, 9px);
+
+    width: 100%;
+    max-width: 48rem;
+    margin: var(--space-small) auto 0;
+    border: var(--border-width, 1px) solid var(--panel-border-color);
+    border-radius: var(--ae-rad, 9px);
+    box-shadow: var(--box-shadow-level-3);
+    pointer-events: auto;
+  }
+}
+
+:root[aequera-bookmarks-peek][aequera-bookmarks-open] #notifications-toolbar {
+  translate: 0 var(--aequera-drawer-height, 0px);
+}
+
+:root[aequera-rail-end] #notifications-toolbar {
+  inset-inline: 0 calc(var(--aequera-content-start, 0px) + var(--aequera-rail-overlay, 0px));
+  transition-property: inset-inline-end, translate;
+}
+
+/* Fullscreen with the chrome hidden: the cards go with the top bar, as in
+ * Firefox (DOM fullscreen collapses the toolbox, which they inherit; F11
+ * autohide only slides it up, which would leave them over the page). */
+:root[fullscreenNavToolboxHidden] #notifications-toolbar {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #notifications-toolbar {
+    transition: none;
+  }
+}
