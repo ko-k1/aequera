@@ -13,10 +13,13 @@ mod config;
 mod demo;
 mod design;
 mod doctor;
+mod fsutil;
 mod lock;
 mod output;
 mod patch;
 mod rebase;
+#[cfg(test)]
+mod testutil;
 mod upstream;
 
 use clap::{Parser, Subcommand};

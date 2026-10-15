@@ -15,6 +15,7 @@
 //!   `worktree/firefox` moved to the new revision, and the candidate
 //!   removed. All checks run before the first write.
 
+use crate::fsutil::write_atomic;
 use crate::lock::{self, LockFile};
 use crate::patch::{self, Applicability, PatchManifest};
 use crate::upstream;
@@ -791,15 +792,6 @@ fn checkout_repo(root: &Path) -> Result<PathBuf, String> {
     Ok(repo)
 }
 
-/// Temp+rename in the target's directory: no half-written file on crash.
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(format!(".tmp-{}", std::process::id()));
-    let tmp = PathBuf::from(tmp);
-    std::fs::write(&tmp, bytes).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
-}
-
 /// Exclusively created temp directory, removed on drop.
 struct ScratchDir(PathBuf);
 
@@ -834,39 +826,10 @@ impl Drop for ScratchDir {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    use crate::testutil::{self, git};
 
     fn scratch(name: &str) -> PathBuf {
-        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-        std::env::temp_dir().join(format!(
-            "aequera-rebase-test-{}-{}-{}",
-            std::process::id(),
-            id,
-            name
-        ))
-    }
-
-    fn git(dir: &Path, args: &[&str]) -> String {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(dir)
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_AUTHOR_NAME", "t")
-            .env("GIT_AUTHOR_EMAIL", "t@t")
-            .env("GIT_COMMITTER_NAME", "t")
-            .env("GIT_COMMITTER_EMAIL", "t@t")
-            .output()
-            .unwrap();
-        assert!(
-            out.status.success(),
-            "fixture git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr)
-        );
-        String::from_utf8_lossy(&out.stdout).trim().to_string()
+        testutil::scratch("rebase", name)
     }
 
     fn lines(prefix: &str) -> String {

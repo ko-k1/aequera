@@ -852,11 +852,9 @@ fn read_state(wt: &Path) -> Result<AppliedState, String> {
 fn write_state(wt: &Path, state: &AppliedState) -> Result<(), String> {
     let path = wt.join(STATE_FILE);
     let text = serde_json::to_string_pretty(state).map_err(|e| format!("state: {e}"))?;
-    // Atomic temp+rename: a crash mid-write must not leave a half JSON file
-    // that `status()` then misreads as valid applied state.
-    let tmp = wt.join(format!("{STATE_FILE}.tmp-{}", std::process::id()));
-    std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+    // Atomic: a crash mid-write must not leave a half JSON file that
+    // `status()` then misreads as valid applied state.
+    crate::fsutil::write_atomic(&path, text.as_bytes())?;
     // Best-effort cleanup of stale tmp files from crashed processes.
     if let Ok(entries) = std::fs::read_dir(wt) {
         let prefix = format!("{STATE_FILE}.tmp-");
@@ -874,77 +872,10 @@ fn write_state(wt: &Path, state: &AppliedState) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lock::{Patchset, Repository, ResolvedFrom, Revision, Upstream};
-    use std::process::Command;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    use crate::testutil::{self, fixture_origin, git, lock_for};
 
     fn scratch(name: &str) -> PathBuf {
-        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-        std::env::temp_dir().join(format!(
-            "aequera-patch-test-{}-{}-{}",
-            std::process::id(),
-            id,
-            name
-        ))
-    }
-
-    fn git(dir: &Path, args: &[&str]) -> String {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(dir)
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_AUTHOR_NAME", "t")
-            .env("GIT_AUTHOR_EMAIL", "t@t")
-            .env("GIT_COMMITTER_NAME", "t")
-            .env("GIT_COMMITTER_EMAIL", "t@t")
-            .output()
-            .unwrap();
-        assert!(
-            out.status.success(),
-            "fixture git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr)
-        );
-        String::from_utf8_lossy(&out.stdout).trim().to_string()
-    }
-
-    fn fixture_origin(scratch: &Path) -> (PathBuf, String) {
-        let origin = scratch.join("origin");
-        std::fs::create_dir_all(&origin).unwrap();
-        git(&origin, &["init"]);
-        std::fs::write(origin.join("base.txt"), "base\n").unwrap();
-        git(&origin, &["add", "."]);
-        git(&origin, &["commit", "-m", "fixture"]);
-        git(&origin, &["tag", "FIXTURE_1"]);
-        let sha = git(&origin, &["rev-parse", "HEAD"]);
-        (origin, sha)
-    }
-
-    fn lock_for(url: &str, sha: &str) -> LockFile {
-        LockFile {
-            schema_version: 1,
-            upstream: Upstream {
-                name: "firefox".into(),
-                repository: Repository {
-                    kind: "git".into(),
-                    url: url.into(),
-                },
-                channel: "test".into(),
-                version: "0".into(),
-                revision: Revision { git: sha.into() },
-                resolved_from: ResolvedFrom {
-                    kind: "tag".into(),
-                    ref_name: "FIXTURE_1".into(),
-                },
-                pinned_at: None,
-            },
-            patchset: Patchset {
-                manifest: "patches/manifest.yaml".into(),
-                version: 0,
-            },
-        }
+        testutil::scratch("patch", name)
     }
 
     fn write_manifest(root: &Path, base_sha: &str, entries_yaml: &str) {

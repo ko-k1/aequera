@@ -442,18 +442,10 @@ pub fn migrate_file(path: &Path) -> Result<MigrateReport, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    use crate::testutil;
 
     fn scratch(name: &str) -> PathBuf {
-        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-        std::env::temp_dir().join(format!(
-            "aequera-config-test-{}-{}-{}",
-            std::process::id(),
-            id,
-            name
-        ))
+        testutil::scratch("config", name)
     }
 
     fn candidate(name: &str, body: &str) -> PathBuf {

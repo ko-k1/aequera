@@ -349,10 +349,8 @@ pub(crate) fn write_candidate(root: &Path, candidate: &LockFile) -> Result<(), S
          \n{body}"
     );
     let path = root.join(lock::CANDIDATE_RELATIVE);
-    // Atomic temp+rename: a crash must not leave a half-written candidate.
-    let tmp = path.with_extension(format!("lock.tmp-{}", std::process::id()));
-    std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))
+    // Atomic: a crash must not leave a half-written candidate.
+    crate::fsutil::write_atomic(&path, text.as_bytes())
 }
 
 /// Current UTC date as YYYY-MM-DD (the lock's `pinned_at` format).
@@ -535,78 +533,10 @@ fn run_git(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lock::{Patchset, Repository, ResolvedFrom, Revision, Upstream};
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use crate::testutil::{self, fixture_origin, git as fixture_git, lock_for};
 
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-    /// Scratch root unique to this test process run.
     fn scratch(name: &str) -> PathBuf {
-        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-        std::env::temp_dir().join(format!(
-            "aequera-test-{}-{}-{}",
-            std::process::id(),
-            id,
-            name
-        ))
-    }
-
-    /// Build a tiny origin repo with one commit and a lightweight tag.
-    /// Returns (origin_path, tagged_commit_sha).
-    fn fixture_origin(scratch: &Path) -> (PathBuf, String) {
-        let origin = scratch.join("origin");
-        std::fs::create_dir_all(&origin).unwrap();
-        let git = |dir: &Path, args: &[&str]| {
-            let out = Command::new("git")
-                .args(args)
-                .current_dir(dir)
-                .env("GIT_CONFIG_NOSYSTEM", "1")
-                .env("GIT_AUTHOR_NAME", "t")
-                .env("GIT_AUTHOR_EMAIL", "t@t")
-                .env("GIT_COMMITTER_NAME", "t")
-                .env("GIT_COMMITTER_EMAIL", "t@t")
-                .output()
-                .unwrap();
-            assert!(
-                out.status.success(),
-                "fixture git {} failed: {}",
-                args.join(" "),
-                String::from_utf8_lossy(&out.stderr)
-            );
-            String::from_utf8_lossy(&out.stdout).trim().to_string()
-        };
-        git(&origin, &["init"]);
-        std::fs::write(origin.join("f.txt"), "x").unwrap();
-        git(&origin, &["add", "."]);
-        git(&origin, &["commit", "-m", "fixture"]);
-        git(&origin, &["tag", "FIXTURE_1"]);
-        let sha = git(&origin, &["rev-parse", "HEAD"]);
-        (origin, sha)
-    }
-
-    fn lock_for(url: &str, sha: &str) -> LockFile {
-        LockFile {
-            schema_version: 1,
-            upstream: Upstream {
-                name: "firefox".into(),
-                repository: Repository {
-                    kind: "git".into(),
-                    url: url.into(),
-                },
-                channel: "test".into(),
-                version: "0".into(),
-                revision: Revision { git: sha.into() },
-                resolved_from: ResolvedFrom {
-                    kind: "tag".into(),
-                    ref_name: "FIXTURE_1".into(),
-                },
-                pinned_at: None,
-            },
-            patchset: Patchset {
-                manifest: "patches/manifest.yaml".into(),
-                version: 0,
-            },
-        }
+        testutil::scratch("upstream", name)
     }
 
     #[test]
@@ -639,23 +569,16 @@ mod tests {
         let root = scratch("remote-mismatch");
         let dir = root.join(CHECKOUT_RELATIVE);
         std::fs::create_dir_all(&dir).unwrap();
-        let out = Command::new("git")
-            .args(["init"])
-            .current_dir(&dir)
-            .output()
-            .unwrap();
-        assert!(out.status.success());
-        let out = Command::new("git")
-            .args([
+        fixture_git(&dir, &["init"]);
+        fixture_git(
+            &dir,
+            &[
                 "remote",
                 "add",
                 "origin",
                 "https://example.invalid/other.git",
-            ])
-            .current_dir(&dir)
-            .output()
-            .unwrap();
-        assert!(out.status.success());
+            ],
+        );
         let (_origin, sha) = fixture_origin(&root);
         let lock = lock_for("https://example.invalid/expected.git", &sha);
         let err = ensure_repo(&root, &lock).expect_err("remote mismatch must fail");
@@ -665,24 +588,10 @@ mod tests {
 
     /// Commit a new file on top of the fixture origin; returns the new SHA.
     fn commit_file(origin: &Path, name: &str) -> String {
-        let git = |args: &[&str]| {
-            let out = Command::new("git")
-                .args(args)
-                .current_dir(origin)
-                .env("GIT_CONFIG_NOSYSTEM", "1")
-                .env("GIT_AUTHOR_NAME", "t")
-                .env("GIT_AUTHOR_EMAIL", "t@t")
-                .env("GIT_COMMITTER_NAME", "t")
-                .env("GIT_COMMITTER_EMAIL", "t@t")
-                .output()
-                .unwrap();
-            assert!(out.status.success());
-            String::from_utf8_lossy(&out.stdout).trim().to_string()
-        };
         std::fs::write(origin.join(name), "y").unwrap();
-        git(&["add", "."]);
-        git(&["commit", "-m", "second"]);
-        git(&["rev-parse", "HEAD"])
+        fixture_git(origin, &["add", "."]);
+        fixture_git(origin, &["commit", "-m", "second"]);
+        fixture_git(origin, &["rev-parse", "HEAD"])
     }
 
     #[test]
@@ -752,21 +661,11 @@ mod tests {
         fetch(&root, &lock).expect("fetch first");
         // Bring over the non-tagged commit too, so the drift target exists.
         let dir = root.join(CHECKOUT_RELATIVE);
-        let out = Command::new("git")
-            .args(["fetch", "origin"])
-            .current_dir(&dir)
-            .output()
-            .unwrap();
-        assert!(out.status.success());
+        fixture_git(&dir, &["fetch", "origin"]);
 
         // Drift the checkout to the other commit (bypasses checkout(), which
         // would rightly refuse) and dirty the tree.
-        let out = Command::new("git")
-            .args(["checkout", "--detach", &other])
-            .current_dir(&dir)
-            .output()
-            .unwrap();
-        assert!(out.status.success());
+        fixture_git(&dir, &["checkout", "--detach", &other]);
         std::fs::write(dir.join("dirty.txt"), "uncommitted").unwrap();
 
         let report = verify(&root, &lock).expect("verify runs");
@@ -878,12 +777,7 @@ mod tests {
     }
 
     fn tag(origin: &Path, name: &str) {
-        let out = Command::new("git")
-            .args(["tag", name])
-            .current_dir(origin)
-            .output()
-            .unwrap();
-        assert!(out.status.success());
+        fixture_git(origin, &["tag", name]);
     }
 
     /// Origin with FIREFOX_1_0_RELEASE (locked) and FIREFOX_1_1_RELEASE;
