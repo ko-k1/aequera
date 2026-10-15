@@ -49,13 +49,13 @@ cd worktree/firefox
 export MOZCONFIG="$PWD/../../tools/build/mozconfig.artifact"   # repo-relative; $PWD is worktree/firefox
 ./mach bootstrap   # choose "Firefox for Desktop Artifact Mode"
 ./mach build
-bash tools/build/aequera-run.sh               # throwaway dev profile
-bash tools/build/aequera-run.sh --persistent  # real profile in ~/Library/.../Aequera
+bash ../../tools/build/aequera-run.sh         # throwaway dev profile
+bash ../../tools/build/aequera-run.sh --persistent  # real profile in ~/Library/.../Aequera
 ```
 
-(`tools/build/...` is relative to the checkout root.) Outside a terminal,
+(Run from `worktree/firefox`, as above.) Outside a terminal,
 start the real profile with `tools/build/aequera.sh`. Run the shell tests
-with `bash tools/build/test-shell.sh` from `worktree/firefox`. Full flow and
+with `bash ../../tools/build/test-shell.sh` from `worktree/firefox`. Full flow and
 per-OS notes: `tools/build/README.md`. For a compiled build (hours, full
 Aequera.app identity), switch `MOZCONFIG` to `mozconfig.compiled` and run
 `./mach bootstrap --application-choice browser` once. Works on Apple Silicon
