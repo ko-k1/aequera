@@ -54,6 +54,8 @@ function instanceSpawn(calls) {
 
 async function resetLauncher() {
   await AequeraTorLauncher.child?.kill();
+  // The cleanup after its exit (afterExit) runs in the launch queue.
+  await AequeraTorLauncher.queue;
   AequeraTorLauncher.child = null;
   AequeraTorLauncher.spawn = null;
   AequeraTorLauncher.processAlive = null;
@@ -1153,6 +1155,56 @@ add_task(async function test_start_and_handoff_timeouts_are_errors() {
     await resetLauncher();
   }
 });
+
+add_task(async function test_an_exit_without_quit_is_cleaned_up_after() {
+  const profileDir = PathUtils.join(TOR_BASE, "profile");
+  /** A Tor instance from openWindow, its socket directory created as the launcher does. */
+  async function startInstance() {
+    AequeraTorLauncher.spawn = instanceSpawn([]);
+    await AequeraTorLauncher.openWindow();
+    const socketDir = PathUtils.parent(readUserJs(await IOUtils.readUTF8(PathUtils.join(profileDir, "user.js"))).get("aequera.tor.socksPath"));
+    ok(await IOUtils.exists(socketDir), "the instance's socket directory");
+    return { child: AequeraTorLauncher.child, socketDir };
+  }
+  AequeraTorLauncher.processAlive = async () => false;
+  try {
+    // Killed (SIGTERM, SIGKILL, a crash): its own quit cleanup never ran.
+    let { child, socketDir } = await startInstance();
+    await child.kill();
+    await AequeraTorLauncher.queue;
+    ok(!(await IOUtils.exists(socketDir)), "its socket directory removed");
+    ok(!(await IOUtils.exists(MARKER)), "its marker removed");
+    is(AequeraTorLauncher.child, null, "nothing tracked");
+
+    // Another Tor instance runs on the profile (the marker names it, alive):
+    // nothing of it is touched.
+    ({ child, socketDir } = await startInstance());
+    AequeraTorLauncher.processAlive = async () => true;
+    await child.kill();
+    await AequeraTorLauncher.queue;
+    ok(await IOUtils.exists(socketDir), "a running instance's socket directory stays");
+    ok(await IOUtils.exists(MARKER), "and its marker");
+    await IOUtils.remove(socketDir, { recursive: true });
+    await IOUtils.remove(MARKER);
+
+    // A newer child of this session: the exited one's cleanup waits for it.
+    AequeraTorLauncher.processAlive = async () => false;
+    ({ child, socketDir } = await startInstance());
+    const newer = fakeProcess(null);
+    AequeraTorLauncher.child = newer;
+    is(await AequeraTorLauncher.afterExit(torPathsForTest()), false, "nothing removed while a child runs");
+    ok(await IOUtils.exists(socketDir), "the socket directory stays");
+    AequeraTorLauncher.child = child;
+    await newer.kill();
+  } finally {
+    await resetLauncher();
+    await removeSocketDirOf(profileDir).catch(() => {});
+  }
+});
+
+function torPathsForTest() {
+  return { base: TOR_BASE, profile: PathUtils.join(TOR_BASE, "profile"), data: PathUtils.join(TOR_BASE, "data"), marker: MARKER };
+}
 
 add_task(async function test_remembered_level_fails_strict() {
   AequeraTorLauncher.model ??= AequeraTorModel;

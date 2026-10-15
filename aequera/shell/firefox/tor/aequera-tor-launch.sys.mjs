@@ -146,7 +146,7 @@ export const AequeraTorLauncher = {
     this.drain(proc);
 
     if (!running) {
-      this.adopt(proc);
+      this.adopt(proc, paths);
       await this.waitForStart(paths, proc);
       return;
     }
@@ -155,20 +155,47 @@ export const AequeraTorLauncher = {
     const exitCode = await exitWithin(proc, this.handoffWaitMs);
     if (exitCode === null) {
       // It became an instance itself (offline until its checks pass).
-      this.adopt(proc);
+      this.adopt(proc, paths);
       throw new Error("aequera-tor: the running Tor instance did not answer; a new one started in its place");
     } else if (exitCode !== 0) {
       throw new Error(`aequera-tor: the running Tor instance did not take the window (exit ${exitCode})`);
     }
   },
 
-  /** Track `proc` as this session's Tor instance until it exits. */
-  adopt(proc) {
+  /** Track `proc` as this session's Tor instance until it exits, then
+   *  remove what it left (afterExit). */
+  adopt(proc, paths) {
     this.child = proc;
-    proc.wait().then(
-      () => this.forget(proc),
-      () => this.forget(proc),
-    );
+    const exited = () => {
+      this.forget(proc);
+      this.afterExit(paths);
+    };
+    proc.wait().then(exited, exited);
+  },
+
+  /**
+   * After this session's Tor instance exited: its socket directory and
+   * marker, which a SIGTERM, SIGKILL, or crash leaves behind (Firefox's
+   * profile lock ends the process on SIGTERM before any quit code runs).
+   * Queued behind any launch in progress, and only while no Tor instance
+   * runs on the profile.
+   *
+   * @returns {Promise<boolean>} whether anything was removed
+   */
+  afterExit(paths) {
+    const run = this.queue.then(() => this.removeLeftovers(paths));
+    this.queue = run.catch(error => console.error("aequera-tor: cannot clean up after the Tor instance", error));
+    return run;
+  },
+
+  async removeLeftovers(paths) {
+    if (await this.instanceRunning(paths)) {
+      return false;
+    }
+    this.model ??= torModel();
+    await this.removeOldSocketDir(paths);
+    await IOUtils.remove(paths.marker, { ignoreAbsent: true });
+    return true;
   },
 
   forget(proc) {

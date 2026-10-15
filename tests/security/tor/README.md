@@ -66,9 +66,12 @@ recovery, "checks never run" and refusal were checked by hand
 fixes: the real "New Tor window" flow with the bundled tor passed
 (`IsTor: true`); the live check itself was not re-run.
 
-Quit the Tor instance through Firefox (close its windows, or Quit), not
-SIGTERM: on GTK a SIGTERM leaves without `quit-application`, so the socket
-directory and marker stay until the next "New Tor window" removes them.
+A Tor instance started here by hand (step 2) has no ordinary instance
+watching it. Quit it through Firefox (close its windows, or Quit), not
+SIGTERM: SIGTERM ends Firefox before any quit code runs (its profile lock
+re-raises it), so the socket directory and marker stay until the next "New
+Tor window" removes them. One started by "New Tor window" is cleaned up by
+the ordinary instance when it exits.
 
 Page-side values come from the page's own script (it writes them to the
 title). Marionette's scripts run in a realm of their own, which

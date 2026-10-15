@@ -185,10 +185,16 @@ Nothing ever falls back to a direct connection. Tabs that failed with
   running or starting one, never in a refused instance.
 - On quit: the filter is unregistered, tor is killed, and the socket
   directory and the marker are removed. A socket directory is removed only
-  when its name is one the launcher gives (`aequera-tor-<8 hex>`). A quit by
-  SIGTERM skips this (GTK's app shell leaves its event loop without
-  `quit-application`); tor still exits with the instance
-  (`__OwningControllerProcess`), and the next "New Tor window" treats the
+  when its name is one the launcher gives (`aequera-tor-<8 hex>`).
+- When it is killed: SIGTERM ends the instance before any quit code runs
+  (Firefox's profile lock catches it, removes its lock files, and re-raises
+  it; measured: exit by signal, no `quit-application`), as do SIGKILL and a
+  crash. The ordinary instance that started it watches it: when its child
+  exits, the launcher removes the socket directory and the marker (queued
+  behind any launch in progress, and only while no Tor instance runs on the
+  profile). tor exits by itself once its owner is gone
+  (`__OwningControllerProcess`, within about a minute). If the ordinary
+  instance is not running either, the next "New Tor window" treats the
   marker as stale and removes both.
 
 ## Configuration
@@ -293,7 +299,11 @@ unless bridges are used, a later slice).
   bad socket path, quit cleanup of only its own directory, restart only
   after a failure, all-or-nothing security levels. Launcher edge cases:
   concurrent launches, unknown liveness, start and handoff timeouts, a
-  corrupt `settings.json`.
+  corrupt `settings.json`, cleanup after a child that exits without quitting
+  (and none while another instance or a newer child runs).
+- SIGTERM, by hand 2026-10-15: the Tor instance exited by the signal, and
+  the ordinary instance removed its marker and socket directory within
+  260 ms (before this, both stayed).
 - `tests/security/tor/scripts.test.sh` (PR CI, offline): the bundle
   scripts' pin, lock, and signature checks with shimmed `curl`, `gpg`, and
   `uname`.
