@@ -1,0 +1,41 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Aequera: AI controls (overrides chrome://browser/skin/preferences/fox-ai.svg).
+     Generated layout: the Aequera mark (branding about-logo.svg) on a halo, with a status badge. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="62" height="63" viewBox="0 0 200 200" fill="none">
+  <style>
+    .halo { fill: #4ed5ff; fill-opacity: 0.16; }
+    .dim { opacity: 0.62; }
+    .sp1 { fill: #4ed5ff; }
+    .sp2 { fill: #f59e0b; }
+    .b { fill: #0369a1; }
+    .g { stroke: #fff; fill: none; }
+    .gf { fill: #fff; }
+    @media (prefers-color-scheme: dark) {
+      .halo { fill-opacity: 0.1; }
+      .dim { opacity: 0.5; }
+      .b { fill: #4ed5ff; }
+      .g { stroke: #0b1a22; }
+      .gf { fill: #0b1a22; }
+    }
+  </style>
+  <defs>
+    <g id="s">
+      <path fill="#4ed5ff" d="M295 160v100l40 22v-97z"/>
+      <path fill="#4effff" d="M199 67v46l56 29v43l35 20v-90z"/>
+      <rect fill="#4ed5ff" x="154" y="145" width="95" height="40"/>
+    </g>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200">
+      <rect fill="#fff" width="200" height="200"/>
+      <circle fill="#000" cx="150" cy="148" r="33"/>
+    </mask>
+  </defs>
+  <circle class="halo" cx="96" cy="96" r="84"/>
+  <g mask="url(#cut)"><g transform="translate(14.00 10.40) scale(0.4)">
+    <use href="#s"/>
+    <use href="#s" transform="rotate(120 205 214)"/>
+    <use href="#s" transform="rotate(240 205 214)"/>
+  </g></g>
+  <g transform="translate(150 148)"><circle class="b" r="26"/><path class="gf" d="M0 -14c1.6 8 4.4 10.4 12 12-7.6 1.6-10.4 4-12 12-1.6-8-4.4-10.4-12-12 7.6-1.6 10.4-4 12-12z"/></g>
+</svg>

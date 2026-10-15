@@ -1,0 +1,47 @@
+Subject: [PATCH] toolkit: load the Aequera in-content layer from common-shared.css
+
+Why Firefox source must change:
+  Firefox's in-content pages (Settings, Add-ons, the network and
+  certificate error pages, about:config, about:support, about:protections,
+  dialogs) take their look from design tokens that
+  toolkit/themes/shared/in-content/common-shared.css imports. Settings and
+  the new error card are built from shadow-DOM components, so a page
+  stylesheet cannot restyle them, and no pref, policy, or theme can add a
+  stylesheet to every in-content page. One import in the shared sheet does,
+  and it reaches the shadow roots that link a sheet importing it.
+
+What it changes (one @import, after Firefox's token imports):
+  chrome://browser/content/aequera/incontent/aequera-in-content.css
+  (overlay "shell-chrome"), which redefines Firefox's tokens (accent,
+  surfaces, text, borders, radii) from aequera/design/tokens.toml. Every
+  rule sits inside @media -moz-pref("aequera.incontent.enabled") and steps
+  aside under prefers-contrast and forced colors; the pref is absent in
+  Firefox, so the pages are unchanged there. No markup, string, or
+  behavior changes.
+
+Depends on: overlay "shell-chrome" (the stylesheet and the token sheet it
+  imports).
+Validation: aequera/shell/firefox/tests/browser/browser_aequera_incontent.js
+  (Settings, Add-ons, and an error page take the Aequera accent and
+  canvas; the error card's shadow root shows the Aequera illustration;
+  pref off and forced colors restore Firefox's tokens; about:privatebrowsing
+  keeps its own design); Firefox's in-content tests with the pref off.
+Upstream risk: low for the patch (one line next to two stable imports).
+  The stylesheet names Firefox's token variables; a renamed token falls
+  back to Firefox's value (a cosmetic regression, never a broken page),
+  and the test checks the main ones.
+
+diff --git a/toolkit/themes/shared/in-content/common-shared.css b/toolkit/themes/shared/in-content/common-shared.css
+index 84cba8cfb76a..a791c5bffa8d 100644
+--- a/toolkit/themes/shared/in-content/common-shared.css
++++ b/toolkit/themes/shared/in-content/common-shared.css
+@@ -4,6 +4,9 @@
+
+ @import url("chrome://global/skin/design-system/tokens-brand.css");
+ @import url("chrome://global/skin/design-system/text-and-typography.css");
++/* Aequera in-content layer (overlay "shell-chrome"): its palette over
++ * Firefox's tokens while aequera.incontent.enabled is true. */
++@import url("chrome://browser/content/aequera/incontent/aequera-in-content.css");
+
+ @namespace html "http://www.w3.org/1999/xhtml";
+ @namespace xul "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";

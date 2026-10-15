@@ -1,0 +1,135 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Aequera in-content layer: Firefox's in-content pages (Settings, Add-ons,
+ * the network and certificate error pages, about:config, about:support,
+ * about:protections, dialogs...) in Aequera's palette and shape. Imported
+ * by common-shared.css (patches/toolkit/in-content), so it reaches every
+ * page that loads chrome://global/skin/in-content/common.css, and the
+ * shadow roots that link a stylesheet importing it (the error card).
+ *
+ * Tokens only. Settings and the error card are built from shadow-DOM
+ * components that page CSS cannot reach, but they read Firefox's design
+ * tokens, so redefining those here restyles them without touching their
+ * markup. Values come from aequera/design/tokens.toml ([palette], rad).
+ *
+ * Firefox's tokens live in cascade layers; these declarations are
+ * unlayered and so win over every layer, including Firefox's high-contrast
+ * and forced-colors ones. The media query below therefore steps aside in
+ * those modes and Firefox's accessible tokens apply unchanged.
+ *
+ * Left alone: about:privatebrowsing's own design (privatebrowsing/,
+ * :where(:not(.private))), and pages' own :root token rules, which come
+ * later at the same specificity and still win.
+ *
+ * Firefox's mascot artwork is replaced separately, by chrome overrides in
+ * jar.mn (incontent/illustrations/). */
+
+@import url("chrome://browser/content/aequera/aequera-tokens.css");
+
+/* Off (aequera.incontent.enabled = false) restores Firefox's design. */
+/* stylelint-disable-next-line media-query-no-invalid */
+@media -moz-pref("aequera.incontent.enabled") and (not ((prefers-contrast) or (forced-colors))) {
+  :root:where(:not(.private)) {
+    /* Surfaces and text: cool neutrals, not Nova's violet-tinted grays. */
+    --background-color-canvas: var(--ae-canvas);
+    --background-color-box: var(--ae-surface);
+    --background-color-box-info: color-mix(in srgb, var(--ae-text) 5%, var(--ae-surface));
+    --background-color-information: color-mix(in srgb, var(--ae-accent) 10%, var(--ae-surface));
+    --text-color: var(--ae-text);
+    --text-color-deemphasized: var(--ae-text-dim);
+
+    /* Hairlines from the text color, so they sit on any surface. */
+    --border-color: color-mix(in srgb, var(--ae-text) 22%, transparent);
+    --border-color-deemphasized: color-mix(in srgb, var(--ae-text) 12%, transparent);
+    --border-color-interactive: color-mix(in srgb, var(--ae-text) 38%, transparent);
+    --border-color-interactive-hover: color-mix(in srgb, var(--ae-text) 55%, transparent);
+    --border-color-interactive-active: color-mix(in srgb, var(--ae-text) 65%, transparent);
+    --border-color-interactive-disabled: color-mix(in srgb, var(--ae-text) 18%, transparent);
+    --card-border-color: color-mix(in srgb, var(--ae-text) 9%, transparent);
+    --info-bar-border-color: var(--border-color-deemphasized);
+
+    /* The accent: the logo's cyan (tokens.toml checks the contrast pairs). */
+    --color-accent-primary: var(--ae-accent);
+    --color-accent-primary-hover: var(--ae-accent-hover);
+    --color-accent-primary-active: var(--ae-accent-active);
+    --icon-color-information: var(--ae-accent);
+    --icon-color-accent-primary-desaturated: var(--ae-text-dim);
+
+    /* Buttons: the rail rows' wash for hover and press ([color] wash). */
+    --button-text-color: var(--ae-text);
+    --button-text-color-primary: var(--ae-on-accent);
+    --button-background-color-hover: var(--ae-wash-hover);
+    --button-background-color-active: var(--ae-wash-selected);
+    --button-background-color-primary-disabled: var(--ae-accent);
+    --toolbar-field-text-color: var(--ae-text);
+
+    /* Shape: the shell's radius family (rad 9) instead of Nova's pills.
+     * Buttons and fields match the address bar and the rail's rows. */
+    --border-radius-small: calc(var(--ae-rad) - 3px);
+    --border-radius-medium: var(--ae-rad);
+    --border-radius-large: calc(var(--ae-rad) + 3px);
+    --border-radius-xlarge: calc(var(--ae-rad) * 2);
+    --button-border-radius: var(--ae-rad);
+    --input-text-border-radius: var(--ae-rad);
+    --input-search-border-radius: var(--ae-rad);
+    --card-border-radius: calc(var(--ae-rad) + 3px);
+
+    /* Depth: one soft, two-part shadow for cards, lighter in dark, where
+     * the surface step already separates them. */
+    --card-box-shadow:
+      0 0 0 0.5px light-dark(rgb(16 24 40 / 0.04), rgb(0 0 0 / 0.2)),
+      0 1px 3px light-dark(rgb(16 24 40 / 0.06), rgb(0 0 0 / 0.24));
+
+    /* Data tables (about:support, about:processes...): a quiet header
+     * column instead of a solid accent one. */
+    --table-header-background-color: var(--background-color-box-info);
+    --table-header-text-color: var(--ae-text);
+  }
+
+  /* Settings sets its own near-white canvas (preferences.css :root, later
+   * in the cascade); the id outranks it, so cards read as white layers on
+   * the shared canvas. */
+  #preferences-root {
+    --background-color-canvas: var(--ae-canvas);
+  }
+
+  /* Settings' default-browser promos show their art with object-fit:
+   * cover, anchored bottom right for Firefox's bleeding fox. Aequera's art
+   * keeps the mark in the middle of the image, so center it: a narrow
+   * window's tall slot then crops only the halo. */
+  #isDefaultPane,
+  #isNotDefaultPane {
+    --promo-image-position: center;
+  }
+
+  /* Settings' AI intro card: Nova violet. The element also outranks the
+   * page's class rule. */
+  moz-card.ai-controls-description {
+    --ai-controls-description-background-color: var(--background-color-information);
+  }
+
+  /* Error pages (the net-error-card's shadow root links aboutNetError.css,
+   * which imports this sheet): the message and its actions on one card,
+   * like Settings' groups, instead of loose text on the canvas. */
+  .felt-privacy-container {
+    padding: var(--space-xxlarge);
+    border: var(--card-border);
+    border-radius: var(--card-border-radius);
+    background-color: var(--background-color-box);
+    box-shadow: var(--card-box-shadow);
+  }
+
+  /* Page navigation (Settings, Add-ons): the selected category is a light
+   * accent tint under the (semibold) label, not a filled accent pill.
+   * moz-page-nav sets these on :host, so they go on the host elements;
+   * the document's rules win over a shadow tree's :host rules. */
+  moz-page-nav,
+  moz-page-nav-button {
+    --page-nav-button-background-color-selected: color-mix(in srgb, var(--ae-accent) 14%, transparent);
+    --page-nav-button-text-color-selected: var(--ae-text);
+    --page-nav-button-border-radius: var(--ae-rad);
+    --page-nav-button-border-radius-focused: var(--ae-rad);
+  }
+}

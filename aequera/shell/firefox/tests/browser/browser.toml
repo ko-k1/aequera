@@ -35,6 +35,8 @@ prefs = [
 
 ["browser_aequera_private.js"]
 
+["browser_aequera_incontent.js"]
+
 ["browser_aequera_privacy.js"]
 
 ["browser_aequera_ai.js"]

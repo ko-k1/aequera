@@ -35,6 +35,33 @@ browser.jar:
     content/browser/aequera/newtab/aequera-newtab.css          (newtab/aequera-newtab.css)
     content/browser/aequera/newtab/aequera-newtab.js           (newtab/aequera-newtab.js)
     content/browser/aequera/privatebrowsing/aequera-private.css (privatebrowsing/aequera-private.css)
+    content/browser/aequera/incontent/aequera-in-content.css   (incontent/aequera-in-content.css)
+    content/browser/aequera/incontent/illustrations/default-yes.svg    (incontent/illustrations/default-yes.svg)
+    content/browser/aequera/incontent/illustrations/default-no.svg     (incontent/illustrations/default-no.svg)
+    content/browser/aequera/incontent/illustrations/celebrate.svg      (incontent/illustrations/celebrate.svg)
+    content/browser/aequera/incontent/illustrations/lock.svg           (incontent/illustrations/lock.svg)
+    content/browser/aequera/incontent/illustrations/mark.svg           (incontent/illustrations/mark.svg)
+    content/browser/aequera/incontent/illustrations/ai.svg             (incontent/illustrations/ai.svg)
+    content/browser/aequera/incontent/illustrations/no-connection.svg  (incontent/illustrations/no-connection.svg)
+    content/browser/aequera/incontent/illustrations/security-error.svg (incontent/illustrations/security-error.svg)
+    content/browser/aequera/incontent/illustrations/shield-check.svg   (incontent/illustrations/shield-check.svg)
+    content/browser/aequera/incontent/illustrations/shield-alert.svg   (incontent/illustrations/shield-alert.svg)
+# Firefox's mascot artwork (the fox, "Kit") and its violet brand shields are
+# Firefox's identity, not Aequera's: the chrome registry serves Aequera's
+# illustrations at the same URLs (and intrinsic sizes), so every page,
+# shadow root, and test that names them keeps working. Product identity,
+# like the branding: not pref-gated. Firefox's neutral illustrations
+# (license, malformed URL, about:config's warning) are kept.
+% override chrome://global/skin/illustrations/kit-happy.svg chrome://browser/content/aequera/incontent/illustrations/default-yes.svg
+% override chrome://global/skin/illustrations/kit-concerned.svg chrome://browser/content/aequera/incontent/illustrations/default-no.svg
+% override chrome://global/skin/illustrations/kit-confetti.svg chrome://browser/content/aequera/incontent/illustrations/celebrate.svg
+% override chrome://global/skin/illustrations/kit-holding-lock.svg chrome://browser/content/aequera/incontent/illustrations/lock.svg
+% override chrome://global/skin/illustrations/kit-in-circle.svg chrome://browser/content/aequera/incontent/illustrations/mark.svg
+% override chrome://browser/skin/preferences/fox-ai.svg chrome://browser/content/aequera/incontent/illustrations/ai.svg
+% override chrome://global/skin/illustrations/no-connection.svg chrome://browser/content/aequera/incontent/illustrations/no-connection.svg
+% override chrome://global/skin/illustrations/security-error.svg chrome://browser/content/aequera/incontent/illustrations/security-error.svg
+% override chrome://global/skin/illustrations/shield-check.svg chrome://browser/content/aequera/incontent/illustrations/shield-check.svg
+% override chrome://global/skin/illustrations/shield-alert.svg chrome://browser/content/aequera/incontent/illustrations/shield-alert.svg
     content/browser/aequera/tor/tor-model.js                   (tor/tor-model.js)
     content/browser/aequera/tor/aequera-tor.js                 (tor/aequera-tor.js)
     content/browser/aequera/tor/aequera-tor.css                (tor/aequera-tor.css)

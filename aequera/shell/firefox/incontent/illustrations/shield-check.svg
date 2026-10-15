@@ -1,0 +1,23 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Aequera: protections on (overrides chrome://global/skin/illustrations/shield-check.svg).
+     A shield in the accent on the illustrations' halo, with a check. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="106" viewBox="0 0 200 212" fill="none">
+  <style>
+    .halo { fill: #4ed5ff; fill-opacity: 0.16; }
+    .shield { fill: #0369a1; }
+    .face { fill: #4ed5ff; fill-opacity: 0.35; }
+    .g { stroke: #fff; }
+    @media (prefers-color-scheme: dark) {
+      .halo { fill-opacity: 0.1; }
+      .shield { fill: #4ed5ff; }
+      .face { fill: #fff; fill-opacity: 0.3; }
+      .g { stroke: #0b1a22; }
+    }
+  </style>
+  <circle class="halo" cx="100" cy="106" r="96"/>
+  <path class="shield" d="M100 34l58 20v42c0 40-25 69-58 84-33-15-58-44-58-84v-42z"/>
+  <path class="face" d="M100 34l58 20v42c0 40-25 69-58 84z"/>
+  <path class="g" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none" d="M74 106l18 18 36-38"/>
+</svg>

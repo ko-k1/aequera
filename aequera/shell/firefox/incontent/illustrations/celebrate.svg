@@ -1,0 +1,35 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Aequera: celebration (overrides chrome://global/skin/illustrations/kit-confetti.svg).
+     Generated layout: the Aequera mark (branding about-logo.svg) on a halo. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60" viewBox="0 0 200 200" fill="none">
+  <style>
+    .halo { fill: #4ed5ff; fill-opacity: 0.16; }
+    .dim { opacity: 0.62; }
+    .sp1 { fill: #4ed5ff; }
+    .sp2 { fill: #f59e0b; }
+    @media (prefers-color-scheme: dark) {
+      .halo { fill-opacity: 0.1; }
+      .dim { opacity: 0.5; }
+    }
+  </style>
+  <defs>
+    <g id="s">
+      <path fill="#4ed5ff" d="M295 160v100l40 22v-97z"/>
+      <path fill="#4effff" d="M199 67v46l56 29v43l35 20v-90z"/>
+      <rect fill="#4ed5ff" x="154" y="145" width="95" height="40"/>
+    </g>
+  </defs>
+  <circle class="halo" cx="96" cy="96" r="84"/>
+  <g><g transform="translate(14.00 10.40) scale(0.4)">
+    <use href="#s"/>
+    <use href="#s" transform="rotate(120 205 214)"/>
+    <use href="#s" transform="rotate(240 205 214)"/>
+  </g></g>
+  <path class="sp1" d="M28 40c1 5 2.8 6.6 8 8-5.2 1.4-7 3-8 8-1-5-2.8-6.6-8-8 5.2-1.4 7-3 8-8z"/>
+  <path class="sp2" d="M168 30c.8 4 2.2 5.2 6 6-3.8.8-5.2 2-6 6-.8-4-2.2-5.2-6-6 3.8-.8 5.2-2 6-6z"/>
+  <path class="sp1" d="M172 150c1 5 2.8 6.6 8 8-5.2 1.4-7 3-8 8-1-5-2.8-6.6-8-8 5.2-1.4 7-3 8-8z"/>
+  <circle class="sp2" cx="36" cy="160" r="4"/>
+  <circle class="sp1" cx="182" cy="96" r="3"/>
+</svg>
