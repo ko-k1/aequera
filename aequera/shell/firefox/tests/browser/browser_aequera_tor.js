@@ -290,8 +290,12 @@ add_task(async function test_process_liveness() {
   const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
   const profile = PathUtils.join(PathUtils.tempDir, "aequera-tor-liveness-profile");
   // `read` is a shell builtin: the shell itself waits on its stdin pipe.
-  const proc = await Subprocess.call({ command: "/bin/sh", arguments: ["-c", "read line", profile] });
+  const proc = await Subprocess.call({ command: "/bin/sh", arguments: ["-c", "echo ready; read line", profile] });
   try {
+    // Subprocess.call can resolve while the child is still inside exec, with
+    // an empty /proc/<pid>/cmdline (which processRunsProfile reads as "assume
+    // it is the instance"). The shell's first output means exec is done.
+    is((await proc.stdout.readString()).trim(), "ready", "the shell started");
     ok(await AequeraTorLauncher.processRunsProfile(proc.pid, profile), "a live process running that profile");
     ok(!(await AequeraTorLauncher.processRunsProfile(proc.pid, `${profile}-other`)), "the same process, another profile");
   } finally {
