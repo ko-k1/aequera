@@ -182,7 +182,7 @@ fn main() -> ExitCode {
             UpstreamOp::Checkout { target } => upstream_checkout(cli.json, &target),
             UpstreamOp::Update { to } => upstream_update(cli.json, &to),
             UpstreamOp::Adopt { dry_run } => upstream_adopt(cli.json, dry_run),
-            UpstreamOp::Clean => todo_cmd("upstream clean", "W3 patch pipeline"),
+            UpstreamOp::Clean => todo_cmd(cli.json, "upstream clean", "W3 patch pipeline"),
         },
         Command::Patch { op } => match op {
             PatchOp::Status => patch_status(cli.json),
@@ -190,7 +190,7 @@ fn main() -> ExitCode {
             PatchOp::Check { candidate: true } => patch_check_candidate(cli.json),
             PatchOp::Apply => patch_apply(cli.json),
             PatchOp::Rebase { resume, abort } => patch_rebase(cli.json, resume, abort),
-            PatchOp::Export => todo_cmd("patch export", "later slice"),
+            PatchOp::Export => todo_cmd(cli.json, "patch export", "later slice"),
         },
         Command::Config { op } => match op {
             ConfigOp::Validate { file } => config_validate(cli.json, file.as_deref()),
@@ -199,50 +199,50 @@ fn main() -> ExitCode {
         Command::Design { op } => match op {
             DesignOp::Tokens { check } => design_tokens(cli.json, check),
         },
-        Command::Build => todo_cmd("build", "W2 bootstrap / W3 pipeline"),
-        Command::Test => todo_cmd("test", "W6 CI and test skeleton"),
+        Command::Build => todo_cmd(cli.json, "build", "W2 bootstrap / W3 pipeline"),
+        Command::Test => todo_cmd(cli.json, "test", "W6 CI and test skeleton"),
         Command::Bench { out } => bench_cmd(cli.json, out.as_deref()),
-        Command::Release { .. } => todo_cmd("release", "W8 docs closure / release"),
+        Command::Release { .. } => todo_cmd(cli.json, "release", "W8 docs closure / release"),
     }
 }
 
 /// Loud placeholder: exit non-zero and name the owning workstream.
-fn todo_cmd(cmd: &str, workstream: &str) -> ExitCode {
-    eprintln!("aequera {cmd}: not implemented in this slice (owner: {workstream}).");
-    eprintln!("Refusing to pretend success. See docs/PHASE0_FOUNDATION.md.");
-    ExitCode::from(2)
+fn todo_cmd(json: bool, cmd: &str, workstream: &str) -> ExitCode {
+    output::fail_with(
+        json,
+        &format!("aequera {cmd}"),
+        &format!(
+            "not implemented in this slice (owner: {workstream}). Refusing to pretend success. See docs/PHASE0_FOUNDATION.md."
+        ),
+        ExitCode::from(2),
+    )
 }
 
-/// Load the repository root and lock, or report why that failed.
-fn load_context() -> Result<(std::path::PathBuf, lock::LockFile), ExitCode> {
-    let root = match lock::discover() {
-        None => {
-            eprintln!(
-                "No Aequera repository found: walked up from the current directory without finding upstream/manifests/firefox.lock."
-            );
-            return Err(ExitCode::FAILURE);
-        }
-        Some(root) => root,
+/// Load the repository root and lock; on failure it is already reported.
+fn load_context(json: bool) -> Option<(std::path::PathBuf, lock::LockFile)> {
+    let Some(root) = lock::discover() else {
+        output::fail(
+            json,
+            "No Aequera repository found",
+            "walked up from the current directory without finding upstream/manifests/firefox.lock.",
+        );
+        return None;
     };
     match lock::load(&root) {
         Err(e) => {
-            eprintln!("Lock file unreadable: {e}");
-            Err(ExitCode::FAILURE)
+            output::fail(json, "Lock file unreadable", &e);
+            None
         }
-        Ok(lock) => Ok((root, lock)),
+        Ok(lock) => Some((root, lock)),
     }
 }
 
 fn upstream_fetch(json: bool) -> ExitCode {
-    let (root, lock) = match load_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock)) = load_context(json) else {
+        return ExitCode::FAILURE;
     };
     match upstream::fetch(&root, &lock) {
-        Err(e) => {
-            eprintln!("Fetch failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Fetch failed", &e),
         Ok(report) => {
             let lock_line = if report.matches_lock {
                 "match"
@@ -271,15 +271,11 @@ fn upstream_fetch(json: bool) -> ExitCode {
 }
 
 fn upstream_checkout(json: bool, target: &str) -> ExitCode {
-    let (root, lock) = match load_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock)) = load_context(json) else {
+        return ExitCode::FAILURE;
     };
     match upstream::checkout(&root, &lock, target) {
-        Err(e) => {
-            eprintln!("Checkout failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Checkout failed", &e),
         Ok(report) => {
             let human = format!(
                 "Upstream checkout\n\
@@ -300,15 +296,11 @@ fn upstream_checkout(json: bool, target: &str) -> ExitCode {
 }
 
 fn upstream_update(json: bool, tag: &str) -> ExitCode {
-    let (root, lock) = match load_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock)) = load_context(json) else {
+        return ExitCode::FAILURE;
     };
     match upstream::update(&root, &lock, tag) {
-        Err(e) => {
-            eprintln!("Update failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Update failed", &e),
         Ok(report) => {
             let human = format!(
                 "Upstream update\n\
@@ -339,15 +331,11 @@ fn upstream_update(json: bool, tag: &str) -> ExitCode {
 }
 
 fn upstream_verify(json: bool) -> ExitCode {
-    let (root, lock) = match load_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock)) = load_context(json) else {
+        return ExitCode::FAILURE;
     };
     match upstream::verify(&root, &lock) {
-        Err(e) => {
-            eprintln!("Verify failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Verify failed", &e),
         Ok(report) => {
             let flag = |b: bool| if b { "OK" } else { "DRIFT" };
             let human = format!(
@@ -387,15 +375,11 @@ fn upstream_verify(json: bool) -> ExitCode {
 }
 
 fn bootstrap(json: bool) -> ExitCode {
-    let (root, lock) = match load_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock)) = load_context(json) else {
+        return ExitCode::FAILURE;
     };
     match upstream::bootstrap(&root, &lock) {
-        Err(e) => {
-            eprintln!("Bootstrap failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Bootstrap failed", &e),
         Ok(report) => {
             let human = format!(
                 "Aequera bootstrap\n\
@@ -417,15 +401,11 @@ fn bootstrap(json: bool) -> ExitCode {
 }
 
 fn patch_status(json: bool) -> ExitCode {
-    let (root, lock) = match load_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock)) = load_context(json) else {
+        return ExitCode::FAILURE;
     };
     match patch::status(&root, &lock) {
-        Err(e) => {
-            eprintln!("Patch status failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Patch status failed", &e),
         Ok(report) => {
             let human = format!(
                 "Patch status\n\
@@ -462,15 +442,11 @@ fn patch_status(json: bool) -> ExitCode {
 }
 
 fn patch_check(json: bool) -> ExitCode {
-    let (root, lock) = match load_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock)) = load_context(json) else {
+        return ExitCode::FAILURE;
     };
     match patch::check(&root, &lock) {
-        Err(e) => {
-            eprintln!("Patch check failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Patch check failed", &e),
         Ok(report) => {
             let mut human = format!(
                 "Patch check\n-----------\nEntries: {} (all apply cleanly)",
@@ -486,15 +462,11 @@ fn patch_check(json: bool) -> ExitCode {
 }
 
 fn patch_check_candidate(json: bool) -> ExitCode {
-    let (root, lock, candidate) = match load_candidate_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock, candidate)) = load_candidate_context(json) else {
+        return ExitCode::FAILURE;
     };
     match patch::check_candidate(&root, &lock, &candidate) {
-        Err(e) => {
-            eprintln!("Patch check failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Patch check failed", &e),
         Ok(report) => {
             let mut human = format!(
                 "Patch check (candidate)\n\
@@ -537,22 +509,29 @@ fn patch_check_candidate(json: bool) -> ExitCode {
 }
 
 /// Root, lock, and the staged candidate, or report why there is none.
-fn load_candidate_context() -> Result<(std::path::PathBuf, lock::LockFile, lock::LockFile), ExitCode>
-{
-    let (root, lock) = load_context()?;
+/// `load_context` plus the staged candidate lock; on failure it is already
+/// reported.
+fn load_candidate_context(
+    json: bool,
+) -> Option<(std::path::PathBuf, lock::LockFile, lock::LockFile)> {
+    let (root, lock) = load_context(json)?;
     match lock::load_candidate(&root, &lock) {
         Err(e) => {
-            eprintln!("Candidate lock unreadable: {e}");
-            Err(ExitCode::FAILURE)
+            output::fail(json, "Candidate lock unreadable", &e);
+            None
         }
         Ok(None) => {
-            eprintln!(
-                "No candidate staged ({}); run `aequera upstream update --to <release-tag>` first.",
-                lock::CANDIDATE_RELATIVE
+            output::fail(
+                json,
+                "No candidate staged",
+                &format!(
+                    "{} is absent; run `aequera upstream update --to <release-tag>` first.",
+                    lock::CANDIDATE_RELATIVE
+                ),
             );
-            Err(ExitCode::FAILURE)
+            None
         }
-        Ok(Some(c)) => Ok((root, lock, c)),
+        Ok(Some(c)) => Some((root, lock, c)),
     }
 }
 
@@ -566,15 +545,11 @@ fn applicability_tag(result: patch::Applicability) -> &'static str {
 
 fn patch_rebase(json: bool, resume: bool, abort: bool) -> ExitCode {
     if abort {
-        let (root, _lock) = match load_context() {
-            Err(code) => return code,
-            Ok(ctx) => ctx,
+        let Some((root, _lock)) = load_context(json) else {
+            return ExitCode::FAILURE;
         };
         return match rebase::abort(&root) {
-            Err(e) => {
-                eprintln!("Rebase abort failed: {e}");
-                ExitCode::FAILURE
-            }
+            Err(e) => output::fail(json, "Rebase abort failed", &e),
             Ok(report) => {
                 let human = format!(
                     "Patch rebase aborted\n--------------------\nRemoved {} (candidate lock kept).",
@@ -585,9 +560,8 @@ fn patch_rebase(json: bool, resume: bool, abort: bool) -> ExitCode {
             }
         };
     }
-    let (root, lock, candidate) = match load_candidate_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock, candidate)) = load_candidate_context(json) else {
+        return ExitCode::FAILURE;
     };
     let result = if resume {
         rebase::resume(&root, &lock, &candidate)
@@ -595,10 +569,7 @@ fn patch_rebase(json: bool, resume: bool, abort: bool) -> ExitCode {
         rebase::start(&root, &lock, &candidate)
     };
     match result {
-        Err(e) => {
-            eprintln!("Patch rebase failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Patch rebase failed", &e),
         Ok(report) => {
             let mut human = format!(
                 "Patch rebase\n\
@@ -649,15 +620,11 @@ fn patch_rebase(json: bool, resume: bool, abort: bool) -> ExitCode {
 }
 
 fn upstream_adopt(json: bool, dry_run: bool) -> ExitCode {
-    let (root, lock, candidate) = match load_candidate_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock, candidate)) = load_candidate_context(json) else {
+        return ExitCode::FAILURE;
     };
     match rebase::adopt(&root, &lock, &candidate, dry_run) {
-        Err(e) => {
-            eprintln!("Adopt failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Adopt failed", &e),
         Ok(report) => {
             let mut human = format!(
                 "Upstream adopt\n\
@@ -696,15 +663,11 @@ fn upstream_adopt(json: bool, dry_run: bool) -> ExitCode {
 }
 
 fn patch_apply(json: bool) -> ExitCode {
-    let (root, lock) = match load_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, lock)) = load_context(json) else {
+        return ExitCode::FAILURE;
     };
     match patch::apply(&root, &lock) {
-        Err(e) => {
-            eprintln!("Patch apply failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Patch apply failed", &e),
         Ok(report) => {
             let patches = if report.already_applied {
                 format!(
@@ -748,15 +711,11 @@ fn config_validate(json: bool, file: Option<&std::path::Path>) -> ExitCode {
             }
         }
         None => {
-            let (root, _) = match load_context() {
-                Err(code) => return code,
-                Ok(ctx) => ctx,
+            let Some((root, _)) = load_context(json) else {
+                return ExitCode::FAILURE;
             };
             match config::validate_defaults(&root) {
-                Err(e) => {
-                    eprintln!("Config validation failed: {e}");
-                    ExitCode::FAILURE
-                }
+                Err(e) => output::fail(json, "Config validation failed", &e),
                 Ok(report) => {
                     let mut human = format!(
                         "Config validation\n------------------\nFiles: {} ({})",
@@ -793,17 +752,15 @@ fn config_migrate(json: bool, file: Option<&std::path::Path>) -> ExitCode {
     let path = match file {
         Some(path) => path,
         None => {
-            eprintln!(
-                "config migrate requires --file <candidate>; committed defaults are never rewritten in place."
+            return output::fail(
+                json,
+                "config migrate requires --file <candidate>",
+                "committed defaults are never rewritten in place.",
             );
-            return ExitCode::FAILURE;
         }
     };
     match config::migrate_file(path) {
-        Err(e) => {
-            eprintln!("Config migration failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Config migration failed", &e),
         Ok(report) => {
             let human = format!(
                 "Config migration\n----------------\nFile: {file}\nSchema: v{from} -> v{to}\nResult: {note}",
@@ -819,15 +776,11 @@ fn config_migrate(json: bool, file: Option<&std::path::Path>) -> ExitCode {
 }
 
 fn design_tokens(json: bool, check: bool) -> ExitCode {
-    let (root, _) = match load_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, _)) = load_context(json) else {
+        return ExitCode::FAILURE;
     };
     match design::tokens(&root, check) {
-        Err(e) => {
-            eprintln!("Design tokens failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Design tokens failed", &e),
         Ok(report) => {
             let mut human = format!("Design tokens\n-------------\nSource: {}", report.source);
             for t in &report.targets {
@@ -847,15 +800,11 @@ fn design_tokens(json: bool, check: bool) -> ExitCode {
 }
 
 fn bench_cmd(json: bool, out: Option<&std::path::Path>) -> ExitCode {
-    let (root, _) = match load_context() {
-        Err(code) => return code,
-        Ok(ctx) => ctx,
+    let Some((root, _)) = load_context(json) else {
+        return ExitCode::FAILURE;
     };
     match bench::run(&root, out) {
-        Err(e) => {
-            eprintln!("Bench failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Bench failed", &e),
         Ok(report) => {
             let human = format!(
                 "Aequera bench\n-------------\nHost      : {os}/{arch} ({cpus} cpus, {ram} MiB RAM, {disk} free on repo volume)\nRecorded  : {ts}{artifact}\nCLI ops   : lock_load {lock}us, manifest_load {man}us, config_validate {cfg}us\nBrowser   : pending — no built browser yet (see tools/benchmark/README.md)",
@@ -884,10 +833,7 @@ fn bench_cmd(json: bool, out: Option<&std::path::Path>) -> ExitCode {
 
 fn demo_cmd(json: bool) -> ExitCode {
     match demo::run() {
-        Err(e) => {
-            eprintln!("Demo failed: {e}");
-            ExitCode::FAILURE
-        }
+        Err(e) => output::fail(json, "Demo failed", &e),
         Ok(report) => {
             let human = format!(
                 "Aequera demo\n------------\nSteps executed : {}\nSearch \"switch\"  : {} hits (first: {})\nRestore equal  : {}\n\nEvery mutation above ran through Browser::execute; search ran one registry; restore verified by equality.",
@@ -907,83 +853,75 @@ fn demo_cmd(json: bool) -> ExitCode {
 }
 
 fn upstream_status(json: bool) -> ExitCode {
-    match lock::discover() {
-        None => {
-            eprintln!(
-                "No Aequera repository found: walked up from the current directory without finding upstream/manifests/firefox.lock."
-            );
-            ExitCode::FAILURE
-        }
-        Some(root) => match lock::load(&root) {
-            Err(e) => {
-                eprintln!("Lock file unreadable: {e}");
-                ExitCode::FAILURE
-            }
-            Ok(l) => {
-                let checkout_present = lock::substantive_present(&root.join("upstream/firefox"));
-                let worktree_present = lock::substantive_present(&root.join("worktree/firefox"));
-                // Reported, never fatal: a bad candidate must not hide the lock.
-                let (candidate_json, candidate_line) = match lock::load_candidate(&root, &l) {
-                    Ok(None) => (serde_json::Value::Null, "none".to_string()),
-                    Ok(Some(c)) => (
-                        serde_json::json!({
-                            "version": c.upstream.version,
-                            "sha": c.upstream.revision.git,
-                            "resolved_from": format!("{}:{}", c.upstream.resolved_from.kind, c.upstream.resolved_from.ref_name),
-                        }),
-                        format!(
-                            "{} ({}...)",
-                            c.upstream.version,
-                            lock::short_sha(&c.upstream.revision.git)
-                        ),
-                    ),
-                    Err(e) => (serde_json::json!({ "error": e }), format!("INVALID ({e})")),
-                };
-                let status = serde_json::json!({
-                    "name": l.upstream.name,
-                    "repository": l.upstream.repository.url,
-                    "channel": l.upstream.channel,
-                    "version": l.upstream.version,
-                    "locked_sha": l.upstream.revision.git,
-                    "locked_sha_short": lock::short_sha(&l.upstream.revision.git),
-                    "resolved_from": format!("{}:{}", l.upstream.resolved_from.kind, l.upstream.resolved_from.ref_name),
-                    "pinned_at": l.upstream.pinned_at,
-                    "patchset_version": l.patchset.version,
-                    "patchset_manifest": l.patchset.manifest,
-                    "checkout_present": checkout_present,
-                    "worktree_present": worktree_present,
-                    "candidate": candidate_json,
-                });
-                let human = format!(
-                    "Aequera Upstream\n\
-                     ----------------\n\
-                     Repository    : {repo}\n\
-                     Channel       : {channel}\n\
-                     Version       : {version}\n\
-                     Locked SHA    : {short}...\n\
-                     Resolved from : {kind}:{reference}\n\
-                     Patchset      : v{ps} ({manifest})\n\
-                     Checkout      : {co}\n\
-                     Worktree      : {wt}\n\
-                     Candidate     : {candidate_line}\n\
-                     \n\
-                     status: lock-only (no checkout yet; verify/checkout land in W2/W3)",
-                    repo = l.upstream.repository.url,
-                    channel = l.upstream.channel,
-                    version = l.upstream.version,
-                    short = lock::short_sha(&l.upstream.revision.git),
-                    kind = l.upstream.resolved_from.kind,
-                    reference = l.upstream.resolved_from.ref_name,
-                    ps = l.patchset.version,
-                    manifest = l.patchset.manifest,
-                    co = presence(checkout_present),
-                    wt = presence(worktree_present),
-                );
-                output::emit(json, &human, &status);
-                ExitCode::SUCCESS
-            }
+    let Some((root, l)) = load_context(json) else {
+        return ExitCode::FAILURE;
+    };
+    let checkout_present = lock::substantive_present(&root.join("upstream/firefox"));
+    let worktree_present = lock::substantive_present(&root.join("worktree/firefox"));
+    // Reported, never fatal: a bad candidate must not hide the lock.
+    let (candidate_json, candidate_line) = match lock::load_candidate(&root, &l) {
+        Ok(None) => (serde_json::Value::Null, "none".to_string()),
+        Ok(Some(c)) => (
+            serde_json::json!({
+                "version": c.upstream.version,
+                "sha": c.upstream.revision.git,
+                "resolved_from": format!("{}:{}", c.upstream.resolved_from.kind, c.upstream.resolved_from.ref_name),
+            }),
+            format!(
+                "{} ({}...)",
+                c.upstream.version,
+                lock::short_sha(&c.upstream.revision.git)
+            ),
+        ),
+        Err(e) => (serde_json::json!({ "error": e }), format!("INVALID ({e})")),
+    };
+    let status = serde_json::json!({
+        "name": l.upstream.name,
+        "repository": l.upstream.repository.url,
+        "channel": l.upstream.channel,
+        "version": l.upstream.version,
+        "locked_sha": l.upstream.revision.git,
+        "locked_sha_short": lock::short_sha(&l.upstream.revision.git),
+        "resolved_from": format!("{}:{}", l.upstream.resolved_from.kind, l.upstream.resolved_from.ref_name),
+        "pinned_at": l.upstream.pinned_at,
+        "patchset_version": l.patchset.version,
+        "patchset_manifest": l.patchset.manifest,
+        "checkout_present": checkout_present,
+        "worktree_present": worktree_present,
+        "candidate": candidate_json,
+    });
+    let human = format!(
+        "Aequera Upstream\n\
+             ----------------\n\
+             Repository    : {repo}\n\
+             Channel       : {channel}\n\
+             Version       : {version}\n\
+             Locked SHA    : {short}...\n\
+             Resolved from : {kind}:{reference}\n\
+             Patchset      : v{ps} ({manifest})\n\
+             Checkout      : {co}\n\
+             Worktree      : {wt}\n\
+             Candidate     : {candidate_line}\n\
+             \n\
+             status: {state}",
+        repo = l.upstream.repository.url,
+        channel = l.upstream.channel,
+        version = l.upstream.version,
+        short = lock::short_sha(&l.upstream.revision.git),
+        kind = l.upstream.resolved_from.kind,
+        reference = l.upstream.resolved_from.ref_name,
+        ps = l.patchset.version,
+        manifest = l.patchset.manifest,
+        co = presence(checkout_present),
+        wt = presence(worktree_present),
+        state = if checkout_present {
+            "checkout present (`aequera upstream verify` checks it against the lock)"
+        } else {
+            "lock only (`aequera bootstrap` fetches and checks out the baseline)"
         },
-    }
+    );
+    output::emit(json, &human, &status);
+    ExitCode::SUCCESS
 }
 
 fn presence(present: bool) -> &'static str {

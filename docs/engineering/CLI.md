@@ -47,7 +47,9 @@ The CLI should be:
 - scriptable;
 - safe by default;
 - clear about destructive actions;
-- able to emit machine-readable output (for example `--json`);
+- able to emit machine-readable output (for example `--json`: a command's
+  report on success; on failure `{"ok": false, "context": "...", "error":
+  "..."}` on stdout, the same text on stderr, and a non-zero exit code);
 - able to report the active upstream revision, patchset, config version, and worktree state.
 
 ## Example Status
