@@ -421,7 +421,10 @@ would push the card away from a pointer reaching for its buttons. While the
 top bar holds a notification it stacks above the browser area (Firefox's
 `--browser-area-z-index-toolbox-while-animating`, as for the open drawer); the
 widened rail still stacks above it. With the chrome hidden in fullscreen the
-cards go with the top bar, as in Firefox. Stylesheet only, no Firefox patch.
+cards go with the top bar, as in Firefox. The trade-off of floating: a card
+covers the top of the page (at most 48rem wide, centered) until it is
+answered or dismissed, where the bar used to push the page down. Stylesheet
+and the drawer's hover exception, no Firefox patch.
 
 Tests: `tests/browser/browser_aequera_notifications.js`.
 

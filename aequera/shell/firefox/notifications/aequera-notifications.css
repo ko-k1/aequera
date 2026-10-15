@@ -48,6 +48,10 @@
   background: none;
   border: none;
   pointer-events: none;
+  /* The start edge moves (a layout property, as the drawer's does) rather
+   * than translating: the row must narrow with the page, or a card as wide
+   * as the page would run past its far edge. With no card the row is empty
+   * and its layout costs next to nothing. */
   transition:
     inset-inline-start var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out),
     translate var(--aequera-motion-duration, 250ms) var(--aequera-motion-easing, ease-in-out);

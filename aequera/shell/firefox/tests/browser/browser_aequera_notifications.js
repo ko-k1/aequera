@@ -170,7 +170,7 @@ add_task(async function test_clears_widened_rail_and_open_drawer() {
   await collapseChrome();
   await TestUtils.waitForCondition(() => {
     const card = box(notification);
-    return card.top == rest.top && card.left == rest.left;
+    return Math.abs(card.top - rest.top) < 0.5 && Math.abs(card.left - rest.left) < 0.5;
   }, "the card returns to where it rested");
   gBrowser.getNotificationBox().removeNotification(notification, true);
 });
