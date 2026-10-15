@@ -29,6 +29,8 @@ if [ "${#NODE_TESTS[@]}" -eq 0 ]; then
   exit 1
 fi
 node --test "${NODE_TESTS[@]}"
+# Build tooling in Python (stdlib unittest, no packages).
+python3 -m unittest discover -s tests/unit/build
 # The tor bundle scripts' integrity checks, offline (shims, no download).
 bash tests/security/tor/scripts.test.sh
 "$BIN" doctor

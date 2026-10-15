@@ -44,5 +44,8 @@ if errorlevel 1 (
   exit /b 1
 ) else (
   python "%~dp0aequera_app_ini.py" "%BIN%\application.ini" "%INI%" || exit /b 1
+  rem The build's symlinks become copies (dist_copies.py): Gecko refuses
+  rem symlinked built-in add-on and objdir files in content processes here.
+  python "%~dp0dist_copies.py" "%BIN%" || exit /b 1
 )
 start "" "%EXE%" -app "%INI%" -no-remote -purgecaches %*

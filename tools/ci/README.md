@@ -13,6 +13,8 @@
    surface, Ad Veil, palette): every tracked `aequera/**/*.test.{js,mjs}`,
    node's built-in runner, no npm packages. No test files found is a
    failure, not a pass. Node 24 (`actions/setup-node`). Then
+   `python -m unittest discover -s tests/unit/build`: the Python build
+   tooling (`tools/build/dist_copies.py`), stdlib only. Then
    `tests/security/tor/scripts.test.sh`: the tor bundle scripts' pin and
    signature checks, offline (smoke.sh: Linux and macOS, where Tor windows
    exist).
@@ -41,7 +43,7 @@ and timed, not speculative YAML written blind.
 
 | Layer | Current home |
 |---|---|
-| unit | `cargo test` (Rust workspace); `node --test` (JS models in `aequera/`) |
+| unit | `cargo test` (Rust workspace); `node --test` (JS models in `aequera/`); `unittest` (`tests/unit/build`) |
 | integration | binary surface checks in `smoke.*` |
 | UI / accessibility | future (needs a built browser) |
 | extension compatibility | future (needs a built browser) |
