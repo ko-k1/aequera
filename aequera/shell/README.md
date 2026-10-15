@@ -589,12 +589,23 @@ accent, darkened to `#0369A1` in light for contrast) and the shell's radius
 family (`rad` 9: buttons and fields are rounded rectangles like the address
 bar, not pills). Settings and the error card are built from shadow-DOM
 components that page CSS cannot reach, but they read these tokens, so the
-whole page follows. A few page rules complete it: Settings' own canvas,
-its navigation's selected category (a light accent tint under the
-semibold label, not a filled pill), the default-browser promo art
-(centered, so a narrow window crops only its halo), its AI intro card,
-quiet table headers (about:support), and the error message on one surface
-card. Button hover and press use the rail rows' wash (`[color]` in
+whole page follows. The look is minimal: cards are the surface step and
+one hairline, no shadow. A few page rules complete it:
+
+- the page navigation (Settings, Add-ons) is a vertical bar on its own
+  card, floating inside the viewport; the selected category is an accent
+  bar on its left edge under the semibold label, with no fill;
+- rows inside a group lose their outline and full-width rules: a hairline
+  inset from both sides separates each row from the one above (island
+  separators);
+- search fields (Settings, Add-ons, about:config) are one bottom line, no
+  box; a 2px accent line marks focus (the field's own focus ring is
+  clipped);
+- Settings' own canvas, the default-browser promo (no inner box, art
+  centered so a narrow window crops only its halo), the AI intro card,
+  quiet table headers (about:support), and the error message on one card.
+
+Button hover and press use the rail rows' wash (`[color]` in
 `tokens.toml`).
 `patches/toolkit/in-content` imports the sheet from toolkit's shared
 in-content stylesheet: one line, the only Firefox change.
@@ -632,7 +643,8 @@ in-content stylesheets) and about:newtab / about:privatebrowsing (their own
 Aequera designs above).
 
 Tests: `tests/browser/browser_aequera_incontent.js` (Settings' accent,
-canvas, and navigation; a certificate error's card and illustration; the
+canvas, navigation card and selection bar, island separators, and search
+line; a certificate error's card and illustration; the
 overrides and their sizes; pref off; forced colors; the private page). The
 upstream gate runs Firefox's error-page illustration, More from Mozilla,
 default browser, and protections VPN tests with the pref off and Firefox's

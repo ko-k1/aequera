@@ -76,11 +76,10 @@
     --input-search-border-radius: var(--ae-rad);
     --card-border-radius: calc(var(--ae-rad) + 3px);
 
-    /* Depth: one soft, two-part shadow for cards, lighter in dark, where
-     * the surface step already separates them. */
-    --card-box-shadow:
-      0 0 0 0.5px light-dark(rgb(16 24 40 / 0.04), rgb(0 0 0 / 0.2)),
-      0 1px 3px light-dark(rgb(16 24 40 / 0.06), rgb(0 0 0 / 0.24));
+    /* Minimal depth: a card is the surface step and one hairline, no
+     * shadow. Rows inside a card have no outline of their own; their
+     * separators are drawn inset (island separators, below). */
+    --card-box-shadow: none;
 
     /* Data tables (about:support, about:processes...): a quiet header
      * column instead of a solid accent one. */
@@ -102,6 +101,9 @@
   #isDefaultPane,
   #isNotDefaultPane {
     --promo-image-position: center;
+    /* Already inside the Default browser card: no second box. */
+    --promo-background-color: transparent;
+    --promo-border: none;
   }
 
   /* Settings' AI intro card: Nova violet. The element also outranks the
@@ -121,15 +123,94 @@
     box-shadow: var(--card-box-shadow);
   }
 
-  /* Page navigation (Settings, Add-ons): the selected category is a light
-   * accent tint under the (semibold) label, not a filled accent pill.
-   * moz-page-nav sets these on :host, so they go on the host elements;
-   * the document's rules win over a shadow tree's :host rules. */
+  /* Page navigation (Settings, Add-ons): a vertical bar on its own card,
+   * floating inside the viewport like the content cards. The selected
+   * category is marked by an accent bar on its left edge and the semibold
+   * label, with no fill. moz-page-nav sets its tokens and geometry on
+   * :host, so these go on the host elements: the document's rules win over
+   * a shadow tree's :host rules. */
   moz-page-nav,
   moz-page-nav-button {
-    --page-nav-button-background-color-selected: color-mix(in srgb, var(--ae-accent) 14%, transparent);
+    --page-nav-button-background-color-selected: transparent;
     --page-nav-button-text-color-selected: var(--ae-text);
+    --page-nav-button-indicator-width: 3px;
+    --page-nav-button-indicator-background-color: var(--ae-accent);
     --page-nav-button-border-radius: var(--ae-rad);
     --page-nav-button-border-radius-focused: var(--ae-rad);
+    /* Denser rows than Nova's, so the list fits the card unscrolled. */
+    --page-nav-button-padding: var(--space-small) var(--space-medium);
+    --page-nav-gap: var(--space-small);
+  }
+
+  moz-page-nav {
+    --page-nav-margin-inline-start: var(--space-xlarge);
+    --page-nav-margin-block-start: var(--space-small);
+    box-sizing: border-box;
+    top: var(--space-xlarge);
+    height: calc(100vh - 2 * var(--space-xlarge));
+    margin-block: var(--space-xlarge);
+    padding: var(--space-small);
+    border: var(--card-border);
+    border-radius: var(--card-border-radius);
+    background-color: var(--background-color-box);
+    /* Its list scrolls with a stable gutter: a transparent track, so the
+     * gutter is part of the card (scrollbar-color is inherited). */
+    scrollbar-color: color-mix(in srgb, var(--ae-text) 25%, transparent) transparent;
+  }
+
+  /* Settings sizes its nav for Nova's frameless column; the card's border
+   * and padding come out of that width, so give them back (above the
+   * 950px breakpoint where Settings collapses the nav to icons). */
+  @media (min-width: 951px) {
+    moz-page-nav#categories {
+      width: calc(var(--size-sidebar) - 42px + 2 * var(--space-small) + 2px);
+    }
+  }
+
+  /* Island separators: rows inside a group (Settings' nested boxes) lose
+   * their outline and full-width rules; a hairline inset from both sides
+   * separates each row from the one above, touching neither edge. */
+  :is(moz-box-group, moz-box-item, moz-box-link, moz-box-button) {
+    --box-border-color: transparent;
+  }
+
+  moz-box-group > :not(:first-child) :is(moz-box-item, moz-box-link, moz-box-button)::before,
+  moz-box-group > :is(moz-box-item, moz-box-link, moz-box-button):not(:first-child)::before {
+    content: "";
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: var(--box-padding);
+    border-block-start: 1px solid var(--border-color-deemphasized);
+    pointer-events: none;
+  }
+
+  /* Search fields: one bottom line, no box. The accent line, twice as
+   * thick, is the focus indicator. */
+  moz-input-search {
+    --input-text-border: none;
+    --input-text-background-color: transparent;
+    --input-search-border-radius: 0;
+    /* The inner field's focus ring is the platform's outline: auto, drawn
+     * outside the field (a two-tone ring no color token removes); the host
+     * clips it, and the accent underline below is the focus indicator. */
+    overflow: clip;
+    box-shadow: inset 0 -1px 0 var(--border-color-interactive);
+  }
+
+  moz-input-search:focus-within {
+    box-shadow: inset 0 -2px 0 var(--ae-accent);
+  }
+
+  /* about:config's search is a plain input in the page. */
+  #about-config-search {
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: inset 0 -1px 0 var(--border-color-interactive);
+    outline: none;
+  }
+
+  #about-config-search:focus {
+    box-shadow: inset 0 -2px 0 var(--ae-accent);
   }
 }

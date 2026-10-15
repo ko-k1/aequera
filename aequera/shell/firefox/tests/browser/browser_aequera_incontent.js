@@ -74,16 +74,44 @@ add_task(async function test_settings() {
           ?.shadowRoot?.querySelector("button[selected]");
       await ContentTaskUtils.waitForCondition(selectedButton, "a category is selected");
       const selected = selectedButton();
+      const bar = content.getComputedStyle(selected, "::before");
+      const navStyle = content.getComputedStyle(nav);
+      const viewport = content.innerHeight;
+      const navRect = nav.getBoundingClientRect();
       const more = document.getElementById("category-more-from-mozilla");
+      // A row after the first one in a box group: its separator is inset.
+      const row = [...document.querySelectorAll("moz-box-group > :not(:first-child)")]
+        .map(c => c.querySelector("moz-box-item, moz-box-link, moz-box-button"))
+        .find(r => r && r.getBoundingClientRect().height);
+      const sep = row && content.getComputedStyle(row, "::before");
+      const search = document.getElementById("searchInput");
       return {
         canvas: content.getComputedStyle(document.documentElement).backgroundColor,
         selectedBackground: content.getComputedStyle(selected).backgroundColor,
+        bar: [bar.width, bar.backgroundColor],
+        navCard: [navStyle.backgroundColor, navStyle.borderTopLeftRadius],
+        navFloats: navRect.top > 0 && navRect.bottom < viewport,
+        rowBorder: row && content.getComputedStyle(row).borderTopColor,
+        separator: sep && [sep.content, parseFloat(sep.left), parseFloat(sep.right), sep.borderTopWidth],
+        searchBorder: content.getComputedStyle(search.shadowRoot.querySelector("#input")).borderTopStyle,
+        searchLine: content.getComputedStyle(search).boxShadow,
         moreShown: !!more && !more.hidden && more.getBoundingClientRect().height > 0,
       };
     });
     is(page.canvas, CANVAS[accent.scheme], "Settings sits on the Aequera canvas");
-    isnot(page.selectedBackground, accent.color, "selected category is a wash, not a filled accent pill");
-    isnot(page.selectedBackground, "rgba(0, 0, 0, 0)", "selected category is marked");
+    is(page.selectedBackground, "rgba(0, 0, 0, 0)", "selected category has no fill");
+    Assert.deepEqual(page.bar, ["3px", accent.color], "selected category: accent bar on its left edge");
+    Assert.deepEqual(page.navCard, [SURFACE[accent.scheme], "12px"], "the navigation is a card");
+    ok(page.navFloats, "the navigation card floats inside the viewport");
+    ok(page.separator, "a box group with more than one row is shown");
+    is(page.rowBorder, "rgba(0, 0, 0, 0)", "rows in a group draw no full-width rule");
+    is(page.separator[0], '""', "rows after the first get a separator");
+    Assert.greater(page.separator[1], 0, "separator inset from the left edge");
+    Assert.greater(page.separator[2], 0, "separator inset from the right edge");
+    is(page.separator[3], "1px", "separator is a hairline");
+    is(page.searchBorder, "none", "search field has no box");
+    // 1px, or 2px (accent) when Settings has focused the field.
+    ok(/0px -[12]px 0px 0px inset/.test(page.searchLine), `search field is one bottom line: ${page.searchLine}`);
     ok(!page.moreShown, "no More from Mozilla category");
   });
 });
