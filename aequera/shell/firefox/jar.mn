@@ -36,6 +36,10 @@ browser.jar:
     content/browser/aequera/newtab/aequera-newtab.js           (newtab/aequera-newtab.js)
     content/browser/aequera/privatebrowsing/aequera-private.css (privatebrowsing/aequera-private.css)
     content/browser/aequera/incontent/aequera-in-content.css   (incontent/aequera-in-content.css)
+# patches/toolkit/in-content has toolkit's common-shared.css import this
+# toolkit-namespace URL; the shell provides it. Without the override (in
+# Firefox) the import finds nothing and loads nothing.
+% override chrome://global/skin/in-content/aequera-in-content.css chrome://browser/content/aequera/incontent/aequera-in-content.css
     content/browser/aequera/incontent/illustrations/default-yes.svg    (incontent/illustrations/default-yes.svg)
     content/browser/aequera/incontent/illustrations/default-no.svg     (incontent/illustrations/default-no.svg)
     content/browser/aequera/incontent/illustrations/celebrate.svg      (incontent/illustrations/celebrate.svg)

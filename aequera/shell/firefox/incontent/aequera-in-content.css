@@ -4,10 +4,12 @@
 
 /* Aequera in-content layer: Firefox's in-content pages (Settings, Add-ons,
  * the network and certificate error pages, about:config, about:support,
- * about:protections, dialogs...) in Aequera's palette and shape. Imported
- * by common-shared.css (patches/toolkit/in-content), so it reaches every
- * page that loads chrome://global/skin/in-content/common.css, and the
- * shadow roots that link a stylesheet importing it (the error card).
+ * about:protections, dialogs...) in Aequera's palette and shape.
+ * common-shared.css (patches/toolkit/in-content) imports a toolkit URL,
+ * chrome://global/skin/in-content/aequera-in-content.css, that jar.mn
+ * overrides to this file: toolkit names no browser file. So it reaches
+ * every page that loads chrome://global/skin/in-content/common.css, and
+ * the shadow roots that link a stylesheet importing it (the error card).
  *
  * Tokens only. Settings and the error card are built from shadow-DOM
  * components that page CSS cannot reach, but they read Firefox's design
@@ -142,12 +144,16 @@
     --page-nav-gap: var(--space-small);
   }
 
+  /* Content-box: the card's padding and border go around the width each
+   * page gives its nav (Settings' #categories, and auto when it collapses
+   * to icons), so no page's sizing is repeated here; only the height,
+   * which the component pins to the viewport, is recomputed. */
   moz-page-nav {
     --page-nav-margin-inline-start: var(--space-xlarge);
     --page-nav-margin-block-start: var(--space-small);
-    box-sizing: border-box;
+    box-sizing: content-box;
     top: var(--space-xlarge);
-    height: calc(100vh - 2 * var(--space-xlarge));
+    height: calc(100vh - 2 * (var(--space-xlarge) + var(--space-small) + var(--border-width)));
     margin-block: var(--space-xlarge);
     padding: var(--space-small);
     border: var(--card-border);
@@ -158,24 +164,19 @@
     scrollbar-color: color-mix(in srgb, var(--ae-text) 25%, transparent) transparent;
   }
 
-  /* Settings sizes its nav for Nova's frameless column; the card's border
-   * and padding come out of that width, so give them back (above the
-   * 950px breakpoint where Settings collapses the nav to icons). */
-  @media (min-width: 951px) {
-    moz-page-nav#categories {
-      width: calc(var(--size-sidebar) - 42px + 2 * var(--space-small) + 2px);
-    }
-  }
-
   /* Island separators: rows inside a group (Settings' nested boxes) lose
    * their outline and full-width rules; a hairline inset from both sides
-   * separates each row from the one above, touching neither edge. */
+   * separates each row from the one above, touching neither edge. "First"
+   * is the group's own .first class (moz-box-group.mjs updateItems():
+   * the header, else the first visible row), never :first-child, which
+   * counts hidden rows. Only a group child, or the row a setting-control
+   * renders as its child, gets one: rows nested inside a row do not. */
   :is(moz-box-group, moz-box-item, moz-box-link, moz-box-button) {
     --box-border-color: transparent;
   }
 
-  moz-box-group > :not(:first-child) :is(moz-box-item, moz-box-link, moz-box-button)::before,
-  moz-box-group > :is(moz-box-item, moz-box-link, moz-box-button):not(:first-child)::before {
+  moz-box-group > :not(.first) > :is(moz-box-item, moz-box-link, moz-box-button)::before,
+  moz-box-group > :is(moz-box-item, moz-box-link, moz-box-button):not(.first)::before {
     content: "";
     position: absolute;
     inset-block-start: 0;

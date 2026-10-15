@@ -11,16 +11,19 @@ Why Firefox source must change:
   and it reaches the shadow roots that link a sheet importing it.
 
 What it changes (one @import, after Firefox's token imports):
-  chrome://browser/content/aequera/incontent/aequera-in-content.css
-  (overlay "shell-chrome"), which redefines Firefox's tokens (accent,
-  surfaces, text, borders, radii) from aequera/design/tokens.toml. Every
-  rule sits inside @media -moz-pref("aequera.incontent.enabled") and steps
-  aside under prefers-contrast and forced colors; the pref is absent in
-  Firefox, so the pages are unchanged there. No markup, string, or
-  behavior changes.
+  chrome://global/skin/in-content/aequera-in-content.css, a toolkit-
+  namespace URL that toolkit itself does not ship: the overlay
+  "shell-chrome" points it at its stylesheet with a chrome override
+  (jar.mn), so toolkit names no browser file and depends on nothing in
+  browser/. Without the override the import loads nothing. The stylesheet
+  redefines Firefox's tokens (accent, surfaces, text, borders, radii)
+  from aequera/design/tokens.toml; every rule sits inside
+  @media -moz-pref("aequera.incontent.enabled") and steps aside under
+  prefers-contrast and forced colors. No markup, string, or behavior
+  changes.
 
-Depends on: overlay "shell-chrome" (the stylesheet and the token sheet it
-  imports).
+Depends on: overlay "shell-chrome" (the override, the stylesheet, and the
+  token sheet it imports).
 Validation: aequera/shell/firefox/tests/browser/browser_aequera_incontent.js
   (Settings, Add-ons, and an error page take the Aequera accent and
   canvas; the error card's shadow root shows the Aequera illustration;
@@ -32,16 +35,16 @@ Upstream risk: low for the patch (one line next to two stable imports).
   and the test checks the main ones.
 
 diff --git a/toolkit/themes/shared/in-content/common-shared.css b/toolkit/themes/shared/in-content/common-shared.css
-index 84cba8cfb76a..a791c5bffa8d 100644
+index 84cba8cfb76a..564f2661c7e2 100644
 --- a/toolkit/themes/shared/in-content/common-shared.css
 +++ b/toolkit/themes/shared/in-content/common-shared.css
 @@ -4,6 +4,9 @@
-
+ 
  @import url("chrome://global/skin/design-system/tokens-brand.css");
  @import url("chrome://global/skin/design-system/text-and-typography.css");
-+/* Aequera in-content layer (overlay "shell-chrome"): its palette over
-+ * Firefox's tokens while aequera.incontent.enabled is true. */
-+@import url("chrome://browser/content/aequera/incontent/aequera-in-content.css");
++/* Aequera in-content layer: the product supplies this URL (a chrome
++ * override); nothing is loaded without one. */
++@import url("chrome://global/skin/in-content/aequera-in-content.css");
 
  @namespace html "http://www.w3.org/1999/xhtml";
  @namespace xul "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";

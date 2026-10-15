@@ -50,9 +50,11 @@ wash_selected = 0.22
 # Page palette: Firefox's in-content pages (Settings, Add-ons, error pages)
 # and the new tab page. Each token is a light and a dark sRGB triplet; the
 # generator writes light-dark(rgb(...), rgb(...)). The accent is the logo's
-# cyan (#4ED5FF) in dark, deepened to #0369A1 in light. Checked pairs (WCAG):
-# on_accent on accent 5.9 light / 10.4 dark; accent on canvas 5.5 / 10.4;
-# text_dim on canvas 5.4 / 6.8; text_dim on surface 5.8 / 6.1. Violet stays
+# cyan (#4ED5FF) in dark, deepened to #0369A1 in light. The generator
+# rejects any text pair below WCAG AA 4.5:1 in either scheme (design.rs
+# check_palette); today: on_accent on accent 5.9 light / 10.4 dark; accent
+# on canvas 5.5 / 10.4; text_dim on canvas 5.4 / 6.8; text_dim on surface
+# 5.8 / 6.1. Violet stays
 # the private-window cue (privatebrowsing/aequera-private.css), never the
 # accent here.
 [palette]

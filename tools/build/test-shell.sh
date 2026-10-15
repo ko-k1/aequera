@@ -152,9 +152,18 @@ if [ "$step" = upstream ] || [ "$step" = all ]; then
   # illustrations at Firefox's illustration URLs. Off, with Firefox's promo
   # defaults, the error pages, Settings, and about:protections must behave
   # exactly as in Firefox (the illustration tests check those URLs).
-  # browser_moreFromMozilla_config.js is left out: it searches Settings for
-  # the literal "More from Mozilla", and the branding names the pane "More
-  # from Aequera" (-vendor-short-name), on master too.
+  # Every More from Mozilla test, found at run time so new upstream files
+  # run too, except browser_moreFromMozilla_config.js: it searches Settings
+  # for the literal "More from Mozilla", and the branding names the pane
+  # "More from Aequera" (-vendor-short-name), on master too. An unmatched
+  # glob stays literal, so a moved directory fails the run, never skips it.
+  MFM_TESTS=()
+  for test in "$PREFS_TESTS"/moreFromMozilla/browser_*.js; do
+    case "$test" in
+      */browser_moreFromMozilla_config.js) ;;
+      *) MFM_TESTS+=("$test") ;;
+    esac
+  done
   ./mach mochitest --headless "${extra[@]}" "${FIREFOX_DEFAULTS[@]}" \
     --setpref aequera.incontent.enabled=false \
     --setpref browser.preferences.moreFromMozilla=true \
@@ -163,11 +172,7 @@ if [ "$step" = upstream ] || [ "$step" = all ]; then
     --setpref browser.contentblocking.report.show_mobile_app=true \
     --setpref browser.contentblocking.report.hide_vpn_banner=false \
     browser/base/content/test/about/browser_aboutNetError_feltprivacy_illustrations.js \
-    "$PREFS_TESTS/moreFromMozilla/browser_moreFromMozilla.js" \
-    "$PREFS_TESTS/moreFromMozilla/browser_moreFromMozilla_locales.js" \
-    "$PREFS_TESTS/moreFromMozilla/browser_moreFromMozilla_monitor.js" \
-    "$PREFS_TESTS/moreFromMozilla/browser_moreFromMozilla_relay.js" \
-    "$PREFS_TESTS/moreFromMozilla/browser_moreFromMozilla_vpn.js" \
+    "${MFM_TESTS[@]}" \
     "$PREFS_TESTS/browser_defaultbrowser_alwayscheck.js" \
     browser/components/protections/test/browser/browser_protections_vpn.js || status=1
   # Settings: patches/browser/rail-position adds a vertical tabs side choice

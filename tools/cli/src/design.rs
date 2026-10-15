@@ -125,6 +125,54 @@ pub struct TargetState {
     pub state: String,
 }
 
+/// WCAG 2 relative luminance of an sRGB triplet.
+fn luminance([r, g, b]: [u8; 3]) -> f64 {
+    let lin = |c: u8| {
+        let c = f64::from(c) / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+/// WCAG 2 contrast ratio of two sRGB triplets (1 to 21).
+fn contrast(a: [u8; 3], b: [u8; 3]) -> f64 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+/// Text contrast every palette pair that renders text must reach (WCAG AA).
+const MIN_TEXT_CONTRAST: f64 = 4.5;
+
+/// The palette's foreground/background pairs that render text, in both
+/// schemes: fails when one falls below `MIN_TEXT_CONTRAST`.
+fn check_palette(p: &Palette) -> Result<(), String> {
+    let pairs = [
+        ("on_accent", &p.on_accent, "accent", &p.accent),
+        ("accent", &p.accent, "canvas", &p.canvas),
+        ("accent", &p.accent, "surface", &p.surface),
+        ("text", &p.text, "canvas", &p.canvas),
+        ("text", &p.text, "surface", &p.surface),
+        ("text_dim", &p.text_dim, "canvas", &p.canvas),
+        ("text_dim", &p.text_dim, "surface", &p.surface),
+    ];
+    for (fg_name, fg, bg_name, bg) in pairs {
+        for (scheme, f, b) in [("light", fg.light, bg.light), ("dark", fg.dark, bg.dark)] {
+            let ratio = contrast(f, b);
+            if ratio < MIN_TEXT_CONTRAST {
+                return Err(format!(
+                    "[palette] {fg_name} on {bg_name} ({scheme}): contrast {ratio:.2}, \
+                     expected at least {MIN_TEXT_CONTRAST}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Only `cubic-bezier(<numbers>)`: the value is pasted into CSS verbatim.
 fn curve(name: &str, value: &str) -> Result<String, String> {
     let inner = value
@@ -215,6 +263,7 @@ pub fn render(text: &str) -> Result<String, String> {
         ));
     }
     let p = &t.palette;
+    check_palette(p)?;
     for (name, pair) in [
         ("canvas", &p.canvas),
         ("surface", &p.surface),
@@ -332,6 +381,33 @@ mod tests {
         assert!(render(&half).is_err());
         let channel = shipped().replace("dark = [78, 213, 255]", "dark = [78, 213, 256]");
         assert!(render(&channel).is_err());
+    }
+
+    #[test]
+    fn contrast_matches_wcag() {
+        assert!((contrast([0, 0, 0], [255, 255, 255]) - 21.0).abs() < 1e-9);
+        assert!((contrast([255, 255, 255], [255, 255, 255]) - 1.0).abs() < 1e-9);
+        // The shipped light accent under white text (tokens.toml: 5.9).
+        let ratio = contrast([255, 255, 255], [3, 105, 161]);
+        assert!((5.9..6.0).contains(&ratio), "{ratio}");
+    }
+
+    #[test]
+    fn low_contrast_palette_rejected() {
+        // A light accent too pale for white text.
+        let text = shipped().replace(
+            "accent = { light = [3, 105, 161]",
+            "accent = { light = [120, 190, 230]",
+        );
+        let err = render(&text).unwrap_err();
+        assert!(err.contains("on_accent on accent (light)"), "{err}");
+        // Dimmed text too close to the dark canvas.
+        let text = shipped().replace(
+            "text_dim = { light = [95, 102, 114], dark = [154, 161, 173] }",
+            "text_dim = { light = [95, 102, 114], dark = [70, 74, 82] }",
+        );
+        let err = render(&text).unwrap_err();
+        assert!(err.contains("text_dim on canvas (dark)"), "{err}");
     }
 
     #[test]

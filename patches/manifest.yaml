@@ -62,8 +62,9 @@ patches:
     series: browser/privatebrowsing
   # Aequera palette and radius for Firefox's in-content pages (Settings,
   # Add-ons, error pages, about:config...): one @import in toolkit's shared
-  # in-content sheet; the stylesheet redefines Firefox's design tokens and
-  # is pref-gated (aequera.incontent.enabled, absent in Firefox).
+  # in-content sheet of a toolkit URL the shell's jar.mn overrides to its
+  # stylesheet (toolkit names no browser file); the stylesheet redefines
+  # Firefox's design tokens and is pref-gated (aequera.incontent.enabled).
   - id: in-content
     series: toolkit/in-content
   # Settings > Browser layout: a vertical tabs side choice (Left / Right,

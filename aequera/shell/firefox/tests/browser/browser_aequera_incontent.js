@@ -80,8 +80,8 @@ add_task(async function test_settings() {
       const navRect = nav.getBoundingClientRect();
       const more = document.getElementById("category-more-from-mozilla");
       // A row after the first one in a box group: its separator is inset.
-      const row = [...document.querySelectorAll("moz-box-group > :not(:first-child)")]
-        .map(c => c.querySelector("moz-box-item, moz-box-link, moz-box-button"))
+      const row = [...document.querySelectorAll("moz-box-group > :not(.first, [hidden])")]
+        .map(c => c.querySelector(":scope > :is(moz-box-item, moz-box-link, moz-box-button)"))
         .find(r => r && r.getBoundingClientRect().height);
       const sep = row && content.getComputedStyle(row, "::before");
       const search = document.getElementById("searchInput");
@@ -113,6 +113,41 @@ add_task(async function test_settings() {
     // 1px, or 2px (accent) when Settings has focused the field.
     ok(/0px -[12]px 0px 0px inset/.test(page.searchLine), `search field is one bottom line: ${page.searchLine}`);
     ok(!page.moreShown, "no More from Mozilla category");
+  });
+});
+
+add_task(async function test_no_separator_above_first_visible_row() {
+  // A group whose first row is hidden: the next row becomes the group's
+  // .first and must not draw a separator with nothing above it.
+  await BrowserTestUtils.withNewTab("about:preferences#privacy", async browser => {
+    const result = await SpecialPowers.spawn(browser, [], async () => {
+      const { document } = content;
+      const rowOf = child =>
+        child.matches("moz-box-item, moz-box-link, moz-box-button")
+          ? child
+          : child.querySelector(":scope > :is(moz-box-item, moz-box-link, moz-box-button)");
+      const separator = row => content.getComputedStyle(row, "::before").content;
+      const group = await ContentTaskUtils.waitForCondition(
+        () =>
+          [...document.querySelectorAll("moz-box-group")].find(g => {
+            const rows = [...g.children].filter(c => !c.hidden && !c.slot && rowOf(c));
+            return rows.length >= 2 && g.getBoundingClientRect().height;
+          }),
+        "a visible group with two rows"
+      );
+      const [first, second] = [...group.children].filter(c => !c.hidden && !c.slot && rowOf(c));
+      const before = { first: separator(rowOf(first)), second: separator(rowOf(second)) };
+      first.hidden = true;
+      await ContentTaskUtils.waitForCondition(() => second.classList.contains("first"), "next row becomes first");
+      const after = separator(rowOf(second));
+      first.hidden = false;
+      await ContentTaskUtils.waitForCondition(() => first.classList.contains("first"), "first row restored");
+      return { before, after, restored: separator(rowOf(second)) };
+    });
+    is(result.before.first, "none", "the first row has no separator");
+    is(result.before.second, '""', "the second row has one");
+    is(result.after, "none", "with the first row hidden, the new first row has none");
+    is(result.restored, '""', "and gets it back when the first row returns");
   });
 });
 

@@ -585,7 +585,8 @@ markup or behavior.
 **Tokens.** `aequera-in-content.css` redefines Firefox's design tokens from
 `aequera/design/tokens.toml`: the `[palette]` (cool neutral canvas and
 surfaces instead of Nova's violet-tinted grays, the logo's cyan as the
-accent, darkened to `#0369A1` in light for contrast) and the shell's radius
+accent, darkened to `#0369A1` in light for contrast; `aequera design
+tokens` refuses any text pair under WCAG AA 4.5:1) and the shell's radius
 family (`rad` 9: buttons and fields are rounded rectangles like the address
 bar, not pills). Settings and the error card are built from shadow-DOM
 components that page CSS cannot reach, but they read these tokens, so the
@@ -607,8 +608,12 @@ one hairline, no shadow. A few page rules complete it:
 
 Button hover and press use the rail rows' wash (`[color]` in
 `tokens.toml`).
-`patches/toolkit/in-content` imports the sheet from toolkit's shared
-in-content stylesheet: one line, the only Firefox change.
+`patches/toolkit/in-content` adds one line to toolkit's shared in-content
+stylesheet, the only Firefox change: it imports a toolkit URL
+(`chrome://global/skin/in-content/aequera-in-content.css`) that `jar.mn`
+overrides to the shell's sheet, so toolkit names no browser file. The nav
+card is `content-box`, so its padding and border go around whatever width
+each page gives its nav and no page's sizing is repeated.
 
 Every rule is inside `@media -moz-pref("aequera.incontent.enabled")`, so the
 pref off restores Firefox's design, and steps aside under
