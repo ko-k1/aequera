@@ -6,6 +6,10 @@
 // Aequera workspaces in a real browser window: controller + dock
 // (aequera/shell/firefox/workspaces). Model logic has node unit tests.
 
+ChromeUtils.defineESModuleGetters(this, {
+  TabStateFlusher: "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
+});
+
 const WINDOW_KEY = "aequera-workspaces";
 const TAB_KEY = "aequera-workspace";
 const SOURCE = "aequera-workspaces";
@@ -398,8 +402,13 @@ add_task(async function test_sort_cost_with_many_tabs() {
 // have node tests).
 const DIGIT_MODIFIERS = AppConstants.platform == "win" ? { altKey: true } : { ctrlKey: true };
 const dockButtonFor = id => document.querySelector(`#aequera-workspace-dock button[data-ws="${id}"]`);
-/** Three workspaces: Personal (with the window's first tab), Work, Play. */
-function threeWorkspaces() {
+/**
+ * Three workspaces: Personal (with the window's first tab), Work, Play.
+ * Starts from one workspace, so an earlier task that failed midway does not
+ * fail this one too.
+ */
+async function threeWorkspaces() {
+  await resetWorkspaces();
   for (const name of ["Work", "Play"]) {
     const { state } = AequeraWorkspaceModel.createWorkspace(ws().state, name);
     ws().state = state;
@@ -419,7 +428,7 @@ function pressInChrome(key, modifiers) {
 }
 
 add_task(async function test_digit_shortcuts_switch_workspaces() {
-  const [personal, work, play] = threeWorkspaces();
+  const [personal, work, play] = await threeWorkspaces();
   pressInChrome("2", DIGIT_MODIFIERS);
   is(ws().state.active, work, "digit 2: the second workspace");
   pressInChrome("9", DIGIT_MODIFIERS);
@@ -477,17 +486,20 @@ async function answerClosePrompt({ accept, askAgain = true }) {
 }
 
 add_task(async function test_middle_click_closes_a_workspace_with_one_tab_at_once() {
-  const [personal, work] = threeWorkspaces();
+  const [personal, work] = await threeWorkspaces();
   ws().switchTo(work);
   const workTab = gBrowser.selectedTab;
   BrowserTestUtils.startLoadingURIString(workTab.linkedBrowser, "data:text/html,<title>Work page</title>");
   await BrowserTestUtils.browserLoaded(workTab.linkedBrowser);
+  // Without a flush, SessionStore may see only the initial about:blank at
+  // close and keep the tab only once its final update arrives, which can
+  // take longer than the wait below on a loaded machine.
+  await TabStateFlusher.flush(workTab.linkedBrowser);
   ws().switchTo(personal);
 
   EventUtils.synthesizeMouseAtCenter(dockButtonFor(work), { button: 1 });
   await TestUtils.waitForCondition(() => !workspaceNamed("Work"), "the workspace closes without asking");
   ok(!workTab.isConnected, "its tab closed");
-  // SessionStore keeps a just-loaded page once its final state arrives.
   await TestUtils.waitForCondition(
     () => SessionStore.getClosedTabDataForWindow(window)[0]?.title == "Work page",
     "into recently closed tabs"
@@ -498,7 +510,7 @@ add_task(async function test_middle_click_closes_a_workspace_with_one_tab_at_onc
 });
 
 add_task(async function test_closing_a_workspace_with_several_tabs_asks_first() {
-  const [personal, work] = threeWorkspaces();
+  const [personal, work] = await threeWorkspaces();
   ws().switchTo(work);
   const workTabs = [gBrowser.selectedTab, await openTab(), await openTab()];
 
@@ -523,7 +535,7 @@ add_task(async function test_closing_a_workspace_with_several_tabs_asks_first() 
 });
 
 add_task(async function test_unchecking_ask_turns_the_prompt_off() {
-  const [, work, play] = threeWorkspaces();
+  const [, work, play] = await threeWorkspaces();
   ws().switchTo(work);
   await openTab();
   ws().switchTo(play);
@@ -542,6 +554,7 @@ add_task(async function test_unchecking_ask_turns_the_prompt_off() {
 });
 
 add_task(async function test_the_only_workspace_never_closes() {
+  await resetWorkspaces();
   const tab = gBrowser.selectedTab;
   const id = ws().state.active;
   EventUtils.synthesizeMouseAtCenter(dockButtonFor(id), { button: 1 });
