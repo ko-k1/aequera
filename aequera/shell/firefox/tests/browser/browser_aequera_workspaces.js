@@ -315,13 +315,16 @@ add_task(async function test_context_menu_sort_reuses_a_workspace_and_moves_the_
   is(item.parentNode, menu, "the item is in Firefox's tab context menu");
   is(item.getAttribute("key"), "aequera-key-sort-tabs", "and shows its shortcut");
   // MenuSectionLayout throws on an item it does not place, except in a
-  // menu's open (trailing) section.
-  for (const layout of Object.values(TabContextMenu.MENU_SECTIONS)) {
+  // menu's open (trailing) section. Each structure arranges a detached copy:
+  // reordering the real menu would move Firefox's share item away from where
+  // SharingUtils looks for it, so the next popup would add a second one.
+  for (const [name, layout] of Object.entries(TabContextMenu.MENU_SECTIONS)) {
+    const copy = menu.cloneNode(true);
     new TabContextMenu.MenuSectionLayout(layout, {
       dynamicItemSelectors: TabContextMenu.DYNAMIC_MENU_ITEM_SELECTORS,
-    }).arrange(menu);
+    }).arrange(copy);
+    is(copy.lastElementChild.id, item.id, `Firefox's ${name} menu structure accepts it and keeps it last`);
   }
-  is(menu.lastElementChild, item, "both of Firefox's menu structures accept it and keep it last");
   const shown = BrowserTestUtils.waitForPopupEvent(menu, "shown");
   EventUtils.synthesizeMouseAtCenter(window.AequeraTabs.rows.get(net), { type: "contextmenu", button: 2 });
   await shown;
