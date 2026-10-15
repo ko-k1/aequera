@@ -44,9 +44,9 @@ Design, decisions, and measurements: `docs/design/ADS.md` and
 ```sh
 # Engine (any change under engine/): rebuild, commit engine.wasm with it.
 cargo test -p aequera-adveil-engine
-bash aequera/extensions/ad-veil/build-engine.sh          # NixOS: inside
-#   nix shell nixpkgs#rustc nixpkgs#cargo nixpkgs#lld -c bash ...
-bash aequera/extensions/ad-veil/build-engine.sh --check  # same toolchain
+# rustup's Rust 1.98.1 + `rustup target add wasm32-unknown-unknown`.
+bash aequera/extensions/ad-veil/build-engine.sh
+bash aequera/extensions/ad-veil/build-engine.sh --check  # CI runs this too
 
 # Model.
 node --test aequera/extensions/ad-veil/addon/model.test.mjs   # or bun test
@@ -55,15 +55,18 @@ node --test aequera/extensions/ad-veil/addon/model.test.mjs   # or bun test
 # cargo test fails while it is stale.
 cargo run -p aequera -- design tokens
 
-# Browser: aequera patch apply, ./mach build, then the gate (its aequera
-# step runs browser/aequera-adveil/tests/browser).
-bash tools/build/test-shell.sh aequera
+# Browser: aequera patch apply, ./mach build, then the gate from
+# worktree/firefox (its aequera step runs browser/aequera-adveil/tests/browser).
+bash ../../tools/build/test-shell.sh aequera
 ```
 
 `engine.wasm` is committed so the browser build needs no Rust or wasm
-toolchain. `build-engine.sh` is deterministic for a given rustc (checked:
-two clean builds with rustc 1.98.1 are byte-identical, sha256
-`055641d0893fb63d345e3f2ea25f3ba5d8342a382523b10e4769c51eb2ac5e9c`).
+toolchain. `build-engine.sh` is deterministic for a given rustc build, and
+machine-independent: it remaps the cargo registry and the checkout out of the
+source paths that panic locations embed, so the binary names no home
+directory. CI's `engine` job rebuilds it with rustup's 1.98.1 and fails when
+the committed file differs; a distro or nix rustc (its own LLVM) emits
+different bytes at the same version.
 
 ## Acceptance
 

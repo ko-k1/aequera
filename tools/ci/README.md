@@ -22,6 +22,12 @@
    - `aequera patch status` (manifest valid, base matches lock)
    - `aequera config validate` (defaults green)
 
+A second job, `engine`, rebuilds `aequera/extensions/ad-veil/addon/engine.wasm`
+with the toolchain that produced it (rustup's Rust 1.98.1 and the
+`wasm32-unknown-unknown` target) and fails when the committed binary differs
+from its source (`build-engine.sh --check`). Bump its pin together with a
+rebuilt `engine.wasm`.
+
 Deliberately excluded from PR CI: `fetch`, `checkout`, `bootstrap`, `apply`
 against the real Firefox remote (gigabytes of objects, tens of minutes).
 Those belong to the nightly full-build pipeline, which does not exist yet —

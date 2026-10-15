@@ -46,3 +46,22 @@ jobs:
         if: runner.os != 'Windows'
         run: tools/ci/smoke.sh
         shell: bash
+
+  # engine.wasm is committed (the Firefox build needs no wasm toolchain):
+  # rebuild it with the toolchain that made it and fail if the bytes differ,
+  # so the shipped engine always matches aequera/extensions/ad-veil/engine.
+  engine:
+    name: engine.wasm matches its source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust 1.98.1 (builds the committed engine.wasm)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+          targets: wasm32-unknown-unknown
+
+      - name: Rebuild and compare
+        run: bash aequera/extensions/ad-veil/build-engine.sh --check
+        shell: bash

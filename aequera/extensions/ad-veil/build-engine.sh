@@ -3,18 +3,27 @@
 #
 #   bash aequera/extensions/ad-veil/build-engine.sh [--check]
 #
-# Needs cargo, rustc with the wasm32-unknown-unknown target, and lld; on
-# NixOS: nix shell nixpkgs#rustc nixpkgs#cargo nixpkgs#lld -c bash <this>.
+# Needs rustup's Rust 1.98.1 with the wasm32-unknown-unknown target
+# (`rustup target add wasm32-unknown-unknown`): the committed engine.wasm is
+# that toolchain's output, and CI (.github/workflows/ci.yml, engine job)
+# rebuilds it with the same one. Another build of rustc (a distro or nix
+# package with its own LLVM) emits different bytes even at the same version.
 # --check rebuilds and fails if the result differs from the committed
-# engine.wasm (same toolchain required: the rustc version is in the log).
+# engine.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../../.." && pwd)"
 target="$root/target/adveil-wasm"
 cd "$root"
 rustc --version
+# Panic locations embed source paths: map the cargo registry and the checkout
+# to fixed prefixes, so the binary names no home directory and rebuilds the
+# same on any machine.
+cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+remap="['--remap-path-prefix=$cargo_home/registry/src=/cargo/registry/src', '--remap-path-prefix=$root=/aequera']"
 cargo build -q --release --locked -p aequera-adveil-engine \
   --target wasm32-unknown-unknown --target-dir "$target" \
+  --config "target.wasm32-unknown-unknown.rustflags=$remap" \
   --config 'profile.release.opt-level=3' \
   --config 'profile.release.lto=true' \
   --config 'profile.release.codegen-units=1' \
