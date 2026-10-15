@@ -125,8 +125,12 @@ Firefox identity compiled into it, opening your Firefox profile and
 colliding with a Firefox you have open. All launchers copy the ini to
 `browser/aequera-application.ini` (`aequera_app_ini.py` refuses one without
 the Aequera identity, and adds `UAName=Firefox` so the user agent is
-Firefox's, not "Aequera/<version>") and start with `-app`, `-no-remote`, and
-`-purgecaches`.
+Firefox's, not "Aequera/<version>") and start with `-app` and `-no-remote`.
+The POSIX launchers add `-purgecaches` only when a file under the build's
+`dist/bin` (following its links into the source tree) changed since the last
+launch of the same profile (`startup-cache.sh`; stamps
+`<objdir>/.aequera-launch-{dev,persistent}`): purging on every launch cost
+about half a second of startup. `aequera.cmd` still purges every launch.
 
 ## Compiled build (full C++/Rust; Aequera binary and icons end to end)
 

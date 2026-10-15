@@ -11,7 +11,8 @@
 # Both pass -app (Aequera identity: remoting "aequera", its own profile root)
 # and -no-remote, so neither instance hands off to a running Firefox, and
 # Firefox's profiles.ini is never touched. -purgecaches drops the startup
-# cache, which otherwise keeps serving pre-rebuild chrome.
+# cache, which otherwise keeps serving pre-rebuild chrome; it is passed only
+# when the build changed since the last launch (startup-cache.sh).
 #
 # MOZCONFIG: exported as usual for mach (see tools/build/README.md). When
 # unset, the mozconfig matching the selected objdir is used and reported;
@@ -151,9 +152,17 @@ if [ ! -f "$BIN/tor/aequera-tor-bundle.json" ]; then
   echo "aequera-run: no bundled tor in $BIN/tor; for Tor windows: bash tools/tor/fetch-bundle.sh" >&2
 fi
 
+# Startup cache: purged only when the build changed since the last launch of
+# the same kind (startup-cache.sh). The persistent stamp is shared with
+# aequera.sh, which starts the same profile.
+. "$SCRIPT_DIR/startup-cache.sh"
+SCAN=("$BIN")
+[ -n "${BUNDLE_RESOURCES:-}" ] && SCAN+=("$BUNDLE_RESOURCES")
+
 if [ "${1:-}" = "--persistent" ]; then
   shift
-  exec "$EXE" -app "$INI_NATIVE" -no-remote -purgecaches "$@"
+  aequera_launch_purge "$OBJDIR/.aequera-launch-persistent" "${SCAN[@]}" -- "$@"
+  exec "$EXE" -app "$INI_NATIVE" -no-remote ${PURGE[@]+"${PURGE[@]}"} "$@"
 fi
 
 cd "$TOPSRCDIR"
@@ -171,4 +180,5 @@ if [ -z "${MOZCONFIG:-}" ]; then
   export MOZCONFIG
   echo "aequera-run: MOZCONFIG unset, using $MOZCONFIG" >&2
 fi
-exec ./mach run -- -app "$INI_NATIVE" -no-remote -purgecaches "$@"
+aequera_launch_purge "$OBJDIR/.aequera-launch-dev" "${SCAN[@]}" -- "$@"
+exec ./mach run -- -app "$INI_NATIVE" -no-remote ${PURGE[@]+"${PURGE[@]}"} "$@"

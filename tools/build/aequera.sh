@@ -11,7 +11,7 @@
 # This passes the Aequera identity (-app aequera-application.ini: its own
 # profile roots — ~/.aequera on Linux, ~/Library/Application Support/Aequera
 # on macOS — and its own single-instance channel), -no-remote, and
-# -purgecaches.
+# -purgecaches when the build changed since the last launch.
 #
 # Usage: tools/build/aequera.sh [Firefox arguments...]
 #   AEQUERA_OBJDIR overrides the build directory (absolute, or relative to
@@ -147,4 +147,11 @@ else
   INI_ARG="$INI"
 fi
 
-exec "$EXE" -app "$INI_ARG" -no-remote -purgecaches "$@"
+# Startup cache: purged only when the build changed since the last launch of
+# this profile (startup-cache.sh; the stamp is shared with
+# aequera-run.sh --persistent, which starts the same profile).
+. "$SCRIPT_DIR/startup-cache.sh"
+SCAN=("$EXE_DIR")
+[ -n "${APP_ROOT:-}" ] && [ -d "$APP_ROOT/Contents/Resources" ] && SCAN+=("$APP_ROOT/Contents/Resources")
+aequera_launch_purge "$OBJDIR/.aequera-launch-persistent" "${SCAN[@]}" -- "$@"
+exec "$EXE" -app "$INI_ARG" -no-remote ${PURGE[@]+"${PURGE[@]}"} "$@"
