@@ -26,4 +26,12 @@
   --ae-wash-hover: rgb(127 140 170 / 0.12);
   --ae-wash-control: rgb(127 140 170 / 0.18);
   --ae-wash-selected: rgb(127 140 170 / 0.22);
+  --ae-canvas: light-dark(rgb(246 247 249), rgb(22 24 28));
+  --ae-surface: light-dark(rgb(255 255 255), rgb(31 34 40));
+  --ae-text: light-dark(rgb(28 31 36), rgb(232 234 238));
+  --ae-text-dim: light-dark(rgb(95 102 114), rgb(154 161 173));
+  --ae-accent: light-dark(rgb(3 105 161), rgb(78 213 255));
+  --ae-accent-hover: light-dark(rgb(7 89 133), rgb(127 224 255));
+  --ae-accent-active: light-dark(rgb(12 74 110), rgb(168 235 255));
+  --ae-on-accent: light-dark(rgb(255 255 255), rgb(11 26 34));
 }

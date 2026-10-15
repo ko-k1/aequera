@@ -12,7 +12,7 @@ pref-gated browser patches. No telemetry, no network.
 
 | File | Role |
 |---|---|
-| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab and private pages, promos off, window fullscreen keeps chrome up, frame material (`aequera.material.frame`: Mica/Acrylic on Windows, vibrancy or Liquid Glass on macOS, Linux glass on blurring desktops, opaque elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on, Tor windows on |
+| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab, private, and in-content pages, promos off, window fullscreen keeps chrome up, frame material (`aequera.material.frame`: Mica/Acrylic on Windows, vibrancy or Liquid Glass on macOS, Linux glass on blurring desktops, opaque elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on, Tor windows on |
 | `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome; the glass frame material (Linux and macOS tint, macOS vibrant layer) |
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
@@ -24,6 +24,7 @@ pref-gated browser patches. No telemetry, no network.
 | `command/` | Command surface: Aequera rows in the address bar |
 | `newtab/` | New tab page (about:newtab, about:home): shortcuts grid |
 | `privatebrowsing/` | about:privatebrowsing in the new tab page design (stylesheet) |
+| `incontent/` | Firefox's in-content pages (Settings, Add-ons, error pages...) in the Aequera palette (token stylesheet), Aequera illustrations in place of Firefox's mascot art |
 | `privacy/` | Privacy model: applies Strict tracking protection once per profile |
 | `adveil/` | Ad Veil switch: `aequera.adveil.enabled` enables or disables the built-in ad blocker (`aequera/extensions/ad-veil`) |
 | `tor/` | Tor windows: a second instance on a throwaway profile, all traffic through tor (below) |
@@ -573,6 +574,86 @@ by pref, here and on the other pages that show them.
 Tests: `tests/browser/browser_aequera_private.js`. The upstream gate runs
 Firefox's about:privatebrowsing tests with the pref off and Firefox's promo
 defaults.
+
+## In-content pages (`incontent/`)
+
+Firefox's in-content pages (Settings, Add-ons, the network and certificate
+error pages, about:config, about:support, about:protections, dialogs) stay
+Firefox's pages and take Aequera's look in two ways, neither touching their
+markup or behavior.
+
+**Tokens.** `aequera-in-content.css` redefines Firefox's design tokens from
+`aequera/design/tokens.toml`: the `[palette]` (cool neutral canvas and
+surfaces instead of Nova's violet-tinted grays, the logo's cyan as the
+accent, darkened to `#0369A1` in light for contrast; `aequera design
+tokens` refuses any text pair under WCAG AA 4.5:1) and the shell's radius
+family (`rad` 9: buttons and fields are rounded rectangles like the address
+bar, not pills). Settings and the error card are built from shadow-DOM
+components that page CSS cannot reach, but they read these tokens, so the
+whole page follows. The look is minimal: cards are the surface step and
+one hairline, no shadow. A few page rules complete it:
+
+- the page navigation (Settings, Add-ons) is a vertical bar on its own
+  card, floating inside the viewport; the selected category is an accent
+  bar on its left edge under the semibold label, with no fill;
+- rows inside a group lose their outline and full-width rules: a hairline
+  inset from both sides separates each row from the one above (island
+  separators);
+- search fields (Settings, Add-ons, about:config) are one bottom line, no
+  box; a 2px accent line marks focus (the field's own focus ring is
+  clipped);
+- Settings' own canvas, the default-browser promo (no inner box, art
+  centered so a narrow window crops only its halo), the AI intro card,
+  quiet table headers (about:support), and the error message on one card.
+
+Button hover and press use the rail rows' wash (`[color]` in
+`tokens.toml`).
+`patches/toolkit/in-content` adds one line to toolkit's shared in-content
+stylesheet, the only Firefox change: it imports a toolkit URL
+(`chrome://global/skin/in-content/aequera-in-content.css`) that `jar.mn`
+overrides to the shell's sheet, so toolkit names no browser file. The nav
+card is `content-box`, so its padding and border go around whatever width
+each page gives its nav and no page's sizing is repeated.
+
+Every rule is inside `@media -moz-pref("aequera.incontent.enabled")`, so the
+pref off restores Firefox's design, and steps aside under
+`prefers-contrast` and forced colors: the tokens are unlayered and would
+otherwise beat Firefox's accessible ones. about:privatebrowsing keeps its
+own design (`:root:where(:not(.private))`). Nothing animates that Firefox
+does not already animate; the sheet is one cached chrome stylesheet.
+
+**Illustrations.** Firefox's mascot art (the fox, "Kit") and its violet
+brand shields are replaced through chrome registry overrides in `jar.mn`:
+the same URLs serve `incontent/illustrations/*.svg` (the Aequera mark on a
+halo with a status badge, 1 to 2 KB each, light and dark through
+`prefers-color-scheme`), at each original's intrinsic size, which pages that
+do not size the image rely on. Every page, shadow root, and Firefox test
+that names those URLs keeps working. Product identity, like the branding,
+so not pref-gated.
+
+| Firefox illustration | Shown in | Aequera |
+|---|---|---|
+| `kit-happy`, `kit-concerned` | Settings, default browser | mark + check / mark + amber "!" |
+| `kit-confetti`, `kit-holding-lock` | Settings, app icon | mark + sparks / mark + lock |
+| `kit-in-circle` | about:pdf | the mark on its halo |
+| `fox-ai` | Settings, AI controls | mark + spark |
+| `no-connection`, `security-error` | error pages | dimmed mark + unlinked badge / amber shield |
+| `shield-check`, `shield-alert` | Settings, privacy status | accent shield + check / amber shield + "!" |
+
+The same promo rule as the private page: Settings' "More from Mozilla"
+pane and about:protections' mobile app and VPN promos are off by pref.
+
+Not covered: about:downloads (a XUL window on `global.css`, outside the
+in-content stylesheets) and about:newtab / about:privatebrowsing (their own
+Aequera designs above).
+
+Tests: `tests/browser/browser_aequera_incontent.js` (Settings' accent,
+canvas, navigation card and selection bar, island separators, and search
+line; a certificate error's card and illustration; the
+overrides and their sizes; pref off; forced colors; the private page). The
+upstream gate runs Firefox's error-page illustration, More from Mozilla,
+default browser, and protections VPN tests with the pref off and Firefox's
+promo defaults.
 
 ## Privacy model (`privacy/`, `aequera-prefs.js`)
 

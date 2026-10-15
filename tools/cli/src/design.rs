@@ -27,6 +27,7 @@ struct Tokens {
     #[serde(rename = "type")]
     type_: Type,
     color: Color,
+    palette: Palette,
     traffic: Traffic,
     motion: Motion,
 }
@@ -76,6 +77,25 @@ struct Color {
     wash_selected: f64,
 }
 
+/// One light and one dark sRGB triplet (`u8`, as for the wash).
+#[derive(Deserialize)]
+struct Pair {
+    light: [u8; 3],
+    dark: [u8; 3],
+}
+
+#[derive(Deserialize)]
+struct Palette {
+    canvas: Pair,
+    surface: Pair,
+    text: Pair,
+    text_dim: Pair,
+    accent: Pair,
+    accent_hover: Pair,
+    accent_active: Pair,
+    on_accent: Pair,
+}
+
 #[derive(Deserialize)]
 struct Traffic {
     tl: u32,
@@ -103,6 +123,54 @@ pub struct TargetState {
     pub path: String,
     /// "unchanged", "written", or (with `--check`) "stale".
     pub state: String,
+}
+
+/// WCAG 2 relative luminance of an sRGB triplet.
+fn luminance([r, g, b]: [u8; 3]) -> f64 {
+    let lin = |c: u8| {
+        let c = f64::from(c) / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+/// WCAG 2 contrast ratio of two sRGB triplets (1 to 21).
+fn contrast(a: [u8; 3], b: [u8; 3]) -> f64 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+/// Text contrast every palette pair that renders text must reach (WCAG AA).
+const MIN_TEXT_CONTRAST: f64 = 4.5;
+
+/// The palette's foreground/background pairs that render text, in both
+/// schemes: fails when one falls below `MIN_TEXT_CONTRAST`.
+fn check_palette(p: &Palette) -> Result<(), String> {
+    let pairs = [
+        ("on_accent", &p.on_accent, "accent", &p.accent),
+        ("accent", &p.accent, "canvas", &p.canvas),
+        ("accent", &p.accent, "surface", &p.surface),
+        ("text", &p.text, "canvas", &p.canvas),
+        ("text", &p.text, "surface", &p.surface),
+        ("text_dim", &p.text_dim, "canvas", &p.canvas),
+        ("text_dim", &p.text_dim, "surface", &p.surface),
+    ];
+    for (fg_name, fg, bg_name, bg) in pairs {
+        for (scheme, f, b) in [("light", fg.light, bg.light), ("dark", fg.dark, bg.dark)] {
+            let ratio = contrast(f, b);
+            if ratio < MIN_TEXT_CONTRAST {
+                return Err(format!(
+                    "[palette] {fg_name} on {bg_name} ({scheme}): contrast {ratio:.2}, \
+                     expected at least {MIN_TEXT_CONTRAST}"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Only `cubic-bezier(<numbers>)`: the value is pasted into CSS verbatim.
@@ -194,6 +262,24 @@ pub fn render(text: &str) -> Result<String, String> {
             "  --ae-wash-{name}: rgb({r} {g} {b} / {alpha});\n"
         ));
     }
+    let p = &t.palette;
+    check_palette(p)?;
+    for (name, pair) in [
+        ("canvas", &p.canvas),
+        ("surface", &p.surface),
+        ("text", &p.text),
+        ("text-dim", &p.text_dim),
+        ("accent", &p.accent),
+        ("accent-hover", &p.accent_hover),
+        ("accent-active", &p.accent_active),
+        ("on-accent", &p.on_accent),
+    ] {
+        let [lr, lg, lb] = pair.light;
+        let [dr, dg, db] = pair.dark;
+        css.push_str(&format!(
+            "  --ae-{name}: light-dark(rgb({lr} {lg} {lb}), rgb({dr} {dg} {db}));\n"
+        ));
+    }
     css.push_str("}\n");
     Ok(css)
 }
@@ -265,6 +351,8 @@ mod tests {
             "  --ae-ease: cubic-bezier(0.3,0.7,0.3,1);\n",
             "  --ae-wash-hover: rgb(127 140 170 / 0.12);\n",
             "  --ae-wash-selected: rgb(127 140 170 / 0.22);\n",
+            "  --ae-accent: light-dark(rgb(3 105 161), rgb(78 213 255));\n",
+            "  --ae-on-accent: light-dark(rgb(255 255 255), rgb(11 26 34));\n",
         ] {
             assert!(css.contains(line), "missing {line:?} in:\n{css}");
         }
@@ -282,6 +370,44 @@ mod tests {
         assert!(render(&alpha).unwrap_err().contains("wash_hover"));
         let channel = shipped().replace("wash = [127, 140, 170]", "wash = [127, 140, 300]");
         assert!(render(&channel).is_err());
+    }
+
+    #[test]
+    fn palette_pair_needs_both_schemes() {
+        let half = shipped().replace(
+            "accent = { light = [3, 105, 161], dark = [78, 213, 255] }",
+            "accent = { light = [3, 105, 161] }",
+        );
+        assert!(render(&half).is_err());
+        let channel = shipped().replace("dark = [78, 213, 255]", "dark = [78, 213, 256]");
+        assert!(render(&channel).is_err());
+    }
+
+    #[test]
+    fn contrast_matches_wcag() {
+        assert!((contrast([0, 0, 0], [255, 255, 255]) - 21.0).abs() < 1e-9);
+        assert!((contrast([255, 255, 255], [255, 255, 255]) - 1.0).abs() < 1e-9);
+        // The shipped light accent under white text (tokens.toml: 5.9).
+        let ratio = contrast([255, 255, 255], [3, 105, 161]);
+        assert!((5.9..6.0).contains(&ratio), "{ratio}");
+    }
+
+    #[test]
+    fn low_contrast_palette_rejected() {
+        // A light accent too pale for white text.
+        let text = shipped().replace(
+            "accent = { light = [3, 105, 161]",
+            "accent = { light = [120, 190, 230]",
+        );
+        let err = render(&text).unwrap_err();
+        assert!(err.contains("on_accent on accent (light)"), "{err}");
+        // Dimmed text too close to the dark canvas.
+        let text = shipped().replace(
+            "text_dim = { light = [95, 102, 114], dark = [154, 161, 173] }",
+            "text_dim = { light = [95, 102, 114], dark = [70, 74, 82] }",
+        );
+        let err = render(&text).unwrap_err();
+        assert!(err.contains("text_dim on canvas (dark)"), "{err}");
     }
 
     #[test]

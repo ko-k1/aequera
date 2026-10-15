@@ -75,6 +75,20 @@ pref("browser.vpn_promo.enabled", false);
 pref("browser.promo.relay.enabled", false);
 pref("browser.promo.pin.enabled", false);
 
+// In-content pages (incontent/, patches/toolkit/in-content): Settings,
+// Add-ons, the error pages, about:config and the rest of Firefox's
+// in-content pages in Aequera's palette (the logo's cyan, cool neutrals)
+// and radius, through Firefox's own design tokens. Off restores Firefox's
+// design (the stylesheet is inside @media -moz-pref of this pref); the
+// mascot art swap in jar.mn is identity and stays. Settings' "More from
+// Mozilla" pane promotes Mozilla products: advertising, as above, so off
+// (the Nimbus feature's fallback pref, which the enterprise policy sets too).
+pref("aequera.incontent.enabled", true);
+pref("browser.preferences.moreFromMozilla", false);
+// about:protections: the same rule for its mobile app and VPN promos.
+pref("browser.contentblocking.report.show_mobile_app", false);
+pref("browser.contentblocking.report.hide_vpn_banner", true);
+
 // Window fullscreen (F11, View > Full Screen) keeps the top bar and the tab
 // rail on screen instead of sliding them away (Firefox's default on macOS).
 // Page-requested (DOM) fullscreen, e.g. video, still hides all chrome. The

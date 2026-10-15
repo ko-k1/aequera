@@ -1,0 +1,25 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Aequera: protections need attention (overrides chrome://global/skin/illustrations/shield-alert.svg).
+     The protections-on shield in the warning amber, with an exclamation mark. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="106" viewBox="0 0 200 212" fill="none">
+  <style>
+    .halo { fill: #f59e0b; fill-opacity: 0.16; }
+    .shield { fill: #d97706; }
+    .face { fill: #fff; fill-opacity: 0.18; }
+    .g { stroke: #fff; }
+    .gf { fill: #fff; }
+    @media (prefers-color-scheme: dark) {
+      .halo { fill-opacity: 0.1; }
+      .shield { fill: #f59e0b; }
+      .g { stroke: #0b1a22; }
+      .gf { fill: #0b1a22; }
+    }
+  </style>
+  <circle class="halo" cx="100" cy="106" r="96"/>
+  <path class="shield" d="M100 34l58 20v42c0 40-25 69-58 84-33-15-58-44-58-84v-42z"/>
+  <path class="face" d="M100 34l58 20v42c0 40-25 69-58 84z"/>
+  <path class="g" stroke-width="13" stroke-linecap="round" d="M100 74v40"/>
+  <circle class="gf" cx="100" cy="140" r="8"/>
+</svg>

@@ -8,7 +8,8 @@
 # aequera:  Aequera-owned tests (browser/aequera/tests: the shell;
 #           browser/aequera-adveil/tests: Ad Veil), Aequera defaults.
 # upstream: Firefox's own sidebar, tab, bookmarks-toolbar, about:home cache,
-#           and private browsing page tests with Firefox's defaults
+#           private browsing page, and in-content page (error pages,
+#           Settings, about:protections) tests with Firefox's defaults
 #           restored, to prove the patches change nothing by default.
 set -u
 # Step parsing: explicit suite or all; leading flags mean "all + flags".
@@ -146,6 +147,34 @@ if [ "$step" = upstream ] || [ "$step" = all ]; then
     "$PRIVATE_TESTS/browser_privatebrowsing_about_search_banner.js" \
     "$PRIVATE_TESTS/browser_privatebrowsing_about_default_promo.js" \
     "$PRIVATE_TESTS/browser_privatebrowsing_about_nova_promo.js" || status=1
+  # In-content pages: patches/toolkit/in-content imports a stylesheet gated
+  # by aequera.incontent.enabled, and the shell's jar.mn serves Aequera
+  # illustrations at Firefox's illustration URLs. Off, with Firefox's promo
+  # defaults, the error pages, Settings, and about:protections must behave
+  # exactly as in Firefox (the illustration tests check those URLs).
+  # Every More from Mozilla test, found at run time so new upstream files
+  # run too, except browser_moreFromMozilla_config.js: it searches Settings
+  # for the literal "More from Mozilla", and the branding names the pane
+  # "More from Aequera" (-vendor-short-name), on master too. An unmatched
+  # glob stays literal, so a moved directory fails the run, never skips it.
+  MFM_TESTS=()
+  for test in "$PREFS_TESTS"/moreFromMozilla/browser_*.js; do
+    case "$test" in
+      */browser_moreFromMozilla_config.js) ;;
+      *) MFM_TESTS+=("$test") ;;
+    esac
+  done
+  ./mach mochitest --headless "${extra[@]}" "${FIREFOX_DEFAULTS[@]}" \
+    --setpref aequera.incontent.enabled=false \
+    --setpref browser.preferences.moreFromMozilla=true \
+    --setpref browser.vpn_promo.enabled=true \
+    --setpref browser.promo.relay.enabled=true \
+    --setpref browser.contentblocking.report.show_mobile_app=true \
+    --setpref browser.contentblocking.report.hide_vpn_banner=false \
+    browser/base/content/test/about/browser_aboutNetError_feltprivacy_illustrations.js \
+    "${MFM_TESTS[@]}" \
+    "$PREFS_TESTS/browser_defaultbrowser_alwayscheck.js" \
+    browser/components/protections/test/browser/browser_protections_vpn.js || status=1
   # Settings: patches/browser/rail-position adds a vertical tabs side choice
   # to Browser layout, offered only for a shell-hosted rail
   # (sidebar.verticalTabs.requireRevamp false); with Firefox's defaults the
