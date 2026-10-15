@@ -23,6 +23,10 @@
 // motion event without motion does not count), pressing, or scrolling. The
 // listeners for those exist only in that state, so ordinary pointer moves
 // run no handler.
+//
+// A surface may hold a part that is not on it (`ignore`: the floating
+// notification cards in the top bar's subtree, notifications/): the pointer
+// there is off the surface, as if it had left it.
 var AequeraHover = (() => {
   const OPEN_DELAY_PREF = "aequera.hover.openDelayMs";
   const CLOSE_DELAY_PREF = "aequera.hover.closeDelayMs";
@@ -33,10 +37,13 @@ var AequeraHover = (() => {
     /**
      * @param {Element} element the surface (its subtree counts as on it)
      * @param {(delay: number) => void} settle re-decide after `delay` ms
+     * @param {{ignore?: Element | null}} [options] a part of the subtree that
+     *   does not count as on the surface
      */
-    constructor(element, settle) {
+    constructor(element, settle, { ignore = null } = {}) {
       this.element = element;
       this.settle = settle;
+      this.ignore = ignore;
       this.hovered = false;
       this.exposed = false;
       this.awaitingPointer = false;
@@ -99,6 +106,14 @@ var AequeraHover = (() => {
     }
 
     handleEvent(event) {
+      // Over the ignored part the pointer is off the surface: moving onto
+      // it from the surface leaves, and nothing it does there enters.
+      if (this.ignore?.contains(event.target)) {
+        if (event.type == "mouseover" && this.hovered) {
+          this.leave();
+        }
+        return;
+      }
       switch (event.type) {
         case "mouseover":
           if (!this.awaitingPointer) {
@@ -125,9 +140,10 @@ var AequeraHover = (() => {
   }
 
   return {
-    /** Track hover on `element`; `settle(delay)` re-decides its surface. */
-    track(element, settle) {
-      return new HoverTracker(element, settle);
+    /** Track hover on `element`; `settle(delay)` re-decides its surface.
+     * `options.ignore`: a part of its subtree that is off the surface. */
+    track(element, settle, options) {
+      return new HoverTracker(element, settle, options);
     },
   };
 })();

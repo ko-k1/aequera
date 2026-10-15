@@ -414,7 +414,10 @@ colors included), so the top bar, the page, and the drawer never move. The
 cards keep Firefox's markup, buttons, focus order, and slide. The row has the
 drawer's geometry: it starts where the rail currently ends and slides below
 the open drawer, on the shared motion tokens (instant under reduced motion).
-Only the cards take the pointer; their gutters pass it to the page. While the
+Only the cards take the pointer; their gutters pass it to the page. The cards
+sit in the top bar's subtree but are not the top bar: hovering or focusing
+one never opens or holds the drawer (`AequeraHover`'s `ignore`), which
+would push the card away from a pointer reaching for its buttons. While the
 top bar holds a notification it stacks above the browser area (Firefox's
 `--browser-area-z-index-toolbox-while-animating`, as for the open drawer); the
 widened rail still stacks above it. With the chrome hidden in fullscreen the

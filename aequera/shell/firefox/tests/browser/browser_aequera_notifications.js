@@ -6,13 +6,15 @@
 // Floating notification bars (aequera/shell/firefox/notifications): the bars
 // in #notifications-toolbar float over the page as cards; the top bar and the
 // page never move; the cards take clicks, their gutters pass them to the
-// page; the cards clear the widened rail and the open bookmarks drawer.
+// page; hovering or focusing them never opens the bookmarks drawer; the cards
+// clear the widened rail and the open drawer.
 
 const ROOT = document.documentElement;
 const tabbox = () => document.getElementById("tabbrowser-tabbox");
 const railBox = () => document.getElementById("sidebar-container").querySelector(":scope > sidebar-main");
 const drawer = () => document.getElementById("PersonalToolbar");
 const box = el => el.getBoundingClientRect();
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 /** Shows a notification (with a button) in `notificationBox`, the selected
  * tab's by default; resolves once it is laid out. Reduced motion (setup)
@@ -56,6 +58,8 @@ add_setup(async () => {
       ["browser.toolbars.bookmarks.visibility", "always"],
       ["aequera.rail.pinned", false],
       ["aequera.rail.expandOnAddressFocus", true],
+      ["aequera.hover.openDelayMs", 40],
+      ["aequera.hover.closeDelayMs", 150],
     ],
   });
   window.windowUtils.disableNonTestMouseEvents(true);
@@ -89,6 +93,44 @@ add_task(async function test_floats_without_moving_chrome_or_page() {
   EventUtils.synthesizeMouseAtCenter(button, {});
   await TestUtils.waitForCondition(() => !notification.isConnected, "clicking the card's button closes it");
   is(box(gNavToolbox).height, toolboxBefore.height, "the top bar is unchanged after the card closes");
+});
+
+add_task(async function test_card_is_not_the_top_bar() {
+  // The cards sit in the top bar's subtree, but hovering or focusing them
+  // must not open the bookmarks drawer: the open drawer pushes them down,
+  // away from the pointer reaching for a button.
+  const notification = await showNotification();
+  const rest = box(notification);
+  const button = notification.buttonContainer.querySelector("button");
+  const holdsStill = async what => {
+    // Longer than the open delay, so a drawer that would open has opened.
+    await wait(200);
+    ok(!ROOT.hasAttribute("aequera-bookmarks-open"), `${what} does not open the drawer`);
+    Assert.deepEqual(box(notification).toJSON(), rest.toJSON(), `${what} leaves the card in place`);
+  };
+
+  EventUtils.synthesizeMouseAtCenter(notification, { type: "mousemove" });
+  await holdsStill("the pointer on the card");
+  EventUtils.synthesizeMouseAtCenter(button, { type: "mousemove" });
+  await holdsStill("the pointer on its button");
+
+  // From the top bar onto the card: the drawer opened by the top bar closes.
+  EventUtils.synthesizeMouse(gNavToolbox, 300, 5, { type: "mousemove" });
+  await TestUtils.waitForCondition(() => ROOT.hasAttribute("aequera-bookmarks-open"), "the top bar opens the drawer");
+  EventUtils.synthesizeMouseAtCenter(notification, { type: "mousemove" });
+  await TestUtils.waitForCondition(
+    () => !ROOT.hasAttribute("aequera-bookmarks-open"),
+    "moving onto the card leaves the top bar"
+  );
+  restOnPage();
+
+  // Keyboard focus on the card's button (as from Tab) is not focus in the
+  // top bar either.
+  button.focus({ focusVisible: true });
+  ok(button.matches(":focus-visible"), "the button has keyboard focus");
+  await holdsStill("keyboard focus on its button");
+  gBrowser.selectedBrowser.focus();
+  gBrowser.getNotificationBox().removeNotification(notification, true);
 });
 
 add_task(async function test_window_notification_floats() {
