@@ -25,7 +25,6 @@ const { readPref, writePref } = ChromeUtils.importESModule(
 );
 
 const TOR_BASE = PathUtils.join(PathUtils.profileDir, "tor");
-const isMac = AppConstants.platform == "macosx";
 
 const MARKER = PathUtils.join(TOR_BASE, "running");
 
@@ -86,8 +85,28 @@ add_task(async function test_entry_points() {
 
   const key = document.getElementById("aequera-key-tor-window");
   ok(key, "shortcut key exists");
-  is(key.getAttribute("key"), "N");
-  is(key.getAttribute("modifiers"), isMac ? "accel,alt" : "alt,shift", "Brave's shortcut");
+  is(key.getAttribute("key"), "P");
+  is(key.getAttribute("modifiers"), "accel,alt,shift", "Ctrl+Shift+Alt+P (Command on macOS)");
+
+  // Pressed: a Tor window, and neither Private Window nor Print.
+  const open = AequeraTor.open;
+  let opened = 0;
+  AequeraTor.open = () => void opened++;
+  const windows = [...Services.wm.getEnumerator("navigator:browser")].length;
+  const dialogs = () => document.querySelectorAll("dialog, .printPreviewBrowser, .dialogFrame").length;
+  const dialogsBefore = dialogs();
+  try {
+    gURLBar.blur();
+    document.getElementById("nav-bar").focus();
+    EventUtils.synthesizeKey("P", { accelKey: true, altKey: true, shiftKey: true });
+    await TestUtils.waitForCondition(() => opened == 1, "the shortcut opens a Tor window");
+    await new Promise(r => setTimeout(r, 300));
+    is(opened, 1, "once");
+    is([...Services.wm.getEnumerator("navigator:browser")].length, windows, "no private window");
+    is(dialogs(), dialogsBefore, "no print dialog");
+  } finally {
+    AequeraTor.open = open;
+  }
 
   const fileItem = document.getElementById("menu_aequeraTorWindow");
   ok(fileItem, "File menu item exists");

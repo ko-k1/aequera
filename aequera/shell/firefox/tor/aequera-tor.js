@@ -8,7 +8,7 @@
 // Loaded into each browser window by aequera-main.js.
 //
 // Every window: "New Tor Window" in the app menu and the File menu,
-// Alt+Shift+N (Option+Command+N on macOS, Brave's shortcut), and "Open Link
+// Ctrl+Shift+Alt+P (Command+Option+Shift+P on macOS), and "Open Link
 // in Tor Window" on links. In the ordinary instance they start the Tor
 // instance (aequera-tor-launch.sys.mjs); in the Tor instance every window is
 // a Tor window, so they open one of its own.
@@ -33,7 +33,6 @@ var AequeraTor = (() => {
   // Loads before tor listened (proxy errors), or before the instance went
   // online (it starts offline: netOffline).
   const PROXY_ERRORS = ["proxyConnectFailure", "proxyResolveFailure", "netOffline"];
-  const isMac = AppConstants.platform == "macosx";
 
   const tor = {
     instance: AequeraTorDaemon.isInstance(),
@@ -76,8 +75,10 @@ var AequeraTor = (() => {
       keyset.id = "aequera-tor-keyset";
       const key = document.createXULElement("key");
       key.id = KEY_ID;
-      key.setAttribute("key", "N");
-      key.setAttribute("modifiers", isMac ? "accel,alt" : "alt,shift");
+      // Private window's Ctrl+Shift+P, plus Alt (keys match modifiers
+      // exactly, so neither Print nor Private Window fires).
+      key.setAttribute("key", "P");
+      key.setAttribute("modifiers", "accel,alt,shift");
       key.addEventListener("command", () => this.open());
       keyset.append(key);
       document.documentElement.append(keyset);

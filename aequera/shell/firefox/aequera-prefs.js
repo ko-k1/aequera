@@ -193,7 +193,7 @@ pref("widget.macos.titlebar-glass.enabled", true);
 pref("widget.wayland.background-blur.enabled", true);
 
 // Tor windows (docs/design/TOR.md, ADR 0004): "New Tor Window" (app and File
-// menus, Alt+Shift+N; Option+Command+N on macOS) and "Open Link in Tor
+// menus, Ctrl+Shift+Alt+P; Command+Option+Shift+P on macOS) and "Open Link in Tor
 // Window" start a second Aequera instance on a throwaway private profile
 // whose every connection goes through tor (tor/). Off removes the entry
 // points. tor: aequera.tor.executable (an absolute path) when set, else the

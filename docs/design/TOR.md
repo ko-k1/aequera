@@ -26,7 +26,7 @@ user, and Tor for ordinary windows.
 | Where | What |
 |---|---|
 | App menu, File menu | "New Tor window" after "New private window" |
-| Shortcut | Alt+Shift+N (Option+Command+N on macOS), Brave's |
+| Shortcut | Ctrl+Shift+Alt+P (Command+Option+Shift+P on macOS): Private Window's Ctrl+Shift+P plus Alt |
 | Link context menu | "Open Link in Tor Window" for http(s) links |
 | Address bar commands | "New Tor window" (also "private window with tor", "onion") |
 | Tor window toolbar | The Tor button at its start: "Tor 45%" while connecting, "Tor" once connected, "Tor offline" on failure |
@@ -312,7 +312,7 @@ unless bridges are used, a later slice).
   - with tor stopped, loads end in `proxyConnectFailure`, and the tab reloads after reconnecting;
   - DuckDuckGo is the default (from 2026-10-14 its onion service; a search returns its results).
 
-  In a real window session: Alt+Shift+N started the Tor instance in 0.9 s
+  In a real window session: Alt+Shift+N (the shortcut then) started the Tor instance in 0.9 s
   without Marionette in its environment, and "New Tor window" while it ran
   opened a second window there. On clean quit, tor stopped, the socket and
   marker were removed, and the directory cache was kept. Headless Firefox
