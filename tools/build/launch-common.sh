@@ -95,16 +95,40 @@ aequera_to_native() {
 # could carry Firefox's identity.
 aequera_write_ini() {
   local python
-  if command -v python3 >/dev/null 2>&1; then
-    python=python3
-  elif command -v python >/dev/null 2>&1; then
-    python=python
-  else
+  python="$(aequera_python)" || {
     echo "$LAUNCHER: cannot verify \"$2\" without python3; refusing to launch with a possibly stale identity." >&2
     exit 1
-  fi
+  }
   mkdir -p "$(dirname "$2")"
   "$python" "$ROOT/tools/build/aequera_app_ini.py" "$1" "$2"
+}
+
+# Prints python3, else python; fails when neither exists.
+aequera_python() {
+  if command -v python3 >/dev/null 2>&1; then
+    echo python3
+  elif command -v python >/dev/null 2>&1; then
+    echo python
+  else
+    return 1
+  fi
+}
+
+# aequera_dist_copies <dist/bin>: on Windows, the build's symlinks become
+# copies (dist_copies.py: Gecko refuses symlinked built-in add-on files and
+# objdir files in content processes there). mach relinks on every build, so
+# this runs every start; without links it is one scan.
+aequera_dist_copies() {
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) ;;
+    *) return 0 ;;
+  esac
+  local python
+  python="$(aequera_python)" || {
+    echo "$LAUNCHER: python3 is needed to replace the build's symlinks in \"$1\"." >&2
+    exit 1
+  }
+  "$python" "$ROOT/tools/build/dist_copies.py" "$1" || exit 1
 }
 
 # Like `mach run`, advertise the developer dirs: local builds symlink

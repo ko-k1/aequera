@@ -115,6 +115,19 @@ does: local builds symlink front-end files into `dist`, and the Windows
 content-process sandbox only resolves those links when the repo dir is
 advertised (upstream bug 1916286). Without it DevTools cannot open
 (`Ctrl+Shift+I`, `F12`, … fail with `builtin-modules.js is not found`).
+That is not enough on Windows hosts where Python may create symlinks
+(Developer Mode, elevated shells): Gecko still refuses symlinked built-in
+add-on files in content processes (Ad Veil's content scripts, Firefox's new
+tab bundle), and the sandbox exception does not cover the objdir, which
+sits outside the source tree here (`PromiseWorker.js` and other generated
+files). So on Windows every launcher and `test-shell.sh` first turn the
+links in `dist/bin` into copies (`dist_copies.py`, the layout Firefox's own
+Windows builds use). `mach build` relinks, so this repeats each start and
+costs one scan of `dist/bin` when nothing changed. Off Windows it is a no-op.
+Links to missing files are reported and left alone; a launch stops only
+when the step itself fails (no Python, an unreadable `dist/bin`). One
+consequence: on those hosts an edit in the worktree no longer reaches
+`dist` by itself; run `./mach build faster` (the edit loop below) first.
 The build is branded Aequera (`mozconfig.branding` +
 `patches/build/branding`: name, logo, vendor, own profile root —
 `%APPDATA%\Aequera` on Windows, `~/.aequera` on Linux,

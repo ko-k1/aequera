@@ -34,6 +34,7 @@ aequera_objdir MOZ_OBJDIR "${MOZ_OBJDIR:-}"
 aequera_find_exe
 BIN="$OBJDIR/dist/bin"
 aequera_export_dev_dirs
+aequera_dist_copies "$BIN"
 
 # Bundle binaries stage dist/bin into the .app, so the source ini may live
 # in either place; the launch ini goes next to the binary that uses it.

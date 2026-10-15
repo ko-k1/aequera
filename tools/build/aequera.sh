@@ -46,6 +46,7 @@ INI="$EXE_DIR/browser/aequera-application.ini"
 aequera_write_ini "$SRC_INI" "$INI"
 INI_ARG="$(aequera_to_native "$INI")"
 aequera_export_dev_dirs
+aequera_dist_copies "$EXE_DIR"
 
 # Startup cache: purged only when the build changed since the last launch of
 # this profile (startup-cache.sh; the stamp is shared with

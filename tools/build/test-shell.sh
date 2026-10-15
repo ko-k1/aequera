@@ -91,6 +91,19 @@ status=0
 # Aequera test manifests are invisible to mach until this runs.
 ./mach build-backend -b TestManifest > /dev/null || status=1
 
+# Windows: the build's symlinks become copies (tools/build/dist_copies.py);
+# Gecko refuses symlinked built-in add-on and objdir files in content
+# processes there. Every objdir of this worktree, whichever MOZCONFIG runs.
+case "$(uname -s)" in
+MINGW*|MSYS*|CYGWIN*)
+  python="$(command -v python3 || command -v python)" || python=python3
+  for bin in "../../obj/$(basename "$PWD")"/*/dist/bin; do
+    [ -d "$bin" ] || continue
+    "$python" ../../tools/build/dist_copies.py "$bin" || status=1
+  done
+  ;;
+esac
+
 if [ "$step" = aequera ] || [ "$step" = all ]; then
   ./mach mochitest --headless "${extra[@]}" \
     browser/aequera/tests/browser browser/aequera-adveil/tests/browser || status=1

@@ -32,6 +32,9 @@ try {
     if ($NodeTests.Count -eq 0) { throw "no node tests found under aequera/" }
     node --test @NodeTests
     if ($LASTEXITCODE -ne 0) { throw "node --test failed" }
+    # Build tooling in Python (stdlib unittest, no packages).
+    python -m unittest discover -s tests/unit/build
+    if ($LASTEXITCODE -ne 0) { throw "python build tooling tests failed" }
     & $Bin doctor
     if ($LASTEXITCODE -ne 0) { throw "aequera doctor failed" }
     & $Bin upstream status
