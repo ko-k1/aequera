@@ -150,6 +150,41 @@ pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
 pref("aequera.privacy.trackingProtection", "strict");
 pref("privacy.globalprivacycontrol.enabled", true);
 
+// AI features: blocked by default, the state Firefox's own "Block AI
+// enhancements" switch (Settings > AI Controls) and its AIControls policy
+// leave behind: every AI control "blocked", and each feature's own prefs off
+// (what each feature's block() sets: GenAI, LinkPreview, SmartTabGrouping,
+// TranslationsFeature, PdfJsAIFeature, AIWindow; extensions.ml.enabled as
+// the global switch sets it). Defaults only: choosing "Available" or
+// "Enabled" for a feature in AI Controls, or turning the switch off, turns it
+// back on. Includes Translations, which Firefox counts among its AI
+// features (local models, no cloud). Smart Window (off in Firefox too) and
+// speech recognition are gated by their control pref alone. The
+// inference engine itself (browser.ml.enable) stays: nothing runs it while
+// every feature is blocked, and an add-on or a re-enabled feature needs it.
+pref("browser.ai.control.default", "blocked");
+pref("browser.ai.control.translations", "blocked");
+pref("browser.ai.control.pdfjsAltText", "blocked");
+pref("browser.ai.control.smartTabGroups", "blocked");
+pref("browser.ai.control.linkPreviewKeyPoints", "blocked");
+pref("browser.ai.control.sidebarChatbot", "blocked");
+pref("browser.ai.control.smartWindow", "blocked");
+pref("browser.ai.control.speechRecognition", "blocked");
+// Not browser.ml.chat.page (block() also sets it): the chatbot's "Available"
+// clears it back to the default, which must stay Firefox's (true), or
+// re-enabling the chatbot would leave its page prompts off.
+pref("browser.ml.chat.enabled", false);
+pref("browser.ml.linkPreview.enabled", false);
+pref("browser.ml.linkPreview.optin", false);
+pref("browser.tabs.groups.smart.enabled", false);
+pref("browser.tabs.groups.smart.userEnabled", false);
+pref("browser.tabs.groups.smart.optin", false);
+pref("browser.translations.enable", false);
+pref("pdfjs.enableGuessAltText", false);
+pref("pdfjs.enableAltTextModelDownload", false);
+pref("pdfjs.enableAltText", false);
+pref("extensions.ml.enabled", false);
+
 // Dark appearance by default: the system theme ("Auto" in Add-ons > Themes)
 // reports dark, so Firefox's default theme draws dark chrome and pages
 // follow it (prefers-color-scheme: dark; Settings > Website appearance).

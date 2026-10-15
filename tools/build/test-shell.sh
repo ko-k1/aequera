@@ -53,6 +53,23 @@ FIREFOX_DEFAULTS=(
   # Ad Veil: Firefox has no built-in content blocker; its tests must not
   # run behind EasyList.
   --setpref aequera.adveil.enabled=false
+  # AI features: Firefox 157's defaults (Aequera blocks them by default);
+  # the sidebar tests list the chatbot, the tabs pane shows smart tab groups.
+  --setpref browser.ai.control.default=available
+  --setpref browser.ai.control.translations=default
+  --setpref browser.ai.control.pdfjsAltText=default
+  --setpref browser.ai.control.smartTabGroups=default
+  --setpref browser.ai.control.linkPreviewKeyPoints=default
+  --setpref browser.ai.control.sidebarChatbot=default
+  --setpref browser.ai.control.smartWindow=default
+  --setpref browser.ai.control.speechRecognition=default
+  --setpref browser.ml.chat.enabled=true
+  --setpref browser.ml.linkPreview.enabled=true
+  --setpref browser.tabs.groups.smart.enabled=true
+  --setpref browser.tabs.groups.smart.userEnabled=true
+  --setpref browser.translations.enable=true
+  --setpref pdfjs.enableAltText=true
+  --setpref extensions.ml.enabled=true
 )
 # Frame material is per-OS (Windows 11 Mica; opaque toolbar fallback
 # elsewhere): only reset it where the pref means something.
