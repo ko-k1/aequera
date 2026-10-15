@@ -970,7 +970,13 @@ mod tests {
         assert!(!apply(&root, &lock).expect("first apply").already_applied);
         let wt = root.join(WORKTREE_RELATIVE);
         let added = wt.join("added.txt");
-        assert_eq!(std::fs::read_to_string(&added).unwrap(), "new\n");
+        // Line endings follow the checkout (CRLF under core.autocrlf on Windows).
+        assert_eq!(
+            std::fs::read_to_string(&added)
+                .unwrap()
+                .replace("\r\n", "\n"),
+            "new\n"
+        );
         assert_eq!(
             git(&wt, &["ls-files", "added.txt"]),
             "added.txt",
@@ -1024,7 +1030,13 @@ mod tests {
         apply(&root, &lock).expect("apply despite apply.whitespace=error");
         let content =
             std::fs::read_to_string(root.join(WORKTREE_RELATIVE).join("base.txt")).unwrap();
-        assert_eq!(content, "base\ntrailing \nend\n", "applied byte for byte");
+        // Byte for byte up to the checkout's line endings (CRLF under
+        // core.autocrlf on Windows): the trailing space must survive.
+        assert_eq!(
+            content.replace("\r\n", "\n"),
+            "base\ntrailing \nend\n",
+            "applied byte for byte"
+        );
         assert!(apply(&root, &lock).expect("re-apply").already_applied);
         std::fs::remove_dir_all(&root).ok();
     }
