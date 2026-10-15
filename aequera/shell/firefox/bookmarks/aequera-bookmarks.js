@@ -22,7 +22,12 @@
 //     coming to lie under a resting pointer from counting as hovered; focus
 //     holds only in the active window (a background window keeps its
 //     focused element but shows no caret or focus ring);
-//   - closes after the linger delay once none of that holds.
+//   - closes after the linger delay once none of that holds, also when a
+//     hold goes away without its event: an open menu removed from the
+//     document fires no popuphidden (a toolbar folder deleted while its menu
+//     is open), a removed focused element no focusout. While a menu or
+//     keyboard focus outside the address bar holds it, a MutationObserver
+//     re-decides on removals; nothing is watched otherwise.
 // The page card clips back from the top while it is open (AequeraFrame), so
 // the drawer sits on the frame material and the page never reflows.
 // Timing is the tab rail's: aequera.hover.* delays and the shared motion
@@ -49,6 +54,9 @@ var AequeraBookmarks = (() => {
     height: 0,
     timer: 0,
     customizing: false,
+    /** MutationObserver for holds that can vanish without their event. */
+    removals: null,
+    watchingRemovals: false,
 
     /** Peek mode applies only on top of Firefox's "always" visibility. */
     get active() {
@@ -96,14 +104,18 @@ var AequeraBookmarks = (() => {
       this.timer = setTimeout(() => this.update(), delay);
     },
 
-    update() {
-      clearTimeout(this.timer);
+    /** Forget popups that closed without popuphidden (removed while open). */
+    pruneOpenPopups() {
       for (const popup of this.openPopups) {
-        // A popup removed while open never fires popuphidden.
         if (!popup.isConnected || popup.state == "closed") {
           this.openPopups.delete(popup);
         }
       }
+    },
+
+    update() {
+      clearTimeout(this.timer);
+      this.pruneOpenPopups();
       const open = this.wantsOpen();
       if (open !== this.open) {
         this.open = open;
@@ -111,6 +123,32 @@ var AequeraBookmarks = (() => {
         AequeraFrame.setTop(open ? this.height : 0);
       }
       this.hover.setExposed(this.open);
+      this.syncRemovalWatch();
+    },
+
+    /** Watch removals only while the open drawer is held by something a
+     * removal can take away silently: a menu, or keyboard focus on a top-bar
+     * control (the address bar is never removed). */
+    syncRemovalWatch() {
+      const watch =
+        this.open && (this.openPopups.size > 0 || (!gURLBar.focused && this.focusIntent()));
+      if (watch === this.watchingRemovals) {
+        return;
+      }
+      this.watchingRemovals = watch;
+      if (watch) {
+        this.removals.observe(document, { childList: true, subtree: true });
+      } else {
+        this.removals.disconnect();
+      }
+    },
+
+    /** MutationObserver callback: a removal may have taken a hold away. */
+    onRemovals() {
+      this.pruneOpenPopups();
+      if (!this.wantsOpen()) {
+        this.settle(Services.prefs.getIntPref(CLOSE_DELAY_PREF, 150));
+      }
     },
 
     refreshMode() {
@@ -137,6 +175,7 @@ var AequeraBookmarks = (() => {
           // shortcut opening a toolbar panel is not a request for bookmarks).
           if (this.open && this.isOwnPopup(event.target)) {
             this.openPopups.add(event.target);
+            this.syncRemovalWatch();
           }
           break;
         case "popuphidden":
@@ -172,6 +211,7 @@ var AequeraBookmarks = (() => {
       this.hover = AequeraHover.track(this.toolbox, delay => this.settle(delay), {
         ignore: this.notifications,
       });
+      this.removals = new MutationObserver(() => this.onRemovals());
       // Customize mode's events are dispatched on the toolbox (as
       // CustomizableUI listens for them), so everything registers there.
       for (const type of [
@@ -230,6 +270,7 @@ var AequeraBookmarks = (() => {
         () => {
           clearTimeout(this.timer);
           cancelAnimationFrame(startFrame);
+          this.removals.disconnect();
           document.removeEventListener("popupshown", this);
           document.removeEventListener("popuphidden", this);
           heightObserver.disconnect();
