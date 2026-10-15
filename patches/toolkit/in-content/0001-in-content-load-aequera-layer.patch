@@ -35,7 +35,7 @@ Upstream risk: low for the patch (one line next to two stable imports).
   and the test checks the main ones.
 
 diff --git a/toolkit/themes/shared/in-content/common-shared.css b/toolkit/themes/shared/in-content/common-shared.css
-index 84cba8cfb76a..564f2661c7e2 100644
+index 21e9e8d5593b..3fde91dc1c02 100644
 --- a/toolkit/themes/shared/in-content/common-shared.css
 +++ b/toolkit/themes/shared/in-content/common-shared.css
 @@ -4,6 +4,9 @@
@@ -45,6 +45,6 @@ index 84cba8cfb76a..564f2661c7e2 100644
 +/* Aequera in-content layer: the product supplies this URL (a chrome
 + * override); nothing is loaded without one. */
 +@import url("chrome://global/skin/in-content/aequera-in-content.css");
-
+ 
  @namespace html "http://www.w3.org/1999/xhtml";
  @namespace xul "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";

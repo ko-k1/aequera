@@ -24,7 +24,7 @@ Validation: aequera/shell/firefox/tests/browser (exact navbar order after
 Upstream risk: low; one nested call in the same props.set filter as 0001.
 
 diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
-index 279d94300564..2405e010cb07 100644
+index 357f0e9e1db1..839df6309186 100644
 --- a/browser/components/customizableui/CustomizableUI.sys.mjs
 +++ b/browser/components/customizableui/CustomizableUI.sys.mjs
 @@ -77,6 +77,30 @@ function withoutDefaultExclusions(placements) {
@@ -58,7 +58,7 @@ index 279d94300564..2405e010cb07 100644
  // When false, vertical tabs and the revamped sidebar are independent: a
  // browser shell that hosts the vertical tab strip itself can run vertical
  // tabs with the legacy sidebar. Default true keeps them coupled.
-@@ -1224,7 +1248,11 @@ var CustomizableUIInternal = {
+@@ -1340,7 +1364,11 @@ var CustomizableUIInternal = {
        props.set(
          key,
          kDefaultPlacementKeys.has(key)

@@ -23,7 +23,7 @@ Upstream risk: low for the patch (one line in <head>); the stylesheet
   targets Firefox's class names, which the test covers.
 
 diff --git a/browser/components/privatebrowsing/content/aboutPrivateBrowsing.html b/browser/components/privatebrowsing/content/aboutPrivateBrowsing.html
-index 40498fc..127d28d 100644
+index c5ba88b544ea..dd97733aadf8 100644
 --- a/browser/components/privatebrowsing/content/aboutPrivateBrowsing.html
 +++ b/browser/components/privatebrowsing/content/aboutPrivateBrowsing.html
 @@ -24,6 +24,11 @@

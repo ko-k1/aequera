@@ -66,7 +66,7 @@ index 15e309d7481c..c6e8323f14db 100644
    },
    tabs: {
 diff --git a/browser/locales/en-US/browser/preferences/preferences.ftl b/browser/locales/en-US/browser/preferences/preferences.ftl
-index 62301decb58e..401c4a7d4163 100644
+index 5f9dbcef23a7..4d11e2396282 100644
 --- a/browser/locales/en-US/browser/preferences/preferences.ftl
 +++ b/browser/locales/en-US/browser/preferences/preferences.ftl
 @@ -374,6 +374,10 @@ browser-layout-tabs-side-left =

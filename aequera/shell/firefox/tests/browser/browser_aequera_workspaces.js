@@ -500,10 +500,15 @@ add_task(async function test_middle_click_closes_a_workspace_with_one_tab_at_onc
   EventUtils.synthesizeMouseAtCenter(dockButtonFor(work), { button: 1 });
   await TestUtils.waitForCondition(() => !workspaceNamed("Work"), "the workspace closes without asking");
   ok(!workTab.isConnected, "its tab closed");
+  // Membership, not position: other tabs' closed entries settle around it.
+  const closedTitles = () => SessionStore.getClosedTabDataForWindow(window).map(t => t.title);
   await TestUtils.waitForCondition(
-    () => SessionStore.getClosedTabDataForWindow(window)[0]?.title == "Work page",
+    () => closedTitles().includes("Work page"),
     "into recently closed tabs"
-  );
+  ).catch(error => {
+    info(`recently closed tabs: ${JSON.stringify(closedTitles())}`);
+    throw error;
+  });
   is(ws().state.active, personal, "the active workspace stays");
   ok(!dockButtonFor(work), "its dock row is gone");
   await resetWorkspaces();

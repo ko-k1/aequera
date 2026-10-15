@@ -29,10 +29,10 @@ Upstream risk: low. One file plus a pref; if Mozilla adopts glass for
   titlebars itself, drop this patch.
 
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index f41f161a991e6ffd699b16e77e1ca5dc9ca30d64..40fc496f3ad408580489c42a7839a723e4a90e24 100644
+index 48c9b0c3d54c..b9d689bc41f3 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
-@@ -20716,6 +20716,13 @@
+@@ -20861,6 +20861,13 @@
    value: false
    mirror: always
  
@@ -47,7 +47,7 @@ index f41f161a991e6ffd699b16e77e1ca5dc9ca30d64..40fc496f3ad408580489c42a7839a723
    type: RelaxedAtomicBool
    value: false
 diff --git a/widget/cocoa/VibrancyManager.mm b/widget/cocoa/VibrancyManager.mm
-index bc62ff28285691c605fe0680e7a98927f11d5882..b62cf3fa5d711a660c853e2052157ebe148304ab 100644
+index bc62ff282856..b62cf3fa5d71 100644
 --- a/widget/cocoa/VibrancyManager.mm
 +++ b/widget/cocoa/VibrancyManager.mm
 @@ -78,6 +78,40 @@ static NSVisualEffectBlendingMode VisualEffectBlendingModeForVibrancyType(

@@ -17,10 +17,10 @@ Validation: aequera chrome-rebuild test (Restore Defaults keeps the rail);
 Upstream risk: low; one line in reset().
 
 diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
-index 53ac6df4e027..4d589f3a9f4a 100644
+index 25f26c4f0e76..42e7f0b7af51 100644
 --- a/browser/components/customizableui/CustomizableUI.sys.mjs
 +++ b/browser/components/customizableui/CustomizableUI.sys.mjs
-@@ -4558,10 +4558,12 @@ var CustomizableUIInternal = {
+@@ -4674,10 +4674,12 @@ var CustomizableUIInternal = {
     */
    reset() {
      gResetting = true;

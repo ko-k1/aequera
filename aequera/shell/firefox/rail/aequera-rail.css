@@ -98,5 +98,5 @@
 :root[aequera-rail] {
   --tab-min-height: 30px;
   --tab-margin-block: 0px;
-  --tab-inner-inline-margin: 6px;
+  --tab-margin-inline-inner: 6px;
 }

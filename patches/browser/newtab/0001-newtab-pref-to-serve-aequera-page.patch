@@ -29,7 +29,7 @@ Upstream risk: low to medium. Conflicts if defaultURL or the about:home
   message names and the TopSites state shape, which the tests cover.
 
 diff --git a/browser/components/newtab/AboutNewTabRedirector.sys.mjs b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
-index 33ebe51..7b77be7 100644
+index 33ebe5111a15..7b77be781f60 100644
 --- a/browser/components/newtab/AboutNewTabRedirector.sys.mjs
 +++ b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
 @@ -61,6 +61,13 @@ const PREF_NEWTAB_SELF_LOADING =
