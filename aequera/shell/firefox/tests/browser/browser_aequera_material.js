@@ -20,7 +20,7 @@ const alpha = color => {
 const canShowGlass = () =>
   AppConstants.platform == "macosx" ||
   (AppConstants.platform == "linux" && matchMedia("(-moz-gtk-csd-transparency-available)").matches);
-// Windows 11's Mica is the frame there; elsewhere auto follows the desktop.
+// Windows 11's Acrylic is the frame there; elsewhere auto follows the desktop.
 const autoMaterial = () =>
   AppConstants.platform == "win" || window.AequeraFrame.desktopBlurs() ? "glass" : "solid";
 
@@ -54,7 +54,7 @@ add_task(async function test_auto_follows_the_desktop() {
     is(
       material(),
       AppConstants.platform == "win" ? "glass" : "solid",
-      "any other desktop stays solid (Windows keeps Mica)"
+      "any other desktop stays solid (Windows keeps Acrylic)"
     );
   } finally {
     frame.desktopBlurs = original;
@@ -115,7 +115,7 @@ add_task(async function test_windows_backdrop() {
   await setFrame("solid");
   ok(!mica(), "solid: no backdrop");
   await setFrame("auto");
-  ok(mica() && backdrop() == 0, "auto: Mica");
+  ok(mica() && backdrop() == 2, "auto: Acrylic, the live blur glass is elsewhere");
   for (let i = 0; i < 3; i++) {
     await SpecialPowers.popPrefEnv();
   }
@@ -163,8 +163,24 @@ add_task(async function test_paint() {
     }
     is(rail(), topBar(), "glass: the rail wears the top bar's paint");
     is(alpha(rail()), 0, "the rail sits on the frame");
-  } else if (AppConstants.platform != "win") {
-    // (Windows: DWM draws Acrylic behind the frame; test_windows_backdrop.)
+  } else if (AppConstants.platform == "win") {
+    // DWM draws Acrylic behind the window (test_windows_backdrop); the frame
+    // must let it through even when Windows puts the accent color on title
+    // bars, which upstream paints over the whole frame. Backdrops render only
+    // in real windows: skipped headless, where (-moz-windows-mica) is false.
+    if (matchMedia("(-moz-windows-mica)").matches && !ROOT.hasAttribute("lwtheme")) {
+      await TestUtils.waitForCondition(() => alpha(body()) == 0, "glass: the frame shows the backdrop");
+      const scheme = document.createElement("div");
+      scheme.style.color = "-moz-headerbartext";
+      document.body.append(scheme);
+      is(
+        getComputedStyle(document.body).color,
+        getComputedStyle(scheme).color,
+        "and the scheme's text color, not the accent's"
+      );
+      scheme.remove();
+    }
+  } else {
     await new Promise(resolve => setTimeout(resolve, 500));
     is(alpha(body()), 1, "glass falls back to an opaque frame where transparency cannot show");
   }

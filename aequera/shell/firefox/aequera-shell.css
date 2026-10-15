@@ -73,9 +73,12 @@
  *     titlebar material upstream already puts behind the toolbox, here
  *     spread over the whole frame (body::before below); Liquid Glass on
  *     macOS 26+ (patches/gecko/macos-glass).
- * Windows needs nothing here: DWM draws Mica or Acrylic behind the window
- * (aequera-frame.js picks it) and upstream's (-moz-windows-mica) styles make
- * the frame transparent.
+ *   Windows: DWM draws Acrylic behind the window (aequera-frame.js) and
+ *     upstream's (-moz-windows-mica) styles make the frame transparent, except
+ *     with Windows' "Show accent color on title bars": upstream then paints
+ *     the accent (ActiveCaption) over the whole frame and its caption text,
+ *     hiding the backdrop. The frame keeps the backdrop and the scheme's text
+ *     color; the accent stays on the window border (Windows block below).
  * The page card (.browserContainer) and popups stay opaque (no stacked blur,
  * MATERIAL.md); themes with their own colors or images (lwtheme) keep the
  * solid frame, and so does a desktop that cannot show transparency. */
@@ -90,6 +93,19 @@
         in srgb, var(--toolbox-background-color-inactive) var(--aequera-material-opacity, 80%), transparent
       );
     }
+  }
+}
+
+/* Windows: the frame shows the Acrylic backdrop whatever the title bar
+ * accent setting is (see the glass comment above). Same conditions as
+ * upstream's transparent Mica frame (browser/themes/windows/browser.css). */
+@media (-moz-windows-mica) {
+  :root[aequera-material="glass"][customtitlebar]:not([lwtheme], [builtintheme]) body {
+    &, &:-moz-window-inactive {
+      background-color: transparent;
+    }
+    --toolbox-text-color: -moz-headerbartext;
+    --toolbox-text-color-inactive: -moz-headerbarinactivetext;
   }
 }
 

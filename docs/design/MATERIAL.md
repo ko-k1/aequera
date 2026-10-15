@@ -46,13 +46,17 @@ same on every platform:
 
 | | `auto` (default) | `glass` | `solid` |
 |---|---|---|---|
-| Windows 11 | Mica (Firefox's default variant, Mica Alt) | Acrylic (live blur of what is behind the window) | no backdrop |
+| Windows 11 | Acrylic (live blur of what is behind the window) | Acrylic | no backdrop |
 | macOS | vibrancy | vibrancy | opaque |
 | Linux | glass where the desktop blurs, else solid | glass where the window can show transparency | opaque |
 
 - Windows 11: DWM draws the backdrop (`widget.windows.mica`,
   `widget.windows.mica.toplevel-backdrop`, which `aequera-frame.js` sets per
-  material on the default branch). Windows 10 has no backdrop: solid.
+  material on the default branch). Acrylic, not Mica: Mica samples the
+  wallpaper once and reads as a flat tint, while glass is a live blur on
+  every platform. The material wins over Windows' "Show accent color on
+  title bars", which upstream paints over the whole frame; the accent stays
+  on the window border. Windows 10 has no backdrop: solid.
 - macOS: the window server blurs the desktop behind a vibrant region spread
   over the whole frame (the titlebar material upstream already puts behind
   the toolbox, blending behind the window). On macOS 26 and later that

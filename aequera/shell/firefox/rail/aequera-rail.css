@@ -42,7 +42,7 @@
    * The rail paints nothing instead, like the toolbox (the top bar): both
    * sit on the one window frame (body, aequera-shell.css), so collapsed,
    * widened, and the top bar read as the same material whatever the frame
-   * is (solid, glass, Windows' Mica or Acrylic, a theme's own colors). */
+   * is (solid, glass, Windows' Acrylic, a theme's own colors). */
   background-color: transparent;
   width: var(--aequera-rail-collapsed-width);
   z-index: var(--browser-area-z-index-sidebar-expand-on-hover, 3);

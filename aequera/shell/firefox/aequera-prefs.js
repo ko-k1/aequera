@@ -213,7 +213,7 @@ pref("browser.startup.page", 3);
 // Frame material: one OS backdrop behind all chrome, the native counterpart
 // of the prototype's single #frame glass layer (docs/design/MATERIAL.md).
 // aequera.material.frame (aequera-frame.js, aequera-shell.css):
-//   "auto":  the platform's own frame: Mica on Windows 11, vibrancy on macOS
+//   "auto":  the platform's own frame: Acrylic on Windows 11, vibrancy on macOS
 //            (Liquid Glass on macOS 26+), glass on Linux where the desktop
 //            blurs translucent windows, solid elsewhere;
 //   "glass": a live blur of what is behind the window: Acrylic on Windows
@@ -226,8 +226,8 @@ pref("browser.startup.page", 3);
 // the frame is solid, never chrome text over a sharp wallpaper.
 pref("aequera.material.frame", "auto");
 pref("aequera.material.opacity", 80);
-// Windows: DWM backdrop for auto; aequera-frame.js switches it per material
-// (default branch, so a user value here still wins).
+// Windows: DWM backdrop (Acrylic) for auto and glass; aequera-frame.js
+// switches it per material (default branch, so a user value here still wins).
 pref("widget.windows.mica", true);
 // macOS: the titlebar vibrancy (upstream's, behind the toolbox, and the
 // frame's) blurs the desktop behind the window instead of only the window's
