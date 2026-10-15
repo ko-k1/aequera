@@ -47,6 +47,24 @@ wash_hover = 0.12
 wash_control = 0.18
 wash_selected = 0.22
 
+# Page palette: Firefox's in-content pages (Settings, Add-ons, error pages)
+# and the new tab page. Each token is a light and a dark sRGB triplet; the
+# generator writes light-dark(rgb(...), rgb(...)). The accent is the logo's
+# cyan (#4ED5FF) in dark, deepened to #0369A1 in light. Checked pairs (WCAG):
+# on_accent on accent 5.9 light / 10.4 dark; accent on canvas 5.5 / 10.4;
+# text_dim on canvas 5.4 / 6.8; text_dim on surface 5.8 / 6.1. Violet stays
+# the private-window cue (privatebrowsing/aequera-private.css), never the
+# accent here.
+[palette]
+canvas = { light = [246, 247, 249], dark = [22, 24, 28] }
+surface = { light = [255, 255, 255], dark = [31, 34, 40] }
+text = { light = [28, 31, 36], dark = [232, 234, 238] }
+text_dim = { light = [95, 102, 114], dark = [154, 161, 173] }
+accent = { light = [3, 105, 161], dark = [78, 213, 255] }
+accent_hover = { light = [7, 89, 133], dark = [127, 224, 255] }
+accent_active = { light = [12, 74, 110], dark = [168, 235, 255] }
+on_accent = { light = [255, 255, 255], dark = [11, 26, 34] }
+
 [traffic]
 tl = 12
 

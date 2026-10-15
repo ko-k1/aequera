@@ -27,6 +27,7 @@ struct Tokens {
     #[serde(rename = "type")]
     type_: Type,
     color: Color,
+    palette: Palette,
     traffic: Traffic,
     motion: Motion,
 }
@@ -74,6 +75,25 @@ struct Color {
     wash_hover: f64,
     wash_control: f64,
     wash_selected: f64,
+}
+
+/// One light and one dark sRGB triplet (`u8`, as for the wash).
+#[derive(Deserialize)]
+struct Pair {
+    light: [u8; 3],
+    dark: [u8; 3],
+}
+
+#[derive(Deserialize)]
+struct Palette {
+    canvas: Pair,
+    surface: Pair,
+    text: Pair,
+    text_dim: Pair,
+    accent: Pair,
+    accent_hover: Pair,
+    accent_active: Pair,
+    on_accent: Pair,
 }
 
 #[derive(Deserialize)]
@@ -194,6 +214,23 @@ pub fn render(text: &str) -> Result<String, String> {
             "  --ae-wash-{name}: rgb({r} {g} {b} / {alpha});\n"
         ));
     }
+    let p = &t.palette;
+    for (name, pair) in [
+        ("canvas", &p.canvas),
+        ("surface", &p.surface),
+        ("text", &p.text),
+        ("text-dim", &p.text_dim),
+        ("accent", &p.accent),
+        ("accent-hover", &p.accent_hover),
+        ("accent-active", &p.accent_active),
+        ("on-accent", &p.on_accent),
+    ] {
+        let [lr, lg, lb] = pair.light;
+        let [dr, dg, db] = pair.dark;
+        css.push_str(&format!(
+            "  --ae-{name}: light-dark(rgb({lr} {lg} {lb}), rgb({dr} {dg} {db}));\n"
+        ));
+    }
     css.push_str("}\n");
     Ok(css)
 }
@@ -265,6 +302,8 @@ mod tests {
             "  --ae-ease: cubic-bezier(0.3,0.7,0.3,1);\n",
             "  --ae-wash-hover: rgb(127 140 170 / 0.12);\n",
             "  --ae-wash-selected: rgb(127 140 170 / 0.22);\n",
+            "  --ae-accent: light-dark(rgb(3 105 161), rgb(78 213 255));\n",
+            "  --ae-on-accent: light-dark(rgb(255 255 255), rgb(11 26 34));\n",
         ] {
             assert!(css.contains(line), "missing {line:?} in:\n{css}");
         }
@@ -281,6 +320,17 @@ mod tests {
         let alpha = shipped().replace("wash_hover = 0.12", "wash_hover = 1.5");
         assert!(render(&alpha).unwrap_err().contains("wash_hover"));
         let channel = shipped().replace("wash = [127, 140, 170]", "wash = [127, 140, 300]");
+        assert!(render(&channel).is_err());
+    }
+
+    #[test]
+    fn palette_pair_needs_both_schemes() {
+        let half = shipped().replace(
+            "accent = { light = [3, 105, 161], dark = [78, 213, 255] }",
+            "accent = { light = [3, 105, 161] }",
+        );
+        assert!(render(&half).is_err());
+        let channel = shipped().replace("dark = [78, 213, 255]", "dark = [78, 213, 256]");
         assert!(render(&channel).is_err());
     }
 
