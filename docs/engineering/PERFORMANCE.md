@@ -57,6 +57,35 @@ Diagnostics should be local and privacy-safe. Suggested tooling:
 
 No remote telemetry should be introduced solely for project measurement.
 
+## Measuring Against Firefox
+
+`tools/benchmark/browser_bench.py` (README there) measures startup, idle CPU,
+memory, tab switch latency, and every connection a real launch opens. The
+artifact build downloads exactly the compiled code of the Firefox release it
+is pinned to (its `libxul.so` is byte-identical), so running the same harness
+on that release isolates what Aequera's front end, prefs, and patches cost or
+save. Rules for a comparison:
+
+- one configuration per invocation, never two at once, and nothing else heavy
+  on the machine (builds, test gates);
+- alternate configurations run by run (`compare.py` pools artifacts sharing a
+  label): a long sequential series drifts with host load and can show a
+  difference larger than any change under test;
+- a difference counts only where the min-max ranges over the runs do not
+  overlap; otherwise it is noise and is reported as such;
+- compare memory by RSS between different builds: PSS divides shared pages
+  among every process mapping a file, so a build that another running
+  browser also maps reads lower;
+- a profile shows where CPU goes, not what a change saves: profiler overhead
+  inflates JavaScript, so a cost found with `profile_top.py` is confirmed by
+  an interleaved A/B on wall-clock metrics before a patch is kept;
+- a default changed for performance names the measured cost it removes; a
+  default changed for another reason (privacy, product) must not claim one.
+
+Firefox features created on first use (the AI features, for example) cost
+little at startup or idle; turning them off is a product decision, not a
+performance one.
+
 ## Lightness Definition
 
 Aequera's “lightweight” goal is not simply removing functionality. It means reducing unnecessary browser-shell overhead and protecting perceived responsiveness: startup, interaction latency, background activity, memory behavior, and visual smoothness matter more than superficial feature count.
