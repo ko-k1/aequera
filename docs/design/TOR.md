@@ -25,7 +25,7 @@ user, and Tor for ordinary windows.
 
 | Where | What |
 |---|---|
-| App menu, File menu | "New Tor window" after "New private window" |
+| App menu, File menu | "New Tor window" after "New private window", with its shortcut shown as that one's is |
 | Shortcut | Ctrl+Shift+Alt+P (Command+Option+Shift+P on macOS): Private Window's Ctrl+Shift+P plus Alt |
 | Link context menu | "Open Link in Tor Window" for http(s) links |
 | Address bar commands | "New Tor window" (also "private window with tor", "onion") |

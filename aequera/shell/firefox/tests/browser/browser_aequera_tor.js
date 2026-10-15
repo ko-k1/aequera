@@ -122,6 +122,10 @@ add_task(async function test_entry_points() {
   const appItem = document.getElementById("appMenu-aequera-tor-window-button");
   ok(appItem, "app menu item exists");
   is(appItem.previousElementSibling.id, "appMenu-new-private-window-button2", "right after New private window");
+  const shortcut = ShortcutUtils.prettifyShortcut(key);
+  is(appItem.getAttribute("shortcut"), shortcut, "shows the shortcut, as New private window does");
+  ok(appItem.previousElementSibling.hasAttribute("shortcut"), "the same way as New private window");
+  is(getComputedStyle(appItem, "::after").content, `"${shortcut}"`, "rendered");
   const hidden = BrowserTestUtils.waitForEvent(PanelUI.panel, "popuphidden");
   PanelUI.hide();
   await hidden;

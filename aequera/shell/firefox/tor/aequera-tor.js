@@ -108,6 +108,11 @@ var AequeraTor = (() => {
       if (anchor && !document.getElementById("appMenu-aequera-tor-window-button")) {
         const item = this.menuItem("toolbarbutton", "appMenu-aequera-tor-window-button", "New Tor window");
         item.className = "subviewbutton";
+        // PanelUI shows a view's shortcuts once, before this item exists.
+        const key = document.getElementById(KEY_ID);
+        if (key) {
+          item.setAttribute("shortcut", ShortcutUtils.prettifyShortcut(key));
+        }
         anchor.after(item);
       }
     },
