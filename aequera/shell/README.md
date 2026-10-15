@@ -12,7 +12,7 @@ pref-gated browser patches. No telemetry, no network.
 
 | File | Role |
 |---|---|
-| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab, private, and in-content pages, promos off, window fullscreen keeps chrome up, frame material (`aequera.material.frame`: Mica/Acrylic on Windows, vibrancy or Liquid Glass on macOS, Linux glass on blurring desktops, opaque elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on, Tor windows on |
+| `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab, private, and in-content pages, promos off, window fullscreen keeps chrome up, frame material (`aequera.material.frame`: Acrylic on Windows, vibrancy or Liquid Glass on macOS, Linux glass on blurring desktops, opaque elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on, Tor windows on |
 | `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome; the glass frame material (Linux and macOS tint, macOS vibrant layer) |
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
@@ -265,7 +265,7 @@ saturate 1.5) maps to an OS backdrop, never to an in-page blur.
 
 | Value | Windows 11 | macOS | Linux |
 |---|---|---|---|
-| `auto` (default) | Mica | glass | `glass` on a desktop that blurs (below), else `solid` |
+| `auto` (default) | Acrylic | glass | `glass` on a desktop that blurs (below), else `solid` |
 | `glass` | Acrylic | vibrancy behind the whole frame | the compositor's blur behind a translucent frame |
 | `solid` | no backdrop | opaque, upstream's toolbox vibrancy off too | the opaque frame |
 
@@ -278,10 +278,13 @@ and keeps the page card and popups opaque (no stacked blur,
 `docs/design/MATERIAL.md`).
 
 - Windows: DWM draws the backdrop. `aequera-frame.js` sets Firefox's
-  `widget.windows.mica` and `widget.windows.mica.toplevel-backdrop` (0 Mica,
-  2 Acrylic) on the default branch per material, so a user value in
-  about:config still wins; upstream's `(-moz-windows-mica)` styles make the
-  frame transparent to it.
+  `widget.windows.mica` (off for solid) and
+  `widget.windows.mica.toplevel-backdrop` (2, Acrylic) on the default branch,
+  so a user value in about:config still wins; upstream's
+  `(-moz-windows-mica)` styles make the frame transparent to it. With
+  Windows' "Show accent color on title bars" on, upstream paints the accent
+  over the whole frame; `aequera-shell.css` keeps the frame transparent with
+  the scheme's text color, and the accent stays on the window border.
 - macOS: `body::before` carries the titlebar vibrancy
   (`-moz-window-titlebar`, the material upstream puts behind the toolbox) over
   the whole frame, blending behind the window

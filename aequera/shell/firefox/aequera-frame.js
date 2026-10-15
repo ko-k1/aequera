@@ -14,14 +14,14 @@
 //   the frame material (docs/design/MATERIAL.md): aequera.material.frame
 //     resolved to :root[aequera-material="solid"|"glass"], and
 //     aequera.material.opacity to --aequera-material-opacity (aequera-shell.css
-//     paints it). "auto" is the platform's own frame: Mica on Windows 11,
+//     paints it). "auto" is the platform's own frame: Acrylic on Windows 11,
 //     vibrancy on macOS, and on Linux glass only where the desktop blurs what
 //     shows through a translucent window (Hyprland always; any compositor
 //     offering ext-background-effect-v1 blur, which Gecko then requests);
 //     elsewhere a translucent frame would put chrome text on a sharp
 //     wallpaper, so it stays solid. On Windows the OS draws the backdrop, so
-//     the material also selects it: Mica for auto, Acrylic (a live blur of
-//     what is behind the window) for glass, none for solid. Read from the
+//     the material also selects it: Acrylic (a live blur of what is behind
+//     the window) for auto and glass, none for solid. Read from the
 //     local environment; nothing leaves the machine.
 
 // Locked shell prefs (aequera-prefs.js) unlock only for the test gate, which
@@ -125,7 +125,7 @@ var AequeraFrame = (() => {
       if (material != "auto") {
         return material;
       }
-      // Windows 11's own backdrop (Mica) is translucent by design.
+      // Windows 11's backdrop (Acrylic) is translucent by design.
       return AppConstants.platform == "win" || this.desktopBlurs() ? "glass" : "solid";
     },
 
@@ -133,10 +133,10 @@ var AequeraFrame = (() => {
      * Windows: DWM draws the backdrop behind the window, selected by
      * Firefox's own prefs. Set on the default branch, so it is recomputed
      * every start and a user value in about:config still wins.
-     *   auto:  Mica (widget.windows.mica.toplevel-backdrop 0: Firefox's
-     *          default, the Mica Alt variant);
-     *   glass: Acrylic (2), a live blur of what is behind the window;
-     *   solid: no backdrop.
+     *   auto, glass: Acrylic (widget.windows.mica.toplevel-backdrop 2), a
+     *                live blur of what is behind the window, like glass on
+     *                Linux and macOS;
+     *   solid:       no backdrop.
      */
     publishWindowsBackdrop(material) {
       if (AppConstants.platform != "win") {
@@ -144,7 +144,7 @@ var AequeraFrame = (() => {
       }
       const defaults = Services.prefs.getDefaultBranch("");
       defaults.setBoolPref("widget.windows.mica", material != "solid");
-      defaults.setIntPref("widget.windows.mica.toplevel-backdrop", material == "glass" ? 2 : 0);
+      defaults.setIntPref("widget.windows.mica.toplevel-backdrop", 2);
     },
 
     publishMaterial() {
