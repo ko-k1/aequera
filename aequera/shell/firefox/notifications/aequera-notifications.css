@@ -26,9 +26,14 @@
 }
 
 /* #browser (positioned, later in the tree) otherwise sits over the cards and
- * takes their clicks: while the top bar holds a notification it stacks above
+ * takes their clicks: while the top bar shows a notification it stacks above
  * the browser area, as for the open drawer (aequera-bookmarks.css), and must
- * not clip what hangs below it (Firefox clips it under Nova and lwthemes). */
+ * not clip what hangs below it (Firefox clips it under Nova and lwthemes).
+ * A background tab's notification counts too: each tab keeps its own box in
+ * #tab-notification-deck, and only the selected one is slotted, but Gecko
+ * does not re-match :has() when a box is unslotted (the unslotted box has no
+ * style to invalidate from). Raising the top bar with nothing below it is
+ * harmless, so the selector stays simple. */
 #navigator-toolbox:has(> #notifications-toolbar notification-message) {
   z-index: var(--browser-area-z-index-toolbox-while-animating, 4);
   overflow: visible;

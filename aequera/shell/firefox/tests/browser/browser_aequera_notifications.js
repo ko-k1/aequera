@@ -133,6 +133,16 @@ add_task(async function test_card_is_not_the_top_bar() {
   gBrowser.getNotificationBox().removeNotification(notification, true);
 });
 
+add_task(async function test_raises_top_bar_only_with_a_card() {
+  // The top bar stacks above the browser area only while it holds a card
+  // (with none, the browser area keeps Firefox's stacking).
+  const resting = getComputedStyle(gNavToolbox).zIndex;
+  const notification = await showNotification();
+  isnot(getComputedStyle(gNavToolbox).zIndex, resting, "a card raises the top bar");
+  gBrowser.getNotificationBox().removeNotification(notification, true);
+  is(getComputedStyle(gNavToolbox).zIndex, resting, "no card, no raise");
+});
+
 add_task(async function test_window_notification_floats() {
   const toolboxBefore = box(gNavToolbox);
   const pageBefore = box(tabbox());
