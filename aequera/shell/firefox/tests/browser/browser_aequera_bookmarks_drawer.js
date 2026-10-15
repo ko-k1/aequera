@@ -164,6 +164,54 @@ add_task(async function test_menu_opened_from_the_drawer_holds_it_open() {
   await TestUtils.waitForCondition(() => !isOpen(), "closing the menu lets it close");
 });
 
+add_task(async function test_a_menu_removed_while_open_lets_it_close() {
+  // The toolbar folder goes away while its menu is open (another window,
+  // sync, an extension): Gecko destroys the open menu without popuphidden.
+  const folder = await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+    type: PlacesUtils.bookmarks.TYPE_FOLDER,
+    title: "Aequera drawer folder",
+  });
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: folder.guid,
+    url: "https://example.com/aequera-drawer-folder",
+    title: "In the folder",
+  });
+  hoverTopBar();
+  await TestUtils.waitForCondition(isOpen, "open");
+  const button = await TestUtils.waitForCondition(
+    () => [...toolbar().querySelectorAll(".bookmark-item")].find(b => b.label == folder.title),
+    "the folder is on the drawer"
+  );
+  await wait(200);
+  const shown = BrowserTestUtils.waitForPopupEvent(button.menupopup, "shown");
+  EventUtils.synthesizeMouseAtCenter(button, {});
+  await shown;
+  leaveTopBar();
+  await wait(450);
+  ok(isOpen(), "the open folder menu holds the drawer");
+  await PlacesUtils.bookmarks.remove(folder);
+  await TestUtils.waitForCondition(() => !button.isConnected, "the folder and its menu are gone");
+  await TestUtils.waitForCondition(() => !isOpen(), "the removed menu no longer holds it");
+});
+
+add_task(async function test_a_removed_focused_control_lets_it_close() {
+  // Keyboard focus on a top-bar control holds the drawer; removing that
+  // control (a bookmark deleted, an extension button going away) fires no
+  // focusout.
+  await closeDrawer();
+  const button = document.createElementNS("http://www.w3.org/1999/xhtml", "button");
+  button.textContent = "test";
+  document.getElementById("nav-bar").append(button);
+  button.focus({ focusVisible: true });
+  await TestUtils.waitForCondition(isOpen, "keyboard focus in the top bar opens it");
+  await wait(450);
+  ok(isOpen(), "and holds it");
+  button.remove();
+  await TestUtils.waitForCondition(() => !isOpen(), "the removed control no longer holds it");
+  gBrowser.selectedBrowser.focus();
+});
+
 add_task(async function test_a_top_bar_panel_never_opens_a_closed_drawer() {
   await closeDrawer();
   // As a keyboard shortcut would: the app menu, anchored in the top bar.

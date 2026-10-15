@@ -398,7 +398,13 @@ opened from the top bar or drawer (a bookmark's context menu, a folder)
 holds it open, but never opens it. An open drawer that comes to lie under a
 resting pointer (opened by the address bar, a window retile) still closes
 when the address bar blurs, unless that pointer has since moved, pressed,
-or scrolled. Focus holds only while the window is active. Firefox's own "Never" / "Only on new tab"
+or scrolled. Focus holds only while the window is active. A hold that goes
+away without its event still releases: Gecko fires no `popuphidden` for an
+open menu removed from the document (a toolbar folder deleted while its menu
+is open) and no `focusout` for a removed focused control, so while a menu or
+keyboard focus outside the address bar holds the drawer, a MutationObserver
+re-decides on removals (nothing is observed otherwise, so typing in the
+address bar costs nothing). Firefox's own "Never" / "Only on new tab"
 behave natively; customize mode turns it off.
 
 Tests: `tests/browser/browser_aequera_bookmarks_drawer.js`.
