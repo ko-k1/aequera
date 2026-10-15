@@ -1,0 +1,29 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Generated from aequera/design/tokens.toml by `aequera design tokens`.
+ * Do not edit: change the tokens and regenerate. */
+
+:root {
+  --ae-top: 42px;
+  --ae-rail: 42px;
+  --ae-panel: 220px;
+  --ae-ctl: 30px;
+  --ae-rpy: 7px;
+  --ae-rpx: 7px;
+  --ae-gap: 6px;
+  --ae-rad: 9px;
+  --ae-blur: 24px;
+  --ae-fs: 14px;
+  --ae-tl: 12px;
+  --ae-sat: 1.5;
+  --ae-dur: 250ms;
+  --ae-ease: cubic-bezier(0.3,0.7,0.3,1);
+  --ae-ease-swift: cubic-bezier(0.3,0.7,0.3,1);
+  --ae-ease-snappy: cubic-bezier(0.2,0.9,0.25,1);
+  --ae-ease-smooth: cubic-bezier(0.4,0,0.2,1);
+  --ae-wash-hover: rgb(127 140 170 / 0.12);
+  --ae-wash-control: rgb(127 140 170 / 0.18);
+  --ae-wash-selected: rgb(127 140 170 / 0.22);
+}

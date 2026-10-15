@@ -2,6 +2,7 @@
 
 browser.jar:
     content/browser/aequera/aequera-shell.css                  (aequera-shell.css)
+    content/browser/aequera/aequera-tokens.css                 (aequera-tokens.css)
     content/browser/aequera/aequera-shell.js                   (aequera-shell.js)
     content/browser/aequera/aequera-main.js                    (aequera-main.js)
     content/browser/aequera/aequera-frame.js                   (aequera-frame.js)

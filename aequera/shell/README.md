@@ -98,13 +98,14 @@ layouts with display toggles and cannot animate like the prototype); Firefox's
 tab elements stay the source of truth and are hidden. Prototype row language
 (`prototype/shell/styles.css` `.tab-row`, same values): 30px rows 6px apart
 with 9px corners, transparent at rest with the prototype's hover and selected
-washes, 12px titles; collapsed, each row is a 30px square whose icon sits on
-the rail's center line and never moves; rows grow with the rail, titles are
-revealed by the widening and fade in (clipped away, then faded out, on
- collapse). Click selects, middle-click and the dim "x" (on hover, widened
- rail only) close, right-click opens Firefox's own tab context menu for that
- row (rows carry `.tab`). Hidden tabs (other workspaces, extensions) are not
- listed.
+washes (`--ae-wash-*` from `aequera/design/tokens.toml`, generated into
+`aequera-tokens.css`), 12px titles; collapsed, each row is a 30px square
+whose icon sits on the rail's center line and never moves; rows grow with
+the rail, titles are revealed by the widening and fade in (clipped away,
+then faded out, on collapse). Click selects, middle-click and the dim "x"
+(on hover, widened rail only) close, right-click opens Firefox's own tab
+context menu for that row (rows carry `.tab`). Hidden tabs (other
+workspaces, extensions) are not listed.
 
 Drag and drop (each row below was checked with real pointer drags on a
 Wayland compositor, and is covered headless by `browser_aequera_tabs.js`):

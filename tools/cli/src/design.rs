@@ -12,7 +12,10 @@ use std::path::Path;
 pub const TOKENS_RELATIVE: &str = "aequera/design/tokens.toml";
 
 /// Every generated stylesheet, relative to the repository root.
-pub const TARGETS: &[&str] = &["aequera/extensions/ad-veil/addon/pages/tokens.css"];
+pub const TARGETS: &[&str] = &[
+    "aequera/extensions/ad-veil/addon/pages/tokens.css",
+    "aequera/shell/firefox/aequera-tokens.css",
+];
 
 #[derive(Deserialize)]
 struct Tokens {
@@ -23,6 +26,7 @@ struct Tokens {
     material: Material,
     #[serde(rename = "type")]
     type_: Type,
+    color: Color,
     traffic: Traffic,
     motion: Motion,
 }
@@ -61,6 +65,15 @@ struct Material {
 #[derive(Deserialize)]
 struct Type {
     fs: u32,
+}
+
+/// `u8` channels: serde rejects anything outside 0..=255.
+#[derive(Deserialize)]
+struct Color {
+    wash: [u8; 3],
+    wash_hover: f64,
+    wash_control: f64,
+    wash_selected: f64,
 }
 
 #[derive(Deserialize)]
@@ -145,6 +158,18 @@ pub fn render(text: &str) -> Result<String, String> {
         ("fs", t.type_.fs),
         ("tl", t.traffic.tl),
     ];
+    let [r, g, b] = t.color.wash;
+    let mut washes = Vec::new();
+    for (name, alpha) in [
+        ("hover", t.color.wash_hover),
+        ("control", t.color.wash_control),
+        ("selected", t.color.wash_selected),
+    ] {
+        if !(0.0..=1.0).contains(&alpha) {
+            return Err(format!("[color] wash_{name} = {alpha}: expected 0 to 1"));
+        }
+        washes.push((name, alpha));
+    }
     let mut css = String::from(
         "/* This Source Code Form is subject to the terms of the Mozilla Public\n \
          * License, v. 2.0. If a copy of the MPL was not distributed with this\n \
@@ -164,6 +189,11 @@ pub fn render(text: &str) -> Result<String, String> {
     css.push_str(&format!("  --ae-ease-swift: {swift};\n"));
     css.push_str(&format!("  --ae-ease-snappy: {snappy};\n"));
     css.push_str(&format!("  --ae-ease-smooth: {smooth};\n"));
+    for (name, alpha) in washes {
+        css.push_str(&format!(
+            "  --ae-wash-{name}: rgb({r} {g} {b} / {alpha});\n"
+        ));
+    }
     css.push_str("}\n");
     Ok(css)
 }
@@ -233,6 +263,8 @@ mod tests {
             "  --ae-sat: 1.5;\n",
             "  --ae-dur: 250ms;\n",
             "  --ae-ease: cubic-bezier(0.3,0.7,0.3,1);\n",
+            "  --ae-wash-hover: rgb(127 140 170 / 0.12);\n",
+            "  --ae-wash-selected: rgb(127 140 170 / 0.22);\n",
         ] {
             assert!(css.contains(line), "missing {line:?} in:\n{css}");
         }
@@ -242,6 +274,14 @@ mod tests {
     fn future_schema_rejected() {
         let text = shipped().replace("schema_version = 1", "schema_version = 2");
         assert!(render(&text).unwrap_err().contains("schema_version 2"));
+    }
+
+    #[test]
+    fn wash_out_of_range_rejected() {
+        let alpha = shipped().replace("wash_hover = 0.12", "wash_hover = 1.5");
+        assert!(render(&alpha).unwrap_err().contains("wash_hover"));
+        let channel = shipped().replace("wash = [127, 140, 170]", "wash = [127, 140, 300]");
+        assert!(render(&channel).is_err());
     }
 
     #[test]

@@ -157,6 +157,12 @@ add_task(async function test_prototype_geometry() {
   is(Math.round(first.width), 30, "collapsed: a row is a 30px square");
   const icon = rowFor(a).querySelector(".aequera-tab-icon").getBoundingClientRect();
   Assert.less(Math.abs(centerX(icon) - centerX(rail)), 0.5, "its icon sits on the rail's center line");
+  const selected = document.querySelector('.aequera-tab[aria-selected="true"]');
+  is(
+    getComputedStyle(selected).backgroundColor,
+    "rgba(127, 140, 170, 0.22)",
+    "the selected row wears the --ae-wash-selected token"
+  );
 });
 
 add_task(async function test_firefox_rows_come_back_if_the_list_is_not_mounted() {

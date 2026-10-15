@@ -39,6 +39,14 @@ sat = 1.5
 [type]
 fs = 14
 
+# Row wash (prototype .tab-row): one tint over any backdrop, at three
+# strengths. Numbers only: the generator writes rgb(R G B / alpha).
+[color]
+wash = [127, 140, 170]
+wash_hover = 0.12
+wash_control = 0.18
+wash_selected = 0.22
+
 [traffic]
 tl = 12
 
