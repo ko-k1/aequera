@@ -320,7 +320,9 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
         && state.manifest_version == manifest.manifest_version
         && state.applied == want
     {
-        verify_worktree_matches_series(root, &wt, &manifest)?;
+        if !worktree_matches_series(root, &wt, &manifest)? {
+            return Err("state claims the series is applied but tracked worktree files differ from base + series; worktree needs rebuild".into());
+        }
         let overlays_changed = state.overlays != overlay_ids(&manifest);
         let overlay_files = sync_overlays(root, &wt, &manifest)?;
         write_state(&wt, &state_for(lock, &manifest))?;
@@ -341,8 +343,9 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
             // Single `git apply` (no separate `--check`): check-then-apply
             // is a TOCTOU window where the patch file could change between
             // the two invocations. Apply fails atomically with the same
-            // diagnostic either way.
-            upstream::git(&wt, &["apply", &rel])
+            // diagnostic either way. `--index`, as `patch rebase` applies:
+            // files the series adds are tracked, so drift checks see them.
+            git_apply(&wt, &["--index"], &rel, &[])
                 .map_err(|e| format!("series {:?}: apply failed on {rel}: {e}", entry.id))?;
         }
         applied.push(entry.id.clone());
@@ -359,15 +362,16 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
     })
 }
 
-/// The tree the series should produce, built in a scratch index (so a
-/// dependent series is applied cumulatively, as `apply` does), compared with
-/// the worktree's tracked files. Untracked output (overlays, objdir) is out
-/// of scope; any tracked difference is drift.
-pub(crate) fn verify_worktree_matches_series(
+/// Whether the worktree's tracked files equal base + series: the tree the
+/// series should produce, built in a scratch index (so a dependent series is
+/// applied cumulatively, as `apply` does). Untracked output (overlays,
+/// objdir) is out of scope. `Ok(false)` is drift; `Err` means the check
+/// itself failed.
+pub(crate) fn worktree_matches_series(
     root: &Path,
     wt: &Path,
     manifest: &PatchManifest,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let index = ScratchIndex::seeded(wt, "HEAD")?;
     for entry in &manifest.patches {
         for f in series_files(root, entry)? {
@@ -381,14 +385,19 @@ pub(crate) fn verify_worktree_matches_series(
         }
     }
     let expected = index.write_tree(wt)?;
-    let drift = || {
-        "state claims the series is applied but tracked worktree files differ from base + series; worktree needs rebuild".to_string()
-    };
+    track_series_additions(wt, &expected)?;
+    // `--name-only`, not `--quiet`: a failing git stays an error, not drift.
+    let diff = upstream::git(
+        wt,
+        &["diff", "--name-only", "--no-renames", &expected, "--"],
+    )?;
+    Ok(diff.is_empty())
+}
 
-    // `apply` uses plain `git apply`, so files the series adds stay untracked,
-    // and `git diff` only sees the index's paths: those files would always
-    // read as deleted. Compare them by content; diff the rest as usual.
-    // `--name-only` (not `--quiet`) so a git error stays an error, not drift.
+/// Worktrees applied before `apply` used `--index` hold the files the series
+/// adds untracked, and `git diff` compares only tracked paths, so those files
+/// would read as deleted. Stage them, then they are compared by content.
+fn track_series_additions(wt: &Path, expected: &str) -> Result<(), String> {
     let added = upstream::git(
         wt,
         &[
@@ -398,32 +407,25 @@ pub(crate) fn verify_worktree_matches_series(
             "--no-renames",
             "--diff-filter=A",
             "HEAD",
-            &expected,
+            expected,
         ],
     )?;
     let added: Vec<&str> = added.split('\0').filter(|p| !p.is_empty()).collect();
-    let excludes: Vec<String> = added
-        .iter()
-        .map(|p| format!(":(exclude,literal){p}"))
+    if added.is_empty() {
+        return Ok(());
+    }
+    let mut ls = vec!["--literal-pathspecs", "ls-files", "-z", "--"];
+    ls.extend(added.iter().copied());
+    let tracked = upstream::git(wt, &ls)?;
+    let tracked: Vec<&str> = tracked.split('\0').collect();
+    let untracked: Vec<&str> = added
+        .into_iter()
+        .filter(|p| !tracked.contains(p) && wt.join(p).is_file())
         .collect();
-    let mut args = vec!["diff", "--name-only", "--no-renames", &expected, "--", "."];
-    args.extend(excludes.iter().map(String::as_str));
-    if !upstream::git(wt, &args)?.is_empty() {
-        return Err(drift());
-    }
-
-    if added.iter().any(|p| !wt.join(p).is_file()) {
-        return Err(drift());
-    }
-    if !added.is_empty() {
-        let blobs: Vec<String> = added.iter().map(|p| format!("{expected}:{p}")).collect();
-        let mut rev_args = vec!["rev-parse"];
-        rev_args.extend(blobs.iter().map(String::as_str));
-        let mut hash_args = vec!["hash-object", "--"];
-        hash_args.extend(added.iter().copied());
-        if upstream::git(wt, &rev_args)? != upstream::git(wt, &hash_args)? {
-            return Err(drift());
-        }
+    if !untracked.is_empty() {
+        let mut add = vec!["update-index", "--add", "--"];
+        add.extend(untracked);
+        upstream::git(wt, &add)?;
     }
     Ok(())
 }
@@ -708,6 +710,22 @@ fn ensure_worktree_shell(root: &Path, lock: &LockFile) -> Result<PathBuf, String
 /// A temporary Git index file, seeded from a tree-ish and deleted on drop.
 /// Patches applied with `--cached` land only here, never in a working tree
 /// or its real index.
+/// `git apply` with whitespace handling pinned: a global `apply.whitespace`
+/// of `fix` or `error` would rewrite or refuse patch lines, so the series
+/// would apply differently per machine. `nowarn` applies the bytes as
+/// written, like git's default.
+pub(crate) fn git_apply(
+    dir: &Path,
+    flags: &[&str],
+    patch: &str,
+    envs: &[(&str, &Path)],
+) -> Result<String, String> {
+    let mut args = vec!["-c", "apply.whitespace=nowarn", "apply"];
+    args.extend_from_slice(flags);
+    args.push(patch);
+    upstream::git_with_env(dir, &args, envs)
+}
+
 pub(crate) struct ScratchIndex {
     path: PathBuf,
 }
@@ -756,7 +774,7 @@ impl ScratchIndex {
 
     pub(crate) fn apply(&self, wt: &Path, patch: &Path) -> Result<(), String> {
         let patch = patch.display().to_string();
-        upstream::git_with_env(wt, &["apply", "--cached", &patch], &self.env()).map(|_| ())
+        git_apply(wt, &["--cached"], &patch, &self.env()).map(|_| ())
     }
 
     /// Exact apply first; on failure, a 3-way merge from the preimage blobs
@@ -767,8 +785,7 @@ impl ScratchIndex {
             return Ok(Applicability::Clean);
         }
         let patch = patch.display().to_string();
-        upstream::git_with_env(wt, &["apply", "--cached", "-3", &patch], &self.env())
-            .map(|_| Applicability::ThreeWay)
+        git_apply(wt, &["--cached", "-3"], &patch, &self.env()).map(|_| Applicability::ThreeWay)
     }
 
     /// Paths left unmerged by a failed 3-way apply, sorted and deduplicated.
@@ -1020,10 +1037,30 @@ mod tests {
         write_manifest(&root, &sha, "  - id: adds\n    series: browser/adds\n");
 
         assert!(!apply(&root, &lock).expect("first apply").already_applied);
-        let added = root.join(WORKTREE_RELATIVE).join("added.txt");
+        let wt = root.join(WORKTREE_RELATIVE);
+        let added = wt.join("added.txt");
         assert_eq!(std::fs::read_to_string(&added).unwrap(), "new\n");
+        assert_eq!(
+            git(&wt, &["ls-files", "added.txt"]),
+            "added.txt",
+            "applied with --index"
+        );
         let again = apply(&root, &lock).expect("re-apply must not report drift");
         assert!(again.already_applied);
+
+        // A worktree applied without --index (the added file untracked) still
+        // verifies, and the file is tracked from then on.
+        git(&wt, &["rm", "--cached", "-q", "added.txt"]);
+        let again = apply(&root, &lock).expect("old-layout worktree must not report drift");
+        assert!(again.already_applied);
+        assert_eq!(git(&wt, &["ls-files", "added.txt"]), "added.txt");
+
+        // A check that cannot run is an error, never drift.
+        let manifest = load_manifest(&root, &lock).unwrap();
+        std::fs::write(series.join("0001-adds.patch"), "not a patch\n").unwrap();
+        let err = worktree_matches_series(&root, &wt, &manifest).expect_err("broken series");
+        assert!(err.contains("no longer applies to base"), "got: {err}");
+        std::fs::write(series.join("0001-adds.patch"), format!("{diff}\n")).unwrap();
 
         // An edited or missing added file is still drift.
         std::fs::write(&added, "edited\n").unwrap();
@@ -1032,6 +1069,32 @@ mod tests {
         std::fs::remove_file(&added).unwrap();
         let err = apply(&root, &lock).expect_err("missing added file is drift");
         assert!(err.contains("differ from base + series"), "got: {err}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn apply_ignores_the_users_whitespace_config() {
+        let (root, lock, sha) = baseline("whitespace");
+        let origin = root.join("origin");
+        // Not the diff's last line: the fixture git() trims its output.
+        std::fs::write(origin.join("base.txt"), "base\ntrailing \nend\n").unwrap();
+        let diff = git(&origin, &["diff"]);
+        git(&origin, &["checkout", "--", "base.txt"]);
+        let series = root.join("patches/browser/ws");
+        std::fs::create_dir_all(&series).unwrap();
+        std::fs::write(series.join("0001-ws.patch"), format!("{diff}\n")).unwrap();
+        write_manifest(&root, &sha, "  - id: ws\n    series: browser/ws\n");
+        // A user setting that refuses (or with `fix`, rewrites) the line.
+        git(
+            &root.join(upstream::CHECKOUT_RELATIVE),
+            &["config", "apply.whitespace", "error"],
+        );
+
+        apply(&root, &lock).expect("apply despite apply.whitespace=error");
+        let content =
+            std::fs::read_to_string(root.join(WORKTREE_RELATIVE).join("base.txt")).unwrap();
+        assert_eq!(content, "base\ntrailing \nend\n", "applied byte for byte");
+        assert!(apply(&root, &lock).expect("re-apply").already_applied);
         std::fs::remove_dir_all(&root).ok();
     }
 

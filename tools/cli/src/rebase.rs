@@ -214,10 +214,10 @@ fn run(
     while state.next < state.files.len() {
         let rel = state.files[state.next].clone();
         let patch_path = root.join(&rel).display().to_string();
-        let applied = if upstream::git(wt, &["apply", "--index", &patch_path]).is_ok() {
+        let applied = if patch::git_apply(wt, &["--index"], &patch_path, &[]).is_ok() {
             Ok(Applicability::Clean)
         } else {
-            upstream::git(wt, &["apply", "--index", "-3", &patch_path])
+            patch::git_apply(wt, &["--index", "-3"], &patch_path, &[])
                 .map(|_| Applicability::ThreeWay)
         };
         match applied {
@@ -550,12 +550,13 @@ fn require_generated_only(
     if upstream::git(ff, &["diff", "--quiet", "HEAD", "--"]).is_ok() {
         return Ok(());
     }
-    patch::verify_worktree_matches_series(root, ff, manifest).map_err(|_| {
-        format!(
-            "{} has tracked edits beyond base + series; promote them into a patch or discard them before adopting",
-            ff.display()
-        )
-    })
+    if patch::worktree_matches_series(root, ff, manifest)? {
+        return Ok(());
+    }
+    Err(format!(
+        "{} has tracked edits beyond base + series; promote them into a patch or discard them before adopting",
+        ff.display()
+    ))
 }
 
 /// New manifest text: only `version`/`revision` inside the `base:` block.
