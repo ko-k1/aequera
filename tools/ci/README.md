@@ -23,10 +23,13 @@
    - `aequera config validate` (defaults green)
 
 A second job, `engine`, rebuilds `aequera/extensions/ad-veil/addon/engine.wasm`
-with the toolchain that produced it (rustup's Rust 1.98.1 and the
-`wasm32-unknown-unknown` target) and fails when the committed binary differs
-from its source (`build-engine.sh --check`). Bump its pin together with a
-rebuilt `engine.wasm`.
+on x86_64 Linux with the toolchain that produced it (rustup's Rust 1.98.1 and
+the `wasm32-unknown-unknown` target) and fails when the committed binary
+differs from its source (`build-engine.sh --check`). The build is repeatable
+per host architecture only, so x86_64 Linux is the reference: on a mismatch
+the job uploads its build as the `engine-wasm-ci` artifact, which is the
+file to commit after an engine change. Bump the pin together with a rebuilt
+`engine.wasm`.
 
 Deliberately excluded from PR CI: `fetch`, `checkout`, `bootstrap`, `apply`
 against the real Firefox remote (gigabytes of objects, tens of minutes).

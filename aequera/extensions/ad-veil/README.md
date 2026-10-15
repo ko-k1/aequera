@@ -45,8 +45,10 @@ Design, decisions, and measurements: `docs/design/ADS.md` and
 # Engine (any change under engine/): rebuild, commit engine.wasm with it.
 cargo test -p aequera-adveil-engine
 # rustup's Rust 1.98.1 + `rustup target add wasm32-unknown-unknown`.
-bash aequera/extensions/ad-veil/build-engine.sh
-bash aequera/extensions/ad-veil/build-engine.sh --check  # CI runs this too
+bash aequera/extensions/ad-veil/build-engine.sh          # local testing
+bash aequera/extensions/ad-veil/build-engine.sh --check  # x86_64 Linux only
+# To commit an engine change: push it; CI's engine job fails and uploads the
+# reference build (artifact engine-wasm-ci); commit that as addon/engine.wasm.
 
 # Model.
 node --test aequera/extensions/ad-veil/addon/model.test.mjs   # or bun test
@@ -61,12 +63,13 @@ bash ../../tools/build/test-shell.sh aequera
 ```
 
 `engine.wasm` is committed so the browser build needs no Rust or wasm
-toolchain. `build-engine.sh` is deterministic for a given rustc build, and
-machine-independent: it remaps the cargo registry and the checkout out of the
-source paths that panic locations embed, so the binary names no home
-directory. CI's `engine` job rebuilds it with rustup's 1.98.1 and fails when
-the committed file differs; a distro or nix rustc (its own LLVM) emits
-different bytes at the same version.
+toolchain. It is the x86_64 Linux build: `build-engine.sh` remaps the cargo
+registry and the checkout out of the source paths that panic locations
+embed (the binary names no home directory), and its output is byte-for-byte
+repeatable per host architecture, not across them (an aarch64 host emits
+different bytes from the same rustup 1.98.1 and source; a distro or nix
+rustc, with its own LLVM, differs again). CI's `engine` job rebuilds on
+x86_64 Linux and fails when the committed file differs.
 
 ## Acceptance
 

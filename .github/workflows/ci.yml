@@ -50,6 +50,8 @@ jobs:
   # engine.wasm is committed (the Firefox build needs no wasm toolchain):
   # rebuild it with the toolchain that made it and fail if the bytes differ,
   # so the shipped engine always matches aequera/extensions/ad-veil/engine.
+  # The bytes are repeatable per host architecture only: this x86_64 Linux
+  # build is the reference (tools/ci/README.md).
   engine:
     name: engine.wasm matches its source
     runs-on: ubuntu-latest
