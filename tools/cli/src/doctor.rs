@@ -180,18 +180,35 @@ pub fn run(json: bool) -> ExitCode {
                     // Compatibility matrix pin (docs/engineering/COMPATIBILITY.md):
                     // matrix.firefox must equal the lock, or platform claims drift.
                     checks.push(compat_matrix_check(&root, &l));
-                    checks.push(state_check(
-                        "checkout",
-                        &root.join("upstream/firefox"),
-                        "managed checkout present",
-                        "absent (expected until W2/W3 fetch+checkout land)",
-                    ));
-                    checks.push(state_check(
-                        "worktree",
-                        &root.join("worktree/firefox"),
-                        "generated worktree present",
-                        "absent (expected until W3 pipeline lands)",
-                    ));
+                    // Present is not enough: after a lock bump the checkout
+                    // lacks the new commit and the worktree sits on the old
+                    // base, which `aequera patch apply` refuses.
+                    let sha = &l.upstream.revision.git;
+                    let checkout = root.join("upstream/firefox");
+                    checks.push(if lock::substantive_present(&checkout) {
+                        checkout_lock_check(checkout_has_commit(&checkout, sha), sha)
+                    } else {
+                        state_check(
+                            "checkout",
+                            &checkout,
+                            "managed checkout present",
+                            "absent (expected until W2/W3 fetch+checkout land)",
+                        )
+                    });
+                    let worktree = root.join(crate::patch::WORKTREE_RELATIVE);
+                    checks.push(if lock::substantive_present(&worktree) {
+                        worktree_base_check(
+                            crate::upstream::git(&worktree, &["rev-parse", "HEAD"]),
+                            sha,
+                        )
+                    } else {
+                        state_check(
+                            "worktree",
+                            &worktree,
+                            "generated worktree present",
+                            "absent (expected until W3 pipeline lands)",
+                        )
+                    });
                 }
                 Err(e) => checks.push(Check {
                     name: "lock",
@@ -319,6 +336,68 @@ fn state_check(
     }
 }
 
+/// Whether the managed checkout holds the locked commit (`git cat-file -e`
+/// exits non-zero for a missing object; Err only when git cannot run there).
+fn checkout_has_commit(checkout: &std::path::Path, sha: &str) -> Result<bool, String> {
+    Command::new("git")
+        .arg("-C")
+        .arg(checkout)
+        .args(["cat-file", "-e", &format!("{sha}^{{commit}}")])
+        .output()
+        .map(|o| o.status.success())
+        .map_err(|e| format!("cannot run git: {e}"))
+}
+
+fn checkout_lock_check(has_commit: Result<bool, String>, sha: &str) -> Check {
+    let short = lock::short_sha(sha);
+    match has_commit {
+        Ok(true) => Check {
+            name: "checkout",
+            result: "ok",
+            detail: format!("managed checkout has the locked commit {short}"),
+        },
+        Ok(false) => Check {
+            name: "checkout",
+            result: "warn",
+            detail: format!(
+                "managed checkout lacks the locked commit {short}; run `aequera upstream fetch`"
+            ),
+        },
+        Err(e) => Check {
+            name: "checkout",
+            result: "warn",
+            detail: format!("managed checkout unreadable: {e}"),
+        },
+    }
+}
+
+fn worktree_base_check(head: Result<String, String>, sha: &str) -> Check {
+    match head {
+        Ok(h) if h.trim() == sha => Check {
+            name: "worktree",
+            result: "ok",
+            detail: format!("generated worktree at the lock ({})", lock::short_sha(sha)),
+        },
+        Ok(h) => Check {
+            name: "worktree",
+            result: "warn",
+            detail: format!(
+                "generated worktree at {} but the lock is {}; `aequera patch apply` refuses it: \
+                 remove {} (it is generated), then run `aequera upstream fetch` and \
+                 `aequera patch apply`",
+                lock::short_sha(h.trim()),
+                lock::short_sha(sha),
+                crate::patch::WORKTREE_RELATIVE
+            ),
+        },
+        Err(e) => Check {
+            name: "worktree",
+            result: "warn",
+            detail: format!("generated worktree is not a usable git tree: {e}"),
+        },
+    }
+}
+
 fn compat_matrix_check(root: &std::path::Path, lock: &lock::LockFile) -> Check {
     let path = root.join("tests/compatibility/matrix.json");
     let text = match std::fs::read_to_string(&path) {
@@ -378,6 +457,76 @@ mod tests {
         let (compiler, guide) = expected_compiler();
         assert!(!compiler.is_empty());
         assert!(guide.ends_with(".md"), "got: {guide}");
+    }
+
+    const LOCK: &str = "0c469c2352451630bc69fc328c9f0c589c6c534d";
+    const OLD: &str = "3bf8f468258c2181f455e23d4ffcd6acb8f4cdb1";
+
+    #[test]
+    fn checkout_with_the_locked_commit_is_ok() {
+        let check = checkout_lock_check(Ok(true), LOCK);
+        assert_eq!(check.result, "ok");
+        assert!(
+            check.detail.contains("0c469c235245"),
+            "got: {}",
+            check.detail
+        );
+    }
+
+    #[test]
+    fn checkout_without_the_locked_commit_warns_to_fetch() {
+        let check = checkout_lock_check(Ok(false), LOCK);
+        assert_eq!(check.result, "warn");
+        assert!(
+            check.detail.contains("aequera upstream fetch"),
+            "got: {}",
+            check.detail
+        );
+    }
+
+    #[test]
+    fn unreadable_checkout_warns() {
+        let check = checkout_lock_check(Err("not a git repository".into()), LOCK);
+        assert_eq!(check.result, "warn");
+        assert!(
+            check.detail.contains("not a git repository"),
+            "got: {}",
+            check.detail
+        );
+    }
+
+    #[test]
+    fn worktree_at_the_lock_is_ok() {
+        let check = worktree_base_check(Ok(format!("{LOCK}\n")), LOCK);
+        assert_eq!(check.result, "ok");
+    }
+
+    #[test]
+    fn worktree_on_another_base_warns_that_patch_apply_refuses_it() {
+        let check = worktree_base_check(Ok(OLD.into()), LOCK);
+        assert_eq!(check.result, "warn");
+        assert!(
+            check.detail.contains("3bf8f468258c"),
+            "got: {}",
+            check.detail
+        );
+        assert!(
+            check.detail.contains("0c469c235245"),
+            "got: {}",
+            check.detail
+        );
+        assert!(
+            check.detail.contains("aequera patch apply"),
+            "got: {}",
+            check.detail
+        );
+    }
+
+    #[test]
+    fn unreadable_worktree_warns() {
+        let check = worktree_base_check(Err("bad object".into()), LOCK);
+        assert_eq!(check.result, "warn");
+        assert!(check.detail.contains("bad object"), "got: {}", check.detail);
     }
 
     #[test]
