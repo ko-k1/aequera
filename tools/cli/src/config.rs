@@ -412,10 +412,10 @@ pub fn validate_defaults(root: &Path) -> Result<ValidateReport, String> {
     })
 }
 
-/// Migrate one file toward the current schema. Writes atomically (temp +
-/// rename, previous kept as `.bak`) and only when a real migration applies.
-/// In schema v1 there is nothing to migrate yet: the honest result is a
-/// passthrough report, never a pretend rewrite.
+/// Migrate one file toward the current schema. Schema v1 has no migrators
+/// yet, so this never writes: a current file gets a passthrough report, an
+/// older or invalid one an error. A future migrator must write atomically
+/// (`fsutil::write_atomic`) and keep the previous file as `.bak`.
 pub fn migrate_file(path: &Path) -> Result<MigrateReport, String> {
     let checked = validate_file(path);
     // A file that fails for reasons other than age cannot be migrated.

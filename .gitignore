@@ -31,7 +31,8 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Config migration backups (tools/cli config migrate writes *.bak next to source)
+# Config migration backups (future `aequera config migrate` migrators keep the
+# previous file as *.bak next to it; schema v1 has none yet)
 *.bak
 
 # OS / editor noise (never source)
