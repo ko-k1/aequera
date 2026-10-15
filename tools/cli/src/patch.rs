@@ -987,7 +987,9 @@ mod tests {
 
         // A worktree applied without --index (the added file untracked) still
         // verifies, and the file is tracked from then on.
-        git(&wt, &["rm", "--cached", "-q", "added.txt"]);
+        // update-index, not `rm --cached`: under core.autocrlf the index (LF)
+        // and the file (CRLF) differ, and `rm --cached` refuses that.
+        git(&wt, &["update-index", "--force-remove", "--", "added.txt"]);
         let again = apply(&root, &lock).expect("old-layout worktree must not report drift");
         assert!(again.already_applied);
         assert_eq!(git(&wt, &["ls-files", "added.txt"]), "added.txt");

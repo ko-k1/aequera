@@ -65,3 +65,11 @@ jobs:
       - name: Rebuild and compare
         run: bash aequera/extensions/ad-veil/build-engine.sh --check
         shell: bash
+
+      # On a mismatch, keep CI's build so the difference can be inspected.
+      - name: Upload the CI build on mismatch
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-wasm-ci
+          path: target/adveil-wasm/wasm32-unknown-unknown/release/aequera_adveil_engine.wasm
