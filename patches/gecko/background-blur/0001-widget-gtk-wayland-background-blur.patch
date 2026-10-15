@@ -46,16 +46,20 @@ Validation: compiled Linux build (157.0.1, bootstrap toolchains). Aequera in
   margin-wide unblurred band (the quirk above). Hyprland 0.56.2 nested in
   that KWin: frame blurred, tiled and floating. Mochitest gate (Aequera
   760/760 compiled, 758/758 artifact).
+  Rebased onto 158.0: conflicted only with Bug 2070729 (ForceToplevelCommit
+  and mCommitWindow added next to OnMapNative and the PiP members); both
+  kept. The blur code still commits GTK's toplevel wl_surface itself, as
+  PiP still does. Not yet compiled or run on 158.0 (no Linux build host).
 Upstream risk: medium. Hooks nsWindow's opaque-region path, container
   size-allocate, and the Wayland map/unmap/destroy paths next to PiP's;
   conflicts if Mozilla reworks those. If Mozilla adopts the protocol
   itself, drop this patch in favor of upstream's.
 
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index b4ea2261c2c9d13f21bbbc0b229acda433321ec2..f41f161a991e6ffd699b16e77e1ca5dc9ca30d64 100644
+index 964f67c02018..48c9b0c3d54c 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
-@@ -20884,6 +20884,13 @@
+@@ -21039,6 +21039,13 @@
    value: true
    mirror: once
  
@@ -70,7 +74,7 @@ index b4ea2261c2c9d13f21bbbc0b229acda433321ec2..f41f161a991e6ffd699b16e77e1ca5dc
  - name: widget.wayland.vsync.enabled
    type: bool
 diff --git a/widget/gtk/nsWaylandDisplay.cpp b/widget/gtk/nsWaylandDisplay.cpp
-index 74006778ed7c8942814a557c759fdbffc1c5748e..9d47a125d8a1755cda7be27d43a62ba930fd0759 100644
+index 2f8bde9993e2..e553e4acf215 100644
 --- a/widget/gtk/nsWaylandDisplay.cpp
 +++ b/widget/gtk/nsWaylandDisplay.cpp
 @@ -11,6 +11,7 @@
@@ -136,7 +140,7 @@ index 74006778ed7c8942814a557c759fdbffc1c5748e..9d47a125d8a1755cda7be27d43a62ba9
    } else if (iface.EqualsLiteral("xdg_wm_base")) {
      uint32_t vers = MIN(version, (uint32_t)xdg_wm_base_interface.version);
      auto* xdgWm = WaylandRegistryBind<xdg_wm_base>(
-@@ -1356,6 +1398,7 @@ void nsWaylandDisplay::Init() {
+@@ -1355,6 +1397,7 @@ void nsWaylandDisplay::Init() {
    if (!GetFractionalScaleManager()) {
      NS_WARNING("Missing wp_fractional_scale_v1 wayland protocol!");
    }
@@ -145,7 +149,7 @@ index 74006778ed7c8942814a557c759fdbffc1c5748e..9d47a125d8a1755cda7be27d43a62ba9
  
  bool nsWaylandDisplay::IsTFSupported(uint32_t aTF) {
 diff --git a/widget/gtk/nsWaylandDisplay.h b/widget/gtk/nsWaylandDisplay.h
-index f7430873a469e22824b931ec6612ccf864b9b673..c517c06d3dfae54a011e0df7892d62e44e318f01 100644
+index f7430873a469..c517c06d3dfa 100644
 --- a/widget/gtk/nsWaylandDisplay.h
 +++ b/widget/gtk/nsWaylandDisplay.h
 @@ -16,6 +16,7 @@
@@ -183,7 +187,7 @@ index f7430873a469e22824b931ec6612ccf864b9b673..c517c06d3dfae54a011e0df7892d62e4
    xdg_session_manager_v1* mSessionManager = nullptr;
    xdg_session_v1* mWaylandSession = nullptr;
 diff --git a/widget/gtk/nsWindow.cpp b/widget/gtk/nsWindow.cpp
-index 71d1dd168c5f70ca404334e89d4eec44e44da415..6b357b893a3dc6261283720b6e62a21f5ae4154a 100644
+index 42d7d8a88500..e93256d01159 100644
 --- a/widget/gtk/nsWindow.cpp
 +++ b/widget/gtk/nsWindow.cpp
 @@ -2401,6 +2401,12 @@ void nsWindow::OnContainerSizeAllocate(GtkAllocation* aAllocation) {
@@ -199,7 +203,7 @@ index 71d1dd168c5f70ca404334e89d4eec44e44da415..6b357b893a3dc6261283720b6e62a21f
    // Invalidate the new part of the window now for the pending paint to
    // minimize background flashes (GDK does not do this for external
    // renewClientSizes of toplevels.)
-@@ -5072,6 +5078,12 @@ void nsWindow::UpdateOpaqueRegionInternal() {
+@@ -5077,6 +5083,12 @@ void nsWindow::UpdateOpaqueRegionInternal() {
      }
  #endif
    }
@@ -212,7 +216,7 @@ index 71d1dd168c5f70ca404334e89d4eec44e44da415..6b357b893a3dc6261283720b6e62a21f
  }
  
  bool nsWindow::IsChromeWindowTitlebar() {
-@@ -7400,6 +7412,7 @@ void nsWindow::OnUnmap() {
+@@ -7405,6 +7417,7 @@ void nsWindow::OnUnmap() {
  #ifdef MOZ_WAYLAND
    if (AsWayland()) {
      AsWayland()->ClearPipResources();
@@ -221,7 +225,7 @@ index 71d1dd168c5f70ca404334e89d4eec44e44da415..6b357b893a3dc6261283720b6e62a21f
  #endif
  
 diff --git a/widget/gtk/nsWindowWayland.cpp b/widget/gtk/nsWindowWayland.cpp
-index ac18827d1e5189fb704e91e5f38c1173408bec22..7f6b3ba687f0388096459bce1fd5957a9590f94e 100644
+index b9f7e3cf2413..a25df93ab13c 100644
 --- a/widget/gtk/nsWindowWayland.cpp
 +++ b/widget/gtk/nsWindowWayland.cpp
 @@ -6,8 +6,12 @@
@@ -363,7 +367,7 @@ index ac18827d1e5189fb704e91e5f38c1173408bec22..7f6b3ba687f0388096459bce1fd5957a
  
    // Shut down our local vsync source
    // Also drops reference to nsWindow::mSurface.
-@@ -2294,4 +2410,7 @@ bool nsWindowWayland::ApplyEnterLeaveMutterWorkaround() {
+@@ -2294,7 +2410,10 @@ bool nsWindowWayland::ApplyEnterLeaveMutterWorkaround() {
    return false;
  }
  
@@ -372,8 +376,11 @@ index ac18827d1e5189fb704e91e5f38c1173408bec22..7f6b3ba687f0388096459bce1fd5957a
 +  MaybeCreatePipResources();
 +  UpdateBackgroundBlur();
 +}
+ 
+ // Force commit to toplevel GdkWindow (mShell) to propagate
+ // changes made to mContainer. There's only way how to force Gtk3 to
 diff --git a/widget/gtk/nsWindowWayland.h b/widget/gtk/nsWindowWayland.h
-index e73bc5c1221eacad16203a3140c1e7360adba58d..c5241f2d8b9ed6f19e122b71cdb22e03c6955cbc 100644
+index 39a70c984c03..81c322380258 100644
 --- a/widget/gtk/nsWindowWayland.h
 +++ b/widget/gtk/nsWindowWayland.h
 @@ -56,6 +56,12 @@ class nsWindowWayland final : public nsWindow {
@@ -388,11 +395,12 @@ index e73bc5c1221eacad16203a3140c1e7360adba58d..c5241f2d8b9ed6f19e122b71cdb22e03
 +
    bool ApplyEnterLeaveMutterWorkaround();
  
-  protected:
-@@ -247,6 +253,13 @@ class nsWindowWayland final : public nsWindow {
-     struct xx_pip_v1* mPipSurface = nullptr;
-     LayoutDeviceIntSize mConfigureSize;
-   } mPipResources;
+   void ForceToplevelCommit();
+@@ -253,6 +259,14 @@ class nsWindowWayland final : public nsWindow {
+   RefPtr<GdkWindow> mCommitWindow;
+   static constexpr int sCommitOrigin = -100;
+   int mCommitWindowPosition = sCommitOrigin;
++
 +  struct {
 +    struct ext_background_effect_surface_v1* mEffect = nullptr;
 +    // The toplevel wl_surface mEffect belongs to.
@@ -405,7 +413,7 @@ index e73bc5c1221eacad16203a3140c1e7360adba58d..c5241f2d8b9ed6f19e122b71cdb22e03
  }  // namespace mozilla::widget
 diff --git a/widget/gtk/wayland/ext-background-effect-v1-client-protocol.h b/widget/gtk/wayland/ext-background-effect-v1-client-protocol.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..1eaa09e017267d63c20ae98ff5fec6cada8a523e
+index 000000000000..1eaa09e01726
 --- /dev/null
 +++ b/widget/gtk/wayland/ext-background-effect-v1-client-protocol.h
 @@ -0,0 +1,343 @@
@@ -754,7 +762,7 @@ index 0000000000000000000000000000000000000000..1eaa09e017267d63c20ae98ff5fec6ca
 +#endif
 diff --git a/widget/gtk/wayland/ext-background-effect-v1-protocol.c b/widget/gtk/wayland/ext-background-effect-v1-protocol.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..f3634cf58cdb9b8132b7d7507a4c60309bb78a6b
+index 000000000000..f3634cf58cdb
 --- /dev/null
 +++ b/widget/gtk/wayland/ext-background-effect-v1-protocol.c
 @@ -0,0 +1,86 @@
@@ -845,7 +853,7 @@ index 0000000000000000000000000000000000000000..f3634cf58cdb9b8132b7d7507a4c6030
 +        ext_background_effect_surface_v1_requests, 0, NULL,
 +};
 diff --git a/widget/gtk/wayland/moz.build b/widget/gtk/wayland/moz.build
-index 612886215224daa0ebd7a6c12fe11d95c20d64bb..9c0c882699dd139b7961a666a7df8f4082b03698 100644
+index 612886215224..9c0c882699dd 100644
 --- a/widget/gtk/wayland/moz.build
 +++ b/widget/gtk/wayland/moz.build
 @@ -8,6 +8,7 @@ with Files("**"):

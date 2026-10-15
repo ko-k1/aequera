@@ -93,7 +93,7 @@ index 50ba8c2da36d..15e309d7481c 100644
    },
    tabs: {
 diff --git a/browser/locales/en-US/browser/preferences/preferences.ftl b/browser/locales/en-US/browser/preferences/preferences.ftl
-index cd3117f19a46..62301decb58e 100644
+index 1e4acae2ef88..5f9dbcef23a7 100644
 --- a/browser/locales/en-US/browser/preferences/preferences.ftl
 +++ b/browser/locales/en-US/browser/preferences/preferences.ftl
 @@ -365,6 +365,15 @@ browser-layout-vertical-tabs2 =

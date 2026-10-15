@@ -6,8 +6,8 @@
   },
   "firefox": {
     "channel": "release",
-    "version": "157.0.1",
-    "revision": "0c469c2352451630bc69fc328c9f0c589c6c534d"
+    "version": "158.0",
+    "revision": "3c71aeacdb296402e41fb2084b13e797d1770642"
   },
   "platforms": [
     {
@@ -23,7 +23,9 @@
         "compiled build + run",
         "shell mochitests (aequera + upstream suites)"
       ],
-      "known_deviations": [],
+      "known_deviations": [
+        "158.0 (adopted 2026-10-16): artifact build and the full shell gate re-run on 158.0; the compiled build was last built on 157.0.1"
+      ],
       "workarounds": [
         "mozconfig.platform serializes Windows builds to -j1 on loaded hosts; export MOZ_MAKE_FLAGS with a higher -j when the box is idle"
       ]
@@ -47,6 +49,7 @@
         "compiled build (NixOS 26.11, Mozilla bootstrap toolchains + linux64-rust-1.95 under steam-run): builds, runs on Wayland (KWin 6.7.5 and Hyprland 0.56.2, nested in headless sway), aequera mochitests 760/760 (2026-10-14)"
       ],
       "known_deviations": [
+        "158.0 (adopted 2026-10-16 on Windows): the validated entries above are for 157.0.1; nothing has been built or run on Linux at 158.0 yet, and gecko/background-blur/0001 was rebased through a conflict (Bug 2070729) without being compiled",
         "compiled build run only in nested test compositors so far, not as a daily browser",
         "D-Bus / portal / MPRIS / search-provider rename (patches/toolkit/linux-desktop) is C++: now compiled, but the owned bus names have not been checked on a session bus yet",
         "desktop entry, hicolor icons, and search-provider files ship as source; no installer copies them yet"

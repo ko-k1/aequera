@@ -15,8 +15,8 @@ manifest_version: 1
 base:
   upstream:
     channel: release
-    version: "157.0.1"
-    revision: "0c469c2352451630bc69fc328c9f0c589c6c534d"
+    version: "158.0"
+    revision: "3c71aeacdb296402e41fb2084b13e797d1770642"
 
 patches:
   # Hooks that build and load the shell-chrome overlay (4 lines). Rationale,

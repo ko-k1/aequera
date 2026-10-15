@@ -61,7 +61,7 @@ steam-run:
 nix shell nixpkgs#sway -c bash tools/benchmark/browser-bench-nixos.sh \
   --aequera --label aequera --runs 5 --out .tmp/bench/aequera.json
 nix shell nixpkgs#sway -c bash tools/benchmark/browser-bench-nixos.sh \
-  --exe <firefox-157.0.1>/firefox --label firefox --runs 5 --out .tmp/bench/firefox.json
+  --exe <firefox-158.0>/firefox --label firefox --runs 5 --out .tmp/bench/firefox.json
 nix shell nixpkgs#sway -c bash tools/benchmark/browser-bench-nixos.sh \
   --aequera --label candidate --pref name=value ... --out .tmp/bench/candidate.json
 steam-run python3 tools/benchmark/compare.py .tmp/bench/firefox.json .tmp/bench/aequera.json

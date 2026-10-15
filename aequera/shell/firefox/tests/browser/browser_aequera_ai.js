@@ -11,7 +11,7 @@ const { AIWindow } = ChromeUtils.importESModule(
   "moz-src:///browser/components/aiwindow/ui/modules/AIWindow.sys.mjs"
 );
 const { GenAI } = ChromeUtils.importESModule(
-  "resource:///modules/GenAI.sys.mjs"
+  "moz-src:///browser/components/genai/GenAI.sys.mjs"
 );
 const { LinkPreview } = ChromeUtils.importESModule(
   "moz-src:///browser/components/genai/LinkPreview.sys.mjs"
