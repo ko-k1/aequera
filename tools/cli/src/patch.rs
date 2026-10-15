@@ -381,9 +381,50 @@ pub(crate) fn verify_worktree_matches_series(
         }
     }
     let expected = index.write_tree(wt)?;
-    upstream::git(wt, &["diff", "--quiet", &expected, "--"]).map_err(|_| {
+    let drift = || {
         "state claims the series is applied but tracked worktree files differ from base + series; worktree needs rebuild".to_string()
-    })?;
+    };
+
+    // `apply` uses plain `git apply`, so files the series adds stay untracked,
+    // and `git diff` only sees the index's paths: those files would always
+    // read as deleted. Compare them by content; diff the rest as usual.
+    // `--name-only` (not `--quiet`) so a git error stays an error, not drift.
+    let added = upstream::git(
+        wt,
+        &[
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            "--diff-filter=A",
+            "HEAD",
+            &expected,
+        ],
+    )?;
+    let added: Vec<&str> = added.split('\0').filter(|p| !p.is_empty()).collect();
+    let excludes: Vec<String> = added
+        .iter()
+        .map(|p| format!(":(exclude,literal){p}"))
+        .collect();
+    let mut args = vec!["diff", "--name-only", "--no-renames", &expected, "--", "."];
+    args.extend(excludes.iter().map(String::as_str));
+    if !upstream::git(wt, &args)?.is_empty() {
+        return Err(drift());
+    }
+
+    if added.iter().any(|p| !wt.join(p).is_file()) {
+        return Err(drift());
+    }
+    if !added.is_empty() {
+        let blobs: Vec<String> = added.iter().map(|p| format!("{expected}:{p}")).collect();
+        let mut rev_args = vec!["rev-parse"];
+        rev_args.extend(blobs.iter().map(String::as_str));
+        let mut hash_args = vec!["hash-object", "--"];
+        hash_args.extend(added.iter().copied());
+        if upstream::git(wt, &rev_args)? != upstream::git(wt, &hash_args)? {
+            return Err(drift());
+        }
+    }
     Ok(())
 }
 
@@ -959,6 +1000,38 @@ mod tests {
 
         let again = apply(&root, &lock).expect("re-apply");
         assert!(again.already_applied);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn reapply_of_series_that_adds_files_is_idempotent_and_detects_drift() {
+        let (root, lock, sha) = baseline("series-adds");
+        // A patch that modifies base.txt and creates added.txt: `git apply`
+        // leaves the new file untracked in the worktree.
+        let origin = root.join("origin");
+        std::fs::write(origin.join("base.txt"), "base\npatched\n").unwrap();
+        std::fs::write(origin.join("added.txt"), "new\n").unwrap();
+        git(&origin, &["add", "-A"]);
+        let diff = git(&origin, &["diff", "--cached"]);
+        git(&origin, &["reset", "--hard", "HEAD"]);
+        let series = root.join("patches/browser/adds");
+        std::fs::create_dir_all(&series).unwrap();
+        std::fs::write(series.join("0001-adds.patch"), format!("{diff}\n")).unwrap();
+        write_manifest(&root, &sha, "  - id: adds\n    series: browser/adds\n");
+
+        assert!(!apply(&root, &lock).expect("first apply").already_applied);
+        let added = root.join(WORKTREE_RELATIVE).join("added.txt");
+        assert_eq!(std::fs::read_to_string(&added).unwrap(), "new\n");
+        let again = apply(&root, &lock).expect("re-apply must not report drift");
+        assert!(again.already_applied);
+
+        // An edited or missing added file is still drift.
+        std::fs::write(&added, "edited\n").unwrap();
+        let err = apply(&root, &lock).expect_err("edited added file is drift");
+        assert!(err.contains("differ from base + series"), "got: {err}");
+        std::fs::remove_file(&added).unwrap();
+        let err = apply(&root, &lock).expect_err("missing added file is drift");
+        assert!(err.contains("differ from base + series"), "got: {err}");
         std::fs::remove_dir_all(&root).ok();
     }
 
