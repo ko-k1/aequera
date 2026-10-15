@@ -91,7 +91,7 @@ drawer edge at once; the content (`aequera-rail-content-expanded` +
 collapses only after the width transition, so the narrowing rail clips it
 away instead of it snapping to icons.
 
-### Tab list (`rail/aequera-tabs.{js,css}`)
+### Tab list (`rail/aequera-tabs{,-drag}.js`, `rail/aequera-tabs.css`)
 
 Unpinned tabs are an Aequera-rendered list (Firefox's own rows switch
 layouts with display toggles and cannot animate like the prototype); Firefox's
@@ -123,8 +123,10 @@ Every drag decision is the pure `rail/drag-model.js` (`AequeraDragModel`):
 the live slide (where the dragged row is drawn, the target slot, the visible
 gap chasing it one slot per frame, the autoscroll zone), the landing slot
 and tab index of a drop, the settle glide's start offsets, the foreign gap,
-and the tear-off rule. `aequera-tabs.js` only measures, writes transforms,
-and calls gBrowser. A classic script (loaded before `aequera-tabs.js`) that
+and the tear-off rule. `aequera-tabs-drag.js` holds the drag and drop
+methods (loaded right after `aequera-tabs.js`, they join its `AequeraTabs`
+list); the two only measure, write transforms, and call gBrowser. The model
+is a classic script (loaded before `aequera-tabs.js`) that
 also exports itself as CommonJS; node tests:
 `node --test aequera/shell/firefox/rail/drag-model.test.mjs`.
 
