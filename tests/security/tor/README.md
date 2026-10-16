@@ -76,6 +76,13 @@ runs), and pass both Marionette ports to the check:
 `node tests/security/tor/live-check.cjs 28282 28281`. Steps 1-2 need no
 window system there; the handoff (step 3) was not run.
 
+Port takeover on Windows (`port-takeover/run.ps1`, elevated PowerShell):
+starts the bundled tor on a loopback port and tries to take the port over
+from another account (`LOCAL SERVICE`, a temporary scheduled task) while
+tor holds it; prints each bind and where a connection to the port went,
+and removes the task and its files. 2026-10-16: every attempt failed
+(`docs/design/TOR.md`, Windows, Residual risks).
+
 A Tor instance started here by hand (step 2) has no ordinary instance
 watching it. Quit it through Firefox (close its windows, or Quit), not
 SIGTERM: SIGTERM ends Firefox before any quit code runs (its profile lock
