@@ -61,7 +61,7 @@ same on every platform:
   over the whole frame (the titlebar material upstream already puts behind
   the toolbox, blending behind the window). On macOS 26 and later that
   region is Liquid Glass (`NSGlassEffectView`, `widget.macos.titlebar-glass.enabled`,
-  read at startup; `patches/gecko/macos-glass`). Solid also drops upstream's
+  read at startup; `patches/gecko/macos/macos-glass`). Solid also drops upstream's
   toolbox vibrancy.
 - Linux: glass tints the frame with the theme color at
   `aequera.material.opacity` (60-100%, also on macOS) and the compositor blurs
@@ -69,7 +69,7 @@ same on every platform:
   Wayland compositors (KDE Plasma 6.7+, GNOME) blur when asked, and Gecko asks
   through `ext-background-effect-v1` for exactly the translucent parts of the
   window (`widget.wayland.background-blur.enabled`,
-  `patches/gecko/background-blur`), exposing the result to the shell as the
+  `patches/gecko/linux/background-blur`), exposing the result to the shell as the
   chrome-only media query `(-moz-gtk-background-blur-available)`. `auto` picks
   glass only on such a desktop and follows it live; anywhere else the frame
   stays solid, never chrome text over a sharp wallpaper. X11: solid.

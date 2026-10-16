@@ -14,7 +14,7 @@
 
 var AequeraPlatform = (() => {
   // How a compositor's blur offer surfaces (ext-background-effect-v1,
-  // patches/gecko/background-blur; compiled builds only).
+  // patches/gecko/linux/background-blur; compiled builds only).
   const BLUR_QUERY = "(-moz-gtk-background-blur-available)";
 
   return Object.freeze({

@@ -6,7 +6,11 @@
 #
 # Rules (docs/engineering/PATCHING.md):
 # - one logical concern per commit; Git order is authoritative;
-# - no monolithic patch; base must match upstream/manifests/firefox.lock.
+# - no monolithic patch; base must match upstream/manifests/firefox.lock;
+# - a series only one OS builds says so (platform: windows|linux|macos) and
+#   lives under <layer>/<platform>/<name>; every other series stays out of
+#   those directories (checked by the CLI). Every series applies on every
+#   host: the worktree is one source tree for all OSes.
 # Textual application is necessary but not sufficient for an update:
 # applies cleanly != builds != behaves correctly != passes quality gates.
 
@@ -50,7 +54,8 @@ patches:
   # org.mozilla (docs/RESTRICTIONS.md). Rationale, validation, and upstream
   # risk are in each patch header. No behavior change beyond the names.
   - id: linux-desktop
-    series: toolkit/linux-desktop
+    series: toolkit/linux/linux-desktop
+    platform: linux
   # Aequera new tab page at about:newtab / about:home (pref-gated boolean,
   # fixed packaged page; absent in Firefox). Keeps preloading and the
   # shortcuts backend. Rationale and risk are in the patch header.
@@ -86,12 +91,14 @@ patches:
   # (widget.wayland.background-blur.enabled, off in Firefox). Compiled
   # builds only. Rationale, validation, and risk are in each patch header.
   - id: background-blur
-    series: gecko/background-blur
+    series: gecko/linux/background-blur
+    platform: linux
   # Frame material on macOS 26+: titlebar vibrancy drawn as Liquid Glass
   # (NSGlassEffectView). Pref-gated (widget.macos.titlebar-glass.enabled,
   # off in Firefox). Not yet built or run on a Mac: see the patch header.
   - id: macos-glass
-    series: gecko/macos-glass
+    series: gecko/macos/macos-glass
+    platform: macos
 
 overlays:
   # Stage 1 shell: frame-model stylesheet, launcher-width glue, default

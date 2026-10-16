@@ -30,8 +30,9 @@ add_task(async function test_auto_follows_the_desktop() {
 // glass while Aequera runs, and back. ui.GtkBackgroundBlurAvailable
 // overrides what the compositor reports.
 add_task(async function test_auto_follows_compositor_blur() {
-  // An unknown media feature (a build without patches/gecko/background-blur)
-  // matches neither itself nor its negation.
+  // An unknown media feature (a build without
+  // patches/gecko/linux/background-blur) matches neither itself nor its
+  // negation.
   const known = matchMedia(BLUR_QUERY).matches || matchMedia(`not ${BLUR_QUERY}`).matches;
   if (!known) {
     ok(true, "needs the background-blur media query (compiled build)");

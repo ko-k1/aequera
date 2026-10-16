@@ -86,7 +86,9 @@ turns Mica on, Firefox leaves it off.
 | Shell tests | `browser_aequera_material_windows.js`, `browser_aequera_tor_windows.js` |
 | PR CI | `tools/ci/smoke.ps1` |
 
-No Firefox patch is Windows-only.
+No Firefox patch is Windows-only yet; one would go under
+`patches/<layer>/windows/<name>` with `platform: windows` in the manifest
+(`docs/engineering/PATCHING.md`, Platform series).
 
 ## Known gaps
 

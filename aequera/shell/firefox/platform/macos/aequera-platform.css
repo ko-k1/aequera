@@ -12,10 +12,10 @@
  * --aequera-material-opacity so the blur behind it shows through. The window
  * server blurs the desktop behind a vibrant region: the titlebar material
  * upstream already puts behind the toolbox, here spread over the whole frame
- * (body::before); Liquid Glass on macOS 26+ (patches/gecko/macos-glass). The
- * page card (.browserContainer) and popups stay opaque (no stacked blur,
- * MATERIAL.md); themes with their own colors or images (lwtheme) keep the
- * solid frame. */
+ * (body::before); Liquid Glass on macOS 26+
+ * (patches/gecko/macos/macos-glass). The page card (.browserContainer) and
+ * popups stay opaque (no stacked blur, MATERIAL.md); themes with their own
+ * colors or images (lwtheme) keep the solid frame. */
 :root[aequera-material="glass"]:not([lwtheme]) body {
   background-color: color-mix(
     in srgb, var(--toolbox-background-color) var(--aequera-material-opacity, 80%), transparent

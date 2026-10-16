@@ -320,7 +320,7 @@ and keeps the page card and popups opaque (no stacked blur,
   (`widget.macos.titlebar-blend-mode.behind-window`), off in native
   fullscreen like upstream's. On macOS 26+ the titlebar region is Liquid Glass
   (`NSGlassEffectView`) when `widget.macos.titlebar-glass.enabled` (read at
-  startup, `patches/gecko/macos-glass`).
+  startup, `patches/gecko/macos/macos-glass`).
 - Linux: the root paints nothing, so Gecko already gives the window an alpha
   channel; glass needs `-moz-gtk-csd-transparency-available` (a compositing
   desktop). A desktop blurs when it is Hyprland (blurs every translucent
@@ -328,7 +328,7 @@ and keeps the page card and popups opaque (no stacked blur,
   `ext-background-effect-v1` blur (KDE Plasma 6.7+, GNOME): with
   `widget.wayland.background-blur.enabled` Gecko then asks the compositor to
   blur exactly the window's translucent parts (client area minus the opaque
-  region and the rounded corners, `patches/gecko/background-blur`) and
+  region and the rounded corners, `patches/gecko/linux/background-blur`) and
   reports it as `(-moz-gtk-background-blur-available)`, which `auto` follows
   live. Elsewhere (sway, X11) an explicit `glass` is translucent but
   unblurred, which is why `auto` does not pick it there.
