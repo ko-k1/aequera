@@ -1,4 +1,4 @@
-"""Tests for tools/build/dist_copies.py (Windows dev builds: dist links -> copies).
+"""Tests for tools/build/windows/dist_copies.py (Windows dev builds: dist links -> copies).
 
     python -m unittest discover -s tests/unit/build
 
@@ -13,8 +13,8 @@ import sys
 import tempfile
 import unittest
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-TOOL = os.path.join(ROOT, "tools", "build", "dist_copies.py")
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+TOOL = os.path.join(ROOT, "tools", "build", "windows", "dist_copies.py")
 sys.path.insert(0, os.path.dirname(TOOL))
 
 import dist_copies  # noqa: E402

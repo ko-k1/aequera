@@ -61,3 +61,6 @@ This downloads only the objects for the locked tag. It changes no baseline.
   are your explicit local decision, not something the tooling configures.
 - Line endings: do not "fix" anything with CRLF conversions inside
   `upstream/` or `worktree/`. The managed trees are byte-exact by design.
+
+Next: build and run (`tools/build/README.md`, then the Windows specifics
+in `tools/build/windows/README.md`).

@@ -68,7 +68,7 @@ def main(source: str, target: str) -> int:
         ini.remove_section(section)
     ini.set("App", "UAName", UA_NAME)
     with open(target, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write("; Copied by tools/build/aequera_app_ini.py - do not edit.\n")
+        handle.write("; Copied by tools/build/common/aequera_app_ini.py - do not edit.\n")
         ini.write(handle, space_around_delimiters=False)
     return 0
 

@@ -12,7 +12,9 @@
 # and -no-remote, so neither instance hands off to a running Firefox, and
 # Firefox's profiles.ini is never touched. -purgecaches drops the startup
 # cache, which otherwise keeps serving pre-rebuild chrome; it is passed only
-# when the build changed since the last launch (startup-cache.sh).
+# when the build changed since the last launch (common/startup-cache.sh).
+# What differs per OS (binary names, bundle layout, dist fixes) comes from
+# tools/build/<os>/platform.sh.
 #
 # MOZCONFIG: exported as usual for mach (see tools/build/README.md). When
 # unset, the mozconfig matching the selected objdir is used and reported;
@@ -22,7 +24,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LAUNCHER=aequera-run
-. "$SCRIPT_DIR/launch-common.sh"
+. "$SCRIPT_DIR/common/launch-common.sh"
 # AEQUERA_WORKTREE=candidate runs the rebased candidate (aequera patch rebase).
 aequera_worktree
 TOPSRCDIR="$FIREFOX_DIR"
@@ -34,23 +36,9 @@ aequera_objdir MOZ_OBJDIR "${MOZ_OBJDIR:-}"
 aequera_find_exe
 BIN="$OBJDIR/dist/bin"
 aequera_export_dev_dirs
-aequera_dist_copies "$BIN"
+aequera_platform_prepare_dist "$BIN" || exit 1
 
-# Bundle binaries stage dist/bin into the .app, so the source ini may live
-# in either place; the launch ini goes next to the binary that uses it.
-# Unverified against a real Mac bundle layout (see tools/build/README.md).
-SRC_INI="$BIN/application.ini"
-case "$EXE" in
-  *.app/Contents/MacOS/*)
-    APP_CONTENTS="$(dirname "$(dirname "$EXE")")"
-    BUNDLE_RESOURCES="$APP_CONTENTS/Resources"
-    INI="$BUNDLE_RESOURCES/browser/aequera-application.ini"
-    [ -f "$SRC_INI" ] || SRC_INI="$BUNDLE_RESOURCES/application.ini"
-    ;;
-  *)
-    INI="$BIN/browser/aequera-application.ini"
-    ;;
-esac
+aequera_platform_launch_ini "$EXE" "$BIN"
 aequera_write_ini "$SRC_INI" "$INI"
 INI_NATIVE="$(aequera_to_native "$INI")"
 
@@ -61,11 +49,11 @@ if [ ! -f "$BIN/tor/aequera-tor-bundle.json" ]; then
 fi
 
 # Startup cache: purged only when the build changed since the last launch of
-# the same kind (startup-cache.sh). The persistent stamp is shared with
+# the same kind (common/startup-cache.sh). The persistent stamp is shared with
 # aequera.sh, which starts the same profile.
-. "$SCRIPT_DIR/startup-cache.sh"
+. "$SCRIPT_DIR/common/startup-cache.sh"
 SCAN=("$BIN")
-[ -n "${BUNDLE_RESOURCES:-}" ] && SCAN+=("$BUNDLE_RESOURCES")
+[ -n "$RESOURCES" ] && SCAN+=("$RESOURCES")
 
 if [ "${1:-}" = "--persistent" ]; then
   shift

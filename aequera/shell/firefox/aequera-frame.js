@@ -28,7 +28,7 @@
 // must be able to turn the revamp on to run Firefox's own tests. An
 // environment variable, not a pref, so about:config can never unlock them.
 // Test-only: tools/build/test-shell.sh sets it for `upstream` runs. Production
-// launchers (tools/build/aequera*.sh, tools/build/aequera.cmd) must never set
+// launchers (tools/build/aequera*.sh, tools/build/windows/aequera.cmd) must never set
 // it; a set value in a shipped environment is a test-harness leak, not a
 // supported configuration.
 if (Services.env.get("AEQUERA_UNLOCK_SHELL_PREFS") === "1") {

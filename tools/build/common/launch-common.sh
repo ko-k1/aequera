@@ -1,7 +1,11 @@
 # Shared by the POSIX launchers (aequera.sh, aequera-run.sh): which tree,
 # which build, which binary, and the identity it starts with. Source it with
 # LAUNCHER (the name in messages) and ROOT (the checkout root) set; every
-# function exits the launcher on failure.
+# function exits the launcher on failure. What differs per OS comes from the
+# host's platform hooks (host.sh, tools/build/<os>/platform.sh).
+
+. "$ROOT/tools/build/common/host.sh"
+aequera_load_platform
 
 # FIREFOX_DIR from AEQUERA_WORKTREE (default firefox; candidate is the
 # rebased candidate): one plain directory name under worktree/.
@@ -31,7 +35,8 @@ aequera_canonical() {
 # explicit intent when absolute (POSIX or a Windows drive, for Git Bash);
 # relative ones resolve against the worktree and must stay inside the
 # checkout. Without one: obj/<worktree>/compiled when it holds a native
-# Aequera binary, else obj/<worktree>/artifact (the mozconfigs' objdirs).
+# Aequera binary for this host, else obj/<worktree>/artifact (the
+# mozconfigs' objdirs).
 aequera_objdir() {
   local name="$1" value="$2"
   if [ -n "$value" ]; then
@@ -47,46 +52,28 @@ aequera_objdir() {
     esac
     return
   fi
-  local base="$ROOT/obj/$WORKTREE_NAME"
+  local base="$ROOT/obj/$WORKTREE_NAME" exe
   OBJDIR="$base/artifact"
-  if [ -x "$base/compiled/dist/bin/aequera" ] \
-    || [ -x "$base/compiled/dist/bin/aequera.exe" ] \
-    || [ -x "$base/compiled/dist/Aequera.app/Contents/MacOS/aequera" ]; then
-    OBJDIR="$base/compiled"
-  fi
+  while IFS= read -r exe; do
+    if [ -f "$exe" ] && [ -x "$exe" ]; then
+      OBJDIR="$base/compiled"
+      return
+    fi
+  done < <(aequera_platform_native_exes "$base/compiled")
 }
 
 # EXE: the browser binary in OBJDIR. Compiled identity first, then the
-# prebuilt artifact; native names before bundle layouts, then any macOS
-# bundle (Aequera.app first). Windows Git Bash matches the .exe entries.
+# prebuilt artifact, each in the host's preferred order.
 aequera_find_exe() {
   local c
-  for c in \
-    "$OBJDIR/dist/bin/aequera" \
-    "$OBJDIR/dist/bin/aequera.exe" \
-    "$OBJDIR/dist/Aequera.app/Contents/MacOS/aequera" \
-    "$OBJDIR/dist/bin/firefox" \
-    "$OBJDIR/dist/bin/firefox.exe" \
-    "$OBJDIR/dist/Firefox.app/Contents/MacOS/firefox" \
-    "$OBJDIR"/dist/Aequera.app/Contents/MacOS/* \
-    "$OBJDIR"/dist/*.app/Contents/MacOS/*; do
+  while IFS= read -r c; do
     if [ -f "$c" ] && [ -x "$c" ]; then
       EXE="$c"
       return
     fi
-  done
-  echo "$LAUNCHER: no build in \"$OBJDIR\"; see tools/build/README.md." >&2
+  done < <(aequera_platform_native_exes "$OBJDIR"; aequera_platform_artifact_exes "$OBJDIR")
+  echo "$LAUNCHER: no build in \"$OBJDIR\"; see tools/build/$AEQUERA_HOST/README.md." >&2
   exit 1
-}
-
-# Native Windows binaries need Windows-style paths when launched from a POSIX
-# shell (Git Bash, MozillaBuild); everywhere else the path is used as-is.
-aequera_to_native() {
-  if command -v cygpath >/dev/null 2>&1; then
-    cygpath -w "$1"
-  else
-    printf '%s\n' "$1"
-  fi
 }
 
 # aequera_write_ini <build ini> <launch ini>: the launch ini, verified to
@@ -100,35 +87,7 @@ aequera_write_ini() {
     exit 1
   }
   mkdir -p "$(dirname "$2")"
-  "$python" "$ROOT/tools/build/aequera_app_ini.py" "$1" "$2"
-}
-
-# Prints python3, else python; fails when neither exists.
-aequera_python() {
-  if command -v python3 >/dev/null 2>&1; then
-    echo python3
-  elif command -v python >/dev/null 2>&1; then
-    echo python
-  else
-    return 1
-  fi
-}
-
-# aequera_dist_copies <dist/bin>: on Windows, the build's symlinks become
-# copies (dist_copies.py: Gecko refuses symlinked built-in add-on files and
-# objdir files in content processes there). mach relinks on every build, so
-# this runs every start; without links it is one scan.
-aequera_dist_copies() {
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) ;;
-    *) return 0 ;;
-  esac
-  local python
-  python="$(aequera_python)" || {
-    echo "$LAUNCHER: python3 is needed to replace the build's symlinks in \"$1\"." >&2
-    exit 1
-  }
-  "$python" "$ROOT/tools/build/dist_copies.py" "$1" || exit 1
+  "$python" "$ROOT/tools/build/common/aequera_app_ini.py" "$1" "$2"
 }
 
 # Like `mach run`, advertise the developer dirs: local builds symlink

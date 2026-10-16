@@ -5,6 +5,8 @@
 *.sh text eol=lf
 # cmd.exe batch files need CRLF.
 *.cmd text eol=crlf
+# mozconfig fragments are sourced by sh, like the scripts above.
+tools/build/**/mozconfig* text eol=lf
 # Linux desktop integration files are parsed by freedesktop/dbus tooling
 # (desktop entry, D-Bus service, shell search provider): keep LF so a
 # checkout installs byte-identical files on every OS.

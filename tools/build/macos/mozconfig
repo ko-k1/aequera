@@ -1,0 +1,9 @@
+# Aequera build tuning for macOS hosts, sourced through
+# tools/build/mozconfig.platform. Setup: tools/bootstrap/macos.md and
+# tools/build/macos/README.md.
+
+# Parallelism: mach's automatic default. If the gkrust LTO link OOMs,
+# export MOZ_MAKE_FLAGS="-j<N>" in the build shell and re-run mach configure.
+
+# Older Rust (see mozconfig.platform), e.g.
+# export RUSTC=.../toolchains/1.95.0-.../bin/rustc

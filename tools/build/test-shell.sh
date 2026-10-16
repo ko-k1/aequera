@@ -11,7 +11,15 @@
 #           private browsing page, and in-content page (error pages,
 #           Settings, about:protections) tests with Firefox's defaults
 #           restored, to prove the patches change nothing by default.
+#
+# What differs per OS (extra Firefox defaults, dist fixes) comes from
+# tools/build/<os>/platform.sh.
 set -u
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LAUNCHER=test-shell
+. "$SCRIPT_DIR/common/host.sh"
+aequera_load_platform
 # Step parsing: explicit suite or all; leading flags mean "all + flags".
 # Unknown positional steps fail closed (never zero-suite green).
 step=all
@@ -72,13 +80,11 @@ FIREFOX_DEFAULTS=(
   --setpref pdfjs.enableAltText=true
   --setpref extensions.ml.enabled=true
 )
-# Frame material is per-OS (Windows 11 Mica; opaque toolbar fallback
-# elsewhere): only reset it where the pref means something.
-case "$(uname -s)" in
-MINGW*|MSYS*|CYGWIN*)
-  FIREFOX_DEFAULTS+=(--setpref widget.windows.mica=false)
-  ;;
-esac
+# Per-OS defaults (frame material: Windows 11 Mica), only where the pref
+# means something. (A read loop, not mapfile: macOS runs bash 3.2.)
+while IFS= read -r arg; do
+  FIREFOX_DEFAULTS+=("$arg")
+done < <(aequera_platform_test_prefs)
 SIDEBAR_TESTS=browser/components/sidebar/tests/browser
 TAB_TESTS=browser/components/tabbrowser/test/browser/tabs
 PLACES_TESTS=browser/components/places/tests/browser
@@ -91,18 +97,13 @@ status=0
 # Aequera test manifests are invisible to mach until this runs.
 ./mach build-backend -b TestManifest > /dev/null || status=1
 
-# Windows: the build's symlinks become copies (tools/build/dist_copies.py);
-# Gecko refuses symlinked built-in add-on and objdir files in content
-# processes there. Every objdir of this worktree, whichever MOZCONFIG runs.
-case "$(uname -s)" in
-MINGW*|MSYS*|CYGWIN*)
-  python="$(command -v python3 || command -v python)" || python=python3
-  for bin in "../../obj/$(basename "$PWD")"/*/dist/bin; do
-    [ -d "$bin" ] || continue
-    "$python" ../../tools/build/dist_copies.py "$bin" || status=1
-  done
-  ;;
-esac
+# The platform's dist fixes (Windows: the build's symlinks become copies,
+# tools/build/windows/dist_copies.py), for every objdir of this worktree,
+# whichever MOZCONFIG runs.
+for bin in "$ROOT/obj/$(basename "$PWD")"/*/dist/bin; do
+  [ -d "$bin" ] || continue
+  aequera_platform_prepare_dist "$bin" || status=1
+done
 
 if [ "$step" = aequera ] || [ "$step" = all ]; then
   ./mach mochitest --headless "${extra[@]}" \

@@ -348,7 +348,7 @@ gone (`__OwningControllerProcess`). `taskkill /F` is the Windows SIGKILL.
 ### Residual risks (Windows)
 
 - **Port takeover while tor holds it: not possible (measured 2026-10-16,
-  Windows 11, tor.exe 0.4.9.14).** `tests/security/tor/port-takeover`
+  Windows 11, tor.exe 0.4.9.14).** `tests/security/tor/windows/port-takeover`
   starts tor as the user and tries every takeover from another account
   (`NT AUTHORITY\LOCAL SERVICE`, through a temporary scheduled task) and
   from the same user: binding `127.0.0.1:<port>` is refused (WinError

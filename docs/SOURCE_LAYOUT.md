@@ -78,6 +78,32 @@ Core command model + UI; use an extension if that gives a cleaner capability bou
 
 `patches/gecko/` only after confirming higher layers cannot solve the requirement.
 
+## Platform-Specific Source
+
+Shared code stays shared. Anything true of only one OS lives in a
+directory named for that OS (`windows/`, `linux/`, `macos/`) inside the
+area that owns it. Each area keeps its layer, and each OS stays easy to
+find:
+
+| Area | Windows | Linux | macOS |
+|---|---|---|---|
+| Toolchain setup | `tools/bootstrap/windows.md` | `tools/bootstrap/linux.md` | `tools/bootstrap/macos.md` |
+| Build, launch, test tooling | `tools/build/windows/` | `tools/build/linux/` (NixOS: `nixos/`) | `tools/build/macos/` |
+| Tests | `tests/unit/build/windows/`, `tests/security/tor/windows/` | — | — |
+| Branding | branding root (Firefox's layout) | `aequera/design/branding/linux/` | `aequera/design/branding/macos/` |
+
+Each `tools/build/<os>/README.md` is the entry point for that OS and lists
+everything else that belongs to it (patches, branding, shell behavior, CI).
+Shared build scripts reach OS behavior only through the hooks of
+`tools/build/common/host.sh`, which every `tools/build/<os>/platform.sh`
+implements; they never branch on the OS themselves.
+
+Two exceptions keep their own layout. Patches stay ordered by Firefox layer
+(`patches/<layer>/<series>`); the series name says which OS it is for
+(`linux-desktop`, `macos-glass`). Shell runtime code
+(`aequera/shell/firefox`) branches on `AppConstants.platform` where Firefox
+does, because the overlay is one chrome package for every OS.
+
 ## Source-of-Truth Rule
 
 `worktree/firefox/` is generated and disposable. Manual fixes there are lost on the next regeneration and therefore are not valid project work.

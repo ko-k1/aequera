@@ -56,7 +56,7 @@ bash ../../tools/build/aequera-run.sh --persistent  # real profile in ~/Library/
 (Run from `worktree/firefox`, as above.) Outside a terminal,
 start the real profile with `tools/build/aequera.sh`. Run the shell tests
 with `bash ../../tools/build/test-shell.sh` from `worktree/firefox`. Full flow and
-per-OS notes: `tools/build/README.md`. For a compiled build (hours, full
+macOS notes: `tools/build/README.md` and `tools/build/macos/README.md`. For a compiled build (hours, full
 Aequera.app identity), switch `MOZCONFIG` to `mozconfig.compiled` and run
 `./mach bootstrap --application-choice browser` once. Works on Apple Silicon
 and Intel; no arch-specific flags are needed beyond the native Homebrew

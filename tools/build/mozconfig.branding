@@ -35,5 +35,5 @@ ac_add_options MOZ_APP_REMOTINGNAME=aequera
 # Firefox.app), which refuses to start without their front-end files, so they
 # cannot be configured out of an artifact build; the launchers'
 # application.ini drops both servers instead
-# (tools/build/aequera_app_ini.py). A compiled build adds
+# (tools/build/common/aequera_app_ini.py). A compiled build adds
 # --disable-updater and --disable-crashreporter.
