@@ -1,0 +1,51 @@
+Subject: [PATCH] extensions: pref to stop extensions recolouring the browser
+
+Why Firefox source must change:
+  Extensions with the "theme" permission (Dark Reader's "Change browser
+  theme", for one) recolour the browser through browser.theme.update(). A
+  window with such a theme is a themed window ([lwtheme]): Firefox drops
+  the system backdrop for it and Aequera keeps its frame solid, so one
+  extension silently replaces the glass frame material with an opaque
+  colour (docs/design/MATERIAL.md). Firefox has no pref, policy, or
+  permission setting that refuses these updates while keeping the
+  extension; the API is implemented in toolkit's ext-theme.js.
+
+What it changes:
+  - theme.update() resolves without applying anything while
+    aequera.extensions.dynamicThemes is false (Aequera's default,
+    aequera-prefs.js). The extension keeps running and sees success;
+    theme.getCurrent() then reports the theme actually in use.
+  - Static themes (theme add-ons, the Themes tab) are a separate path
+    (onManifestEntry) and are unaffected; so are theme.reset() and
+    onUpdated.
+  - The pref is absent in Firefox and defaults to true here, so with
+    Firefox's defaults nothing changes. Turning it on lets extensions
+    recolour again from their next update; turning it off leaves a theme
+    already applied in place until it is reset or the browser restarts.
+
+Depends on: nothing.
+Validation: aequera/shell/firefox/tests/browser/browser_aequera_extension_themes.js
+  (a "theme"-permission extension cannot recolour the window or end the
+  glass frame by default; with the pref on its theme applies); Firefox's
+  browser_ext_themes_dynamic_*.js, _reset.js, and _static_onUpdated.js
+  with Firefox's defaults (tools/build/test-shell.sh upstream).
+Upstream risk: low; one guard at the top of a small, stable API method.
+
+diff --git a/toolkit/components/extensions/parent/ext-theme.js b/toolkit/components/extensions/parent/ext-theme.js
+--- a/toolkit/components/extensions/parent/ext-theme.js
++++ b/toolkit/components/extensions/parent/ext-theme.js
+@@ -241,6 +241,14 @@ this.theme = class extends ExtensionAPIPersistent {
+           return Promise.resolve(defaultTheme.details);
+         },
+         update: (windowId, details) => {
++          if (
++            !Services.prefs.getBoolPref(
++              "aequera.extensions.dynamicThemes",
++              true
++            )
++          ) {
++            return Promise.resolve();
++          }
+           if (windowId) {
+             const browserWindow = windowTracker.getWindow(windowId, context);
+             if (!browserWindow) {

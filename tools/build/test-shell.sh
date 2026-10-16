@@ -38,6 +38,9 @@ FIREFOX_DEFAULTS=(
   # Aequera locks sidebar.revamp and friends (aequera-prefs.js); Firefox's own
   # tests must turn the revamp on, so upstream runs (only) unlock them.
   --setenv AEQUERA_UNLOCK_SHELL_PREFS=1
+  # Extensions recolour the browser in Firefox (patches/toolkit/dynamic-themes
+  # turns that off by default in Aequera).
+  --setpref aequera.extensions.dynamicThemes=true
   --setpref sidebar.revamp=false
   --setpref sidebar.verticalTabs=false
   --setpref sidebar.verticalTabs.requireRevamp=true
@@ -91,6 +94,7 @@ PLACES_TESTS=browser/components/places/tests/browser
 HOMECACHE_TESTS=browser/components/newtab/test/browser/abouthomecache
 PRIVATE_TESTS=browser/components/privatebrowsing/test/browser
 PREFS_TESTS=browser/components/preferences/tests
+THEME_TESTS=toolkit/components/extensions/test/browser
 status=0
 
 # Artifact builds do not refresh the test index on their own; new or moved
@@ -196,5 +200,9 @@ if [ "$step" = upstream ] || [ "$step" = all ]; then
   ./mach mochitest --headless "${extra[@]}" "${FIREFOX_DEFAULTS[@]}" \
     "$PREFS_TESTS/browser_tabs_browsing_pane.js" \
     "$PREFS_TESTS/browser_appearance_pane.js" || status=1
+  # Extension themes: patches/toolkit/dynamic-themes gates theme.update on
+  # aequera.extensions.dynamicThemes; with Firefox's default (on), dynamic
+  # and static themes must behave exactly as in Firefox.
+  ./mach mochitest --headless "${extra[@]}" "${FIREFOX_DEFAULTS[@]}"     "$THEME_TESTS/browser_ext_themes_dynamic_updates.js"     "$THEME_TESTS/browser_ext_themes_dynamic_getCurrent.js"     "$THEME_TESTS/browser_ext_themes_dynamic_onUpdated.js"     "$THEME_TESTS/browser_ext_themes_reset.js"     "$THEME_TESTS/browser_ext_themes_static_onUpdated.js" || status=1
 fi
 exit $status
