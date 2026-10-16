@@ -31,6 +31,8 @@ prefs = [
 
 ["browser_aequera_platform.js"]
 
+["browser_aequera_extension_themes.js"]
+
 ["browser_aequera_material.js"]
 support-files = ["material-helpers.js"]
 

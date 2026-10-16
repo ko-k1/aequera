@@ -72,6 +72,12 @@ patches:
   # Firefox's design tokens and is pref-gated (aequera.incontent.enabled).
   - id: in-content
     series: toolkit/in-content
+  # Extensions may not recolour the browser (browser.theme.update, e.g. Dark
+  # Reader's "Change browser theme"): a themed window loses the glass frame
+  # material. Pref-gated (aequera.extensions.dynamicThemes, off in Aequera,
+  # absent in Firefox); theme add-ons are unaffected.
+  - id: dynamic-themes
+    series: toolkit/dynamic-themes
   # Settings > Browser layout: a vertical tabs side choice (Left / Right,
   # sidebar.position_start), offered only when a shell hosts vertical tabs
   # (sidebar.verticalTabs.requireRevamp false, from aequera-rail); Firefox's
