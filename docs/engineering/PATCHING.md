@@ -30,6 +30,43 @@ patches/browser/workspace/
 
 The names are descriptive. Git commit order is authoritative.
 
+### Platform series
+
+A series that only one OS builds lives one level deeper, under that OS,
+and the manifest says so:
+
+```text
+patches/
+├── gecko/
+│   ├── linux/background-blur/   # platform: linux
+│   └── macos/macos-glass/       # platform: macos
+└── toolkit/
+    └── linux/linux-desktop/     # platform: linux
+```
+
+```yaml
+- id: background-blur
+  series: gecko/linux/background-blur
+  platform: linux        # windows | linux | macos
+```
+
+- A series is a platform series when every hunk serves that OS only: its
+  widget backend (`widget/gtk`, `widget/cocoa`, `widget/windows`), or
+  shared code that registers something only that OS implements (a
+  `-moz-gtk-*` media feature, a pref only one backend reads). It may touch
+  shared files for that; it must not change behavior on another OS.
+- A series whose hunks serve several OSes stays shared, with no `platform`.
+  If one OS-only hunk would land in a shared series, split it out into its
+  own platform series instead.
+- The CLI enforces the layout (`load_manifest`): a platform series must be
+  `<layer>/<platform>/<name>`, and a series without `platform` must not sit
+  under `windows/`, `linux/`, or `macos/`.
+- Every series still applies on every host, in manifest order. The worktree
+  is one source tree for all OSes, so a Linux patch is applied (and must
+  keep applying) on a Windows checkout too; only its compilation is per-OS.
+  `platform` decides where the series lives and who reviews or validates it,
+  not whether it applies.
+
 ## Patch Granularity
 
 Prefer:

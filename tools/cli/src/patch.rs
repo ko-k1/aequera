@@ -48,6 +48,35 @@ pub struct BaseUpstream {
 pub struct PatchEntry {
     pub id: String,
     pub series: String,
+    /// The one OS the series is for; absent when every OS builds it.
+    #[serde(default)]
+    pub platform: Option<Platform>,
+}
+
+/// The OS a platform-only series is for (`platform:` in the manifest). Every
+/// series applies on every host, in manifest order: the worktree is one
+/// source tree, and a platform series is compiled only on its OS. The field
+/// fixes where the series lives (`<layer>/<platform>/<name>`, checked by
+/// `load_manifest`) and documents what it is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Platform {
+    Windows,
+    Linux,
+    Macos,
+}
+
+impl Platform {
+    const ALL: [Platform; 3] = [Platform::Windows, Platform::Linux, Platform::Macos];
+
+    /// The directory name the platform's series live under.
+    pub fn dir(self) -> &'static str {
+        match self {
+            Platform::Windows => "windows",
+            Platform::Linux => "linux",
+            Platform::Macos => "macos",
+        }
+    }
 }
 
 /// Aequera-owned source copied into the worktree. `source` is relative to
@@ -156,7 +185,44 @@ pub fn load_manifest(root: &Path, lock: &LockFile) -> Result<PatchManifest, Stri
             manifest.manifest_version
         ));
     }
+    for entry in &manifest.patches {
+        validate_series_layout(entry)?;
+    }
     Ok(manifest)
+}
+
+/// Platform series live at `<layer>/<platform>/<name>`; every other series
+/// stays out of the platform directories, so a series' directory always
+/// says which OS it is for (docs/engineering/PATCHING.md).
+fn validate_series_layout(entry: &PatchEntry) -> Result<(), String> {
+    let series = plain_relative("series", &entry.id, &entry.series)?;
+    let parts: Vec<&str> = series
+        .components()
+        .filter_map(|c| c.as_os_str().to_str())
+        .collect();
+    match entry.platform {
+        Some(platform) => {
+            let dir = platform.dir();
+            if parts.len() != 3 || parts[1] != dir {
+                return Err(format!(
+                    "series {:?}: a {dir} series must live under <layer>/{dir}/<name> (got {:?})",
+                    entry.id, entry.series
+                ));
+            }
+        }
+        None => {
+            if let Some(platform) = Platform::ALL.into_iter().find(|p| parts.contains(&p.dir())) {
+                return Err(format!(
+                    "series {:?}: {:?} is under a {} directory; add `platform: {}` or move it out",
+                    entry.id,
+                    entry.series,
+                    platform.dir(),
+                    platform.dir()
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn status(root: &Path, lock: &LockFile) -> Result<StatusReport, String> {
@@ -1195,11 +1261,78 @@ mod tests {
             let entry = PatchEntry {
                 id: "evil".into(),
                 series: evil.into(),
+                platform: None,
             };
             let err = series_files(&root, &entry).expect_err("traversal must fail");
             assert!(err.contains("must be a plain relative path"), "got: {err}");
         }
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// load_manifest on a manifest whose only entry is `entry_yaml`.
+    fn load_entry(name: &str, entry_yaml: &str) -> Result<PatchManifest, String> {
+        let root = scratch(name);
+        let sha = "a".repeat(40);
+        write_manifest(&root, &sha, entry_yaml);
+        let result = load_manifest(&root, &lock_for("https://example.invalid/x.git", &sha));
+        std::fs::remove_dir_all(&root).ok();
+        result
+    }
+
+    #[test]
+    fn platform_series_loads_from_its_platform_directory() {
+        let manifest = load_entry(
+            "platform-ok",
+            "  - id: blur\n    series: gecko/linux/blur\n    platform: linux\n  - id: rail\n    series: browser/rail\n",
+        )
+        .expect("valid layout");
+        assert_eq!(manifest.patches[0].platform, Some(Platform::Linux));
+        assert_eq!(manifest.patches[1].platform, None, "no platform: every OS");
+    }
+
+    #[test]
+    fn platform_series_outside_its_platform_directory_is_refused() {
+        for (series, platform) in [
+            ("gecko/blur", "linux"),
+            ("gecko/macos/glass", "linux"),
+            ("linux/blur", "linux"),
+            ("gecko/linux/blur/extra", "linux"),
+        ] {
+            let err = load_entry(
+                "platform-misplaced",
+                &format!("  - id: x\n    series: {series}\n    platform: {platform}\n"),
+            )
+            .expect_err("misplaced platform series");
+            assert!(
+                err.contains(&format!("must live under <layer>/{platform}/<name>")),
+                "{series}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn shared_series_under_a_platform_directory_is_refused() {
+        for dir in ["windows", "linux", "macos"] {
+            let err = load_entry(
+                "platform-unmarked",
+                &format!("  - id: x\n    series: gecko/{dir}/glass\n"),
+            )
+            .expect_err("unmarked series in a platform directory");
+            assert!(
+                err.contains(&format!("add `platform: {dir}`")),
+                "{dir}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_platform_is_refused() {
+        let err = load_entry(
+            "platform-unknown",
+            "  - id: x\n    series: gecko/freebsd/x\n    platform: freebsd\n",
+        )
+        .expect_err("unknown platform");
+        assert!(err.contains("invalid YAML"), "got: {err}");
     }
 
     #[test]

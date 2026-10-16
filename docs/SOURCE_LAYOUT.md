@@ -52,6 +52,10 @@ patches/
 └── build/       # Firefox build/release integration
 ```
 
+A series only one OS builds sits one level deeper, under that OS
+(`patches/<layer>/<windows|linux|macos>/<series>`, `platform:` in the
+manifest; docs/engineering/PATCHING.md, Platform series).
+
 ## Configuration
 
 `configs/` contains defaults, profiles, and public schemas. Configuration should be preferred over source modification when Firefox already exposes an adequate, supported mechanism.
@@ -92,6 +96,7 @@ find:
 | Tests | `tests/unit/build/windows/`, `tests/security/tor/windows/` | — | — |
 | Shell runtime (window scripts, chrome CSS, Tor) | `aequera/shell/firefox/platform/windows/` | `aequera/shell/firefox/platform/linux/` | `aequera/shell/firefox/platform/macos/` |
 | Shell tests | `browser_aequera_*_windows.js` | `browser_aequera_*_linux.js` | `browser_aequera_*_macos.js` |
+| Firefox patches | `patches/<layer>/windows/` (none yet) | `patches/gecko/linux/`, `patches/toolkit/linux/` | `patches/gecko/macos/` |
 | Branding | branding root (Firefox's layout) | `aequera/design/branding/linux/` | `aequera/design/branding/macos/` |
 
 Each `tools/build/<os>/README.md` is the entry point for that OS and lists
@@ -104,11 +109,11 @@ and a test checks on every CI runner:
   `tools/build/<os>/platform.sh` (`tests/unit/build/test_platform_hooks.py`);
 - shell runtime: `AequeraPlatform`, `AequeraTorPlatform`, and the platform
   stylesheet in `aequera/shell/firefox/platform/<os>/`, of which `jar.mn`
-  packages only the build's own OS (`platform/platform-contract.test.mjs`).
-
-One exception keeps its own layout: patches stay ordered by Firefox layer
-(`patches/<layer>/<series>`); the series name says which OS it is for
-(`linux-desktop`, `macos-glass`).
+  packages only the build's own OS (`platform/platform-contract.test.mjs`);
+- Firefox patches: `platform:` on a manifest entry, which the CLI requires
+  to match the series directory (`<layer>/<platform>/<name>`). Patches keep
+  the Firefox layer as their first level, and every series applies on every
+  host: the worktree is one source tree, and only compilation is per-OS.
 
 ## Source-of-Truth Rule
 

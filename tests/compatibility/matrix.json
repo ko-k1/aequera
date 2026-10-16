@@ -50,9 +50,9 @@
         "compiled build (NixOS 26.11, Mozilla bootstrap toolchains + linux64-rust-1.95 under steam-run): builds, runs on Wayland (KWin 6.7.5 and Hyprland 0.56.2, nested in headless sway), aequera mochitests 760/760 (2026-10-14)"
       ],
       "known_deviations": [
-        "158.0 (adopted 2026-10-16 on Windows): the validated entries above are for 157.0.1; nothing has been built or run on Linux at 158.0 yet, and gecko/background-blur/0001 was rebased through a conflict (Bug 2070729) without being compiled",
+        "158.0 (adopted 2026-10-16 on Windows): the validated entries above are for 157.0.1; nothing has been built or run on Linux at 158.0 yet, and gecko/linux/background-blur/0001 was rebased through a conflict (Bug 2070729) without being compiled",
         "compiled build run only in nested test compositors so far, not as a daily browser",
-        "D-Bus / portal / MPRIS / search-provider rename (patches/toolkit/linux-desktop) is C++: now compiled, but the owned bus names have not been checked on a session bus yet",
+        "D-Bus / portal / MPRIS / search-provider rename (patches/toolkit/linux/linux-desktop) is C++: now compiled, but the owned bus names have not been checked on a session bus yet",
         "desktop entry, hicolor icons, and search-provider files ship as source; no installer copies them yet"
       ],
       "workarounds": [
@@ -110,7 +110,7 @@
     {
       "id": "frame-material",
       "validated_on": ["linux-x86_64"],
-      "note": "Linux: compositor blur validated on a compiled build in KWin 6.7.5 and Hyprland 0.56.2 (patches/gecko/background-blur). Windows Mica/Acrylic switching and macOS vibrancy + Liquid Glass (patches/gecko/macos-glass) are unvalidated: no Windows run yet, and the macOS patch has not been compiled (needs the macOS 26 SDK). See docs/design/MATERIAL.md"
+      "note": "Linux: compositor blur validated on a compiled build in KWin 6.7.5 and Hyprland 0.56.2 (patches/gecko/linux/background-blur). Windows Mica/Acrylic switching and macOS vibrancy + Liquid Glass (patches/gecko/macos/macos-glass) are unvalidated: no Windows run yet, and the macOS patch has not been compiled (needs the macOS 26 SDK). See docs/design/MATERIAL.md"
     },
     {
       "id": "workspaces",

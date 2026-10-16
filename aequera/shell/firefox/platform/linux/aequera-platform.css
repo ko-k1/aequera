@@ -14,8 +14,9 @@
  * paints nothing, so the window already has an alpha channel (browser.css);
  * the compositor blurs the desktop behind the translucent parts (Hyprland
  * always; other compositors when Gecko asks through
- * ext-background-effect-v1, patches/gecko/background-blur). The page card
- * (.browserContainer) and popups stay opaque (no stacked blur, MATERIAL.md);
+ * ext-background-effect-v1, patches/gecko/linux/background-blur). The page
+ * card (.browserContainer) and popups stay opaque (no stacked blur,
+ * MATERIAL.md);
  * themes with their own colors or images (lwtheme) keep the solid frame, and
  * so does a desktop that cannot show transparency. */
 @media (-moz-gtk-csd-transparency-available) {
