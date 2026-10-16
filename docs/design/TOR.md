@@ -321,7 +321,7 @@ and tor offers no named pipe. So the Tor instance uses
 | The Tor instance's own pages | Reach local services | Unchanged: `allow_hijacking_localhost` sends `127.0.0.1` to tor, which refuses it |
 | Pages in ordinary windows | Probe `127.0.0.1:<port>` to learn that tor runs | Firefox's Local Network Access (`network.lna.enabled`, `network.lna.blocking`, on in Firefox 158) asks before a public page reaches loopback; in addition the ordinary instance adds the port to `network.security.ports.banned` for the session (default branch, never saved), so its pages and requests never reach it even with that permission |
 | Programs of the same Windows user | Use tor, read the profile | Not a boundary: they can already read and change the profile, as with Tor Browser's port 9150 |
-| Programs of other Windows users | Connect to the port and use this tor as a client | Accepted and documented: they cannot see this session's traffic and cannot share its circuits (each circuit key's password is a random token they cannot guess). Tor Browser has the same exposure. Not verified: whether Windows stops another user's socket from taking over the port while tor holds it (tor binds without `SO_EXCLUSIVEADDRUSE`); if it can, that user receives this session's SOCKS requests. Open question, see Residual risks |
+| Programs of other Windows users | Connect to the port and use this tor as a client | Accepted and documented: they cannot see this session's traffic and cannot share its circuits (each circuit key's password is a random token they cannot guess). Tor Browser has the same exposure. They cannot take the port over while tor holds it (measured, see Residual risks) |
 
 ### Liveness of a running Tor instance
 
@@ -347,13 +347,20 @@ gone (`__OwningControllerProcess`). `taskkill /F` is the Windows SIGKILL.
 
 ### Residual risks (Windows)
 
-- **Port takeover while tor holds it.** tor binds its SOCKS port without
-  `SO_EXCLUSIVEADDRUSE`. Whether a later socket of the same or another
-  Windows user (with `SO_REUSEADDR`) can take connections from it has not
-  been tested. Same user: not a boundary anyway. Another user: would see
-  this session's SOCKS requests (host names, circuit keys), not its other
-  traffic, and never cause a direct connection. To test, and if confirmed,
-  to close (an exclusive bind in tor's configuration is not available).
+- **Port takeover while tor holds it: not possible (measured 2026-10-16,
+  Windows 11, tor.exe 0.4.9.14).** `tests/security/tor/port-takeover`
+  starts tor as the user and tries every takeover from another account
+  (`NT AUTHORITY\LOCAL SERVICE`, through a temporary scheduled task) and
+  from the same user: binding `127.0.0.1:<port>` is refused (WinError
+  10048), with `SO_REUSEADDR` too (10013); wildcard binds (`0.0.0.0`)
+  succeed but a connection to `127.0.0.1:<port>` still reaches tor (the
+  more specific binding wins); a bind on `::1` succeeds and does not
+  matter (Firefox connects to `127.0.0.1`). Windows refuses the
+  `SO_REUSEADDR` bind even against a listener without
+  `SO_EXCLUSIVEADDRUSE` (control run), so this rests on Windows' own
+  rules, not on a tor socket option. Re-run it after a Windows or tor
+  update. What remains is the moment after tor exits (below), when the
+  port is free.
 - **The moment after a crash** (above): offline once the exit is seen.
 - **The ordinary instance's port ban** is a default-branch value: a user
   value of `network.security.ports.banned` shadows it (logged), and Local
