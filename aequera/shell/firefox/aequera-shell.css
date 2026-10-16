@@ -67,6 +67,25 @@
   }
 }
 
+/* Window-modal dialogs (the default-browser prompt, the workspace close
+ * prompt): Firefox dims the whole window with the dialog's ::backdrop, which
+ * over the glass frame reads as the material breaking. Under glass the frame
+ * stays as it is and only the page card dims, in the card's own shape (the
+ * tabbox clip), with Firefox's overlay color; the chrome is inert either way.
+ * A solid frame keeps Firefox's whole-window dim. */
+:root[aequera-material="glass"] #window-modal-dialog::backdrop {
+  background-color: transparent;
+}
+
+:root[aequera-material="glass"][window-modal-open] #tabbrowser-tabbox::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-color: var(--background-color-overlay);
+  pointer-events: none;
+}
+
 /* The fixed 40px titlebar shim (#vertical-spacer) has no purpose in the
  * Aequera navbar: window dragging lives on the titlebar/tab strip, so it
  * lands as a dead gap between placed widgets (e.g. after downloads). */

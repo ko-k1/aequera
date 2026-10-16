@@ -52,6 +52,43 @@ add_task(async function test_opacity_is_clamped() {
   await popPrefs(3);
 });
 
+// A window-modal dialog (the default-browser prompt) dims only the page card
+// over the glass frame; a solid frame keeps Firefox's whole-window dim.
+add_task(async function test_window_modal_dialog_dims_only_the_page_under_glass() {
+  const root = document.documentElement;
+  const dialog = document.getElementById("window-modal-dialog");
+  const backdrop = () => getComputedStyle(dialog, "::backdrop").backgroundColor;
+  const cardDim = () => getComputedStyle(document.getElementById("tabbrowser-tabbox"), "::after");
+  for (const frame of ["glass", "solid"]) {
+    await setFrame(frame);
+    const closed = Services.prompt.asyncAlert(
+      window.browsingContext,
+      Services.prompt.MODAL_TYPE_INTERNAL_WINDOW,
+      "Aequera",
+      "A window-modal dialog"
+    );
+    const content = await TestUtils.waitForCondition(
+      () =>
+        root.hasAttribute("window-modal-open") &&
+        dialog.querySelector(".dialogFrame")?.contentDocument?.querySelector("dialog")?.getButton("accept"),
+      `${frame}: the dialog opens`
+    );
+    if (frame == "glass") {
+      is(alpha(backdrop()), 0, "glass: the frame is not dimmed");
+      Assert.notEqual(cardDim().content, "none", "glass: the page card is dimmed instead");
+      Assert.greater(alpha(cardDim().backgroundColor), 0, "with Firefox's overlay color");
+    } else {
+      Assert.greater(alpha(backdrop()), 0, "solid: Firefox dims the whole window");
+      is(cardDim().content, "none", "solid: no second dim on the card");
+    }
+    content.click();
+    await closed;
+    await TestUtils.waitForCondition(() => !root.hasAttribute("window-modal-open"), `${frame}: closed`);
+    is(cardDim().content, "none", `${frame}: the card is not dimmed once the dialog closes`);
+  }
+  await popPrefs(2);
+});
+
 add_task(async function test_the_page_card_stays_opaque() {
   await setFrame("solid");
   is(alpha(cardColor()), 1, "the page card is opaque");

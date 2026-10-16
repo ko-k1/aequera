@@ -340,6 +340,13 @@ build (`tools/build/mozconfig.compiled`). An artifact build runs Mozilla's
 prebuilt binary, where Linux `auto` is glass on Hyprland only and macOS stays
 on plain vibrancy. Test: `browser_aequera_material.js`.
 
+Window-modal dialogs (the default-browser prompt, the workspace close
+prompt) dim the window with the dialog's `::backdrop` in Firefox, which over
+the glass frame reads as the material breaking. Under glass the backdrop is
+transparent and only the page card dims (a `#tabbrowser-tabbox::after` in
+Firefox's overlay color, inside the card's clip); a solid frame keeps
+Firefox's whole-window dim (`aequera-shell.css`).
+
 ## Workspaces (`workspaces/`)
 
 Tab sets in one window: the dock's dots switch which tabs the rail shows;
