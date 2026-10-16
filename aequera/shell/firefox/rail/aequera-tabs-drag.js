@@ -164,16 +164,17 @@
     /**
      * The drag image. Inside the list the sliding row itself is the visual,
      * so the image is hidden there and shows only once the pointer leaves
-     * (tear-off, another window). Windows and macOS swap the image mid-drag
-     * with updateDragImage; Linux cannot (Firefox's own tab drag notes the
-     * same), so there a drag panel follows the pointer: live DOM whose
-     * content shows or hides with [outside] (setGhostOutside). Reduced
-     * motion has no slide, so the image shows throughout.
+     * (tear-off, another window). Where the image can be swapped mid-drag
+     * (updateDragImage; AequeraPlatform.updatesDragImage) it is; where it
+     * cannot (Linux: Firefox's own tab drag notes the same), a drag panel
+     * follows the pointer: live DOM whose content shows or hides with
+     * [outside] (setGhostOutside). Reduced motion has no slide, so the image
+     * shows throughout.
      */
     setDragImage(dt, row, offsetX, offsetY, rm) {
       const x = Math.round(offsetX);
       const y = Math.round(offsetY);
-      if (AppConstants.platform == "linux") {
+      if (!AequeraPlatform.updatesDragImage) {
         // The pill is narrower than the row: hold it by its icon, not by
         // the grab point within the full-width row.
         const panel = this.dragPanel(row);
@@ -204,7 +205,7 @@
       if (drag.rm) {
         return;
       }
-      if (AppConstants.platform == "linux") {
+      if (!AequeraPlatform.updatesDragImage) {
         this._dragPanel?.toggleAttribute("outside", outside);
         return;
       }

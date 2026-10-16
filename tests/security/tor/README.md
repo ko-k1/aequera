@@ -10,8 +10,8 @@ and on every upstream update (the re-check list is in the design doc).
 Needs: a build (`tools/build/README.md`), `tor` (on `PATH`, or its path in
 the ordinary profile's `aequera.tor.executable`), network access to Tor,
 and Node.js (the scripts use only its standard library). On NixOS, use the
-`-nixos` launcher and `nix shell nixpkgs#tor`, or set the executable pref to
-a store path.
+launcher `tools/build/linux/nixos/aequera-run.sh` and `nix shell nixpkgs#tor`,
+or set the executable pref to a store path.
 
 ## Steps
 
@@ -69,14 +69,14 @@ fixes: the real "New Tor window" flow with the bundled tor passed
 2026-10-16, Windows 11 x86_64, the bundled `tor.exe` 0.4.9.14: live check
 24/24, including the Windows checks (online only while tor listens, a
 taken port stays offline, the port banned in the ordinary instance). On
-Windows, start both instances with `tools\build\aequera.cmd` and the same
+Windows, start both instances with `tools\build\windows\aequera.cmd` and the same
 arguments instead of `aequera-run.sh --persistent` (in PowerShell through
 `Start-Process`: a pipe on its output stays open as long as the browser
 runs), and pass both Marionette ports to the check:
 `node tests/security/tor/live-check.cjs 28282 28281`. Steps 1-2 need no
 window system there; the handoff (step 3) was not run.
 
-Port takeover on Windows (`port-takeover/run.ps1`, elevated PowerShell):
+Port takeover on Windows (`windows/port-takeover/run.ps1`, elevated PowerShell):
 starts the bundled tor on a loopback port and tries to take the port over
 from another account (`LOCAL SERVICE`, a temporary scheduled task) while
 tor holds it; prints each bind and where a connection to the port went,

@@ -3,14 +3,14 @@
 # check; needs an elevated PowerShell and a build with the bundled tor
 # (tools/tor/fetch-bundle.sh).
 #
-#   powershell -ExecutionPolicy Bypass -File tests\security\tor\port-takeover\run.ps1
+#   powershell -ExecutionPolicy Bypass -File tests\security\tor\windows\port-takeover\run.ps1
 #
 # Starts tor.exe as this user the way a Tor window runs it, runs attacker.ps1
 # once as NT AUTHORITY\LOCAL SERVICE through a temporary scheduled task (no
 # account is created), and connects to 127.0.0.1:<port> for every bind the
 # attacker gets. Removes the task, the shared directory, and tor afterwards.
 param(
-  [string]$Tor = (Join-Path $PSScriptRoot "..\..\..\..\obj\firefox\artifact\dist\bin\tor\tor.exe"),
+  [string]$Tor = (Join-Path $PSScriptRoot "..\..\..\..\..\obj\firefox\artifact\dist\bin\tor\tor.exe"),
   [string]$Log = (Join-Path $env:TEMP "aequera-port-takeover.log")
 )
 $ErrorActionPreference = "Stop"

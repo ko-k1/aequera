@@ -5,6 +5,44 @@ is an **artifact build**: Mozilla's prebuilt compiled parts for the pinned
 revision plus a local front-end build. Minutes, not hours; no host C++
 toolchain beyond the bootstrap guides.
 
+This README is the shared flow. Everything that differs per OS has its own
+directory and README: [`windows/`](windows/README.md),
+[`linux/`](linux/README.md), [`macos/`](macos/README.md).
+
+## Layout
+
+```text
+tools/build/
+├── README.md              # this file: the flow every OS shares
+├── aequera-run.sh         # entry: dev loop launcher (any POSIX shell, every OS)
+├── aequera.sh             # entry: real-profile launcher (Linux, macOS)
+├── test-shell.sh          # entry: shell test gate (every OS)
+├── mozconfig.artifact     # entry: MOZCONFIG for artifact builds
+├── mozconfig.compiled     # entry: MOZCONFIG for compiled builds
+├── mozconfig.branding     # shared fragment: product identity
+├── mozconfig.platform     # shared fragment: sources <os>/mozconfig for the host
+├── common/                # shared internals, no OS branches
+│   ├── host.sh            #   host detection; loads <os>/platform.sh
+│   ├── launch-common.sh   #   tree, objdir, binary, identity
+│   ├── startup-cache.sh   #   when to pass -purgecaches
+│   └── aequera_app_ini.py #   launch ini with the Aequera identity
+├── windows/               # platform.sh, mozconfig, aequera.cmd, dist_copies.py
+├── linux/                 # platform.sh, mozconfig, nixos/ (steam-run wrappers)
+└── macos/                 # platform.sh, mozconfig
+```
+
+Rule: top-level files are what you run or export; `common/` is shared and
+never asks which OS it runs on; each `<os>/` directory holds everything
+that is true of one OS only. Shared scripts reach OS behavior only through
+the hooks `common/host.sh` documents (binary names, bundle layout, launch
+ini location, path conversion, dist fixes, test defaults). Every
+`<os>/platform.sh` defines all of them, which
+`tests/unit/build/test_platform_hooks.py` checks for all three OSes on every
+CI runner. A new OS difference becomes a hook (or a line in an existing
+one), never a `uname` branch in shared code. Mozconfig fragments are the
+one exception: mach sources them with plain `sh`, so `mozconfig.platform`
+picks `<os>/mozconfig` itself.
+
 ## One-time setup
 
 Pick the toolchain guide for the host OS (`tools/bootstrap/`), then generate
@@ -22,46 +60,9 @@ aequera patch apply
 
 This checks out Firefox at the lock, applies `patches/` in order, and
 syncs overlays (`aequera/shell/firefox` -> `worktree/firefox/browser/aequera`
-and branding). Then follow the section for your OS
-(`tools/bootstrap/*.md` has the prerequisite details).
-
-### Windows
-
-1. Install **MozillaBuild** (https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe)
-   to the default `C:\mozilla-build`.
-2. Open `C:\mozilla-build\start-shell.bat`, then:
-
-   ```sh
-   cd <repo>/worktree/firefox
-   export MOZCONFIG="$PWD/../../tools/build/mozconfig.artifact"
-   ./mach bootstrap   # choose "Firefox for Desktop Artifact Mode"
-   ```
-
-### Linux
-
-1. Install the distribution's Firefox build dependencies plus clang; the
-   official guide is authoritative:
-   `https://firefox-source-docs.mozilla.org/setup/linux_build.html`
-   (see also `tools/bootstrap/linux.md`).
-2. In `worktree/firefox`:
-
-   ```sh
-   export MOZCONFIG="$PWD/../../tools/build/mozconfig.artifact"
-   ./mach bootstrap --application-choice browser_artifact_mode
-   ```
-
-### macOS
-
-1. Install the Xcode command line tools and Mozilla's listed Homebrew
-   formulae (`tools/bootstrap/macos.md`, then the official macOS guide).
-2. In `worktree/firefox`, bootstrap exactly like Linux (same mozconfig).
-3. One-time per logo change, on the Mac: compile the asset catalog and
-   commit the result — the bundle step requires it and `actool` exists
-   only on Apple hosts:
-
-   ```sh
-   bash tools/branding/build_assets_car.sh
-   ```
+and branding). Then bootstrap mach as your OS's README says
+([Windows](windows/README.md#setup), [Linux](linux/README.md#setup),
+[macOS](macos/README.md#setup)).
 
 ## Build and run
 
@@ -88,46 +89,36 @@ To gate a Firefox update before adopting it, build and test the rebased
 candidate (`aequera patch rebase`, docs/engineering/UPSTREAM1.md) the same
 way from `worktree/candidate`; its objdir is `obj/candidate/…`. The
 launchers and the NixOS wrappers take `AEQUERA_WORKTREE=candidate`
-(default `firefox`):
+(default `firefox`); the test gate runs in the worktree it is started from:
 
 ```sh
 cd worktree/candidate && ./mach build
-AEQUERA_WORKTREE=candidate bash tools/build/test-shell-nixos.sh
-AEQUERA_WORKTREE=candidate bash tools/build/aequera-run.sh
+bash ../../tools/build/test-shell.sh
+AEQUERA_WORKTREE=candidate bash ../../tools/build/aequera-run.sh
 ```
 
 `aequera-run.sh` works in any POSIX shell on all three platforms (it finds
 the repo from its own location, so any checkout directory works). When
 `MOZCONFIG` is unset it picks the mozconfig matching the objdir
 (`obj/firefox/compiled` -> compiled, anything else -> artifact); `AEQUERA_BUILD`
-(`compiled`|`artifact`) overrides that guess for custom objdirs. On
-Windows outside the MozillaBuild shell (Explorer, cmd, PowerShell), start
-the real Aequera profile with `tools\build\aequera.cmd`: double-click it,
-or run it with extra Firefox arguments; on Linux/macOS use
-`tools/build/aequera.sh`. Either is `--persistent` without the shell.
+(`compiled`|`artifact`) overrides that guess for custom objdirs. To start
+the real Aequera profile without a build shell, use
+`tools/build/aequera.sh` on Linux/macOS and `tools\build\windows\aequera.cmd`
+on Windows (double-click, or run it with extra Firefox arguments). Either is
+`--persistent` without the shell.
 
 Always start through one of these, never bare `./mach run` or the binary.
 All launchers prefer the compiled build (`obj/firefox/compiled`: native `aequera`
 binary with its own file name and embedded Aequera icon, `Aequera.app` on
-macOS) and fall back to the artifact build. All also export
-`MOZ_DEVELOPER_REPO_DIR` (and `MOZ_DEVELOPER_OBJ_DIR`), like `mach run`
-does: local builds symlink front-end files into `dist`, and the Windows
-content-process sandbox only resolves those links when the repo dir is
-advertised (upstream bug 1916286). Without it DevTools cannot open
-(`Ctrl+Shift+I`, `F12`, … fail with `builtin-modules.js is not found`).
-That is not enough on Windows hosts where Python may create symlinks
-(Developer Mode, elevated shells): Gecko still refuses symlinked built-in
-add-on files in content processes (Ad Veil's content scripts, Firefox's new
-tab bundle), and the sandbox exception does not cover the objdir, which
-sits outside the source tree here (`PromiseWorker.js` and other generated
-files). So on Windows every launcher and `test-shell.sh` first turn the
-links in `dist/bin` into copies (`dist_copies.py`, the layout Firefox's own
-Windows builds use). `mach build` relinks, so this repeats each start and
-costs one scan of `dist/bin` when nothing changed. Off Windows it is a no-op.
-Links to missing files are reported and left alone; a launch stops only
-when the step itself fails (no Python, an unreadable `dist/bin`). One
-consequence: on those hosts an edit in the worktree no longer reaches
-`dist` by itself; run `./mach build faster` (the edit loop below) first.
+macOS) and fall back to the artifact build; which file names count is the
+host's `platform.sh`. All also export `MOZ_DEVELOPER_REPO_DIR` (and
+`MOZ_DEVELOPER_OBJ_DIR`), like `mach run` does: local builds symlink
+front-end files into `dist`, and the Windows content-process sandbox only
+resolves those links when the repo dir is advertised (upstream bug
+1916286). Without it DevTools cannot open (`Ctrl+Shift+I`, `F12`, … fail
+with `builtin-modules.js is not found`). Windows needs one more step before
+every start, turning those links into copies:
+[windows/README.md](windows/README.md#dist-copies).
 The build is branded Aequera (`mozconfig.branding` +
 `patches/build/branding`: name, logo, vendor, own profile root —
 `%APPDATA%\Aequera` on Windows, `~/.aequera` on Linux,
@@ -136,12 +127,12 @@ no updater or crash upload), and its `application.ini` says so; but an artifact
 build's prebuilt binary is Mozilla's, which ignores that file and uses the
 Firefox identity compiled into it, opening your Firefox profile and
 colliding with a Firefox you have open. All launchers copy the ini to
-`browser/aequera-application.ini` (`aequera_app_ini.py` refuses one without
+`browser/aequera-application.ini` (`common/aequera_app_ini.py` refuses one without
 the Aequera identity, and adds `UAName=Firefox` so the user agent is
 Firefox's, not "Aequera/<version>") and start with `-app` and `-no-remote`.
 The POSIX launchers add `-purgecaches` only when a file under the build's
 `dist/bin` (following its links into the source tree) changed since the last
-launch of the same profile (`startup-cache.sh`; stamps
+launch of the same profile (`common/startup-cache.sh`; stamps
 `<objdir>/.aequera-launch-{dev,persistent}`): purging on every launch cost
 about half a second of startup. `aequera.cmd` still purges every launch.
 
@@ -159,34 +150,11 @@ export MOZCONFIG="$PWD/../../tools/build/mozconfig.compiled"
 `--with-app-name=firefox` pin, plus `--disable-updater
 --disable-crashreporter`, in its own `obj/firefox/compiled` dir so both
 builds coexist. Host tuning (parallelism, Rust notes) lives in
-`mozconfig.platform`, sourced by both. First build is hours; later ones are
-incremental. Notes from bringing it up on Windows (2026-10-03, 128 GB box
-shared with ML training) — per-OS guidance, not global defaults:
+`<os>/mozconfig`, which `mozconfig.platform` sources for both. First build
+is hours; later ones are incremental. Bring-up notes per OS:
+[Windows](windows/README.md#compiled-build) (parallelism, Rust),
+[Linux and NixOS](linux/README.md#compiled-build).
 
-- Parallelism is capped to `-j1` on Windows (`mozconfig.platform`;
-  override with `AEQUERA_MAKE_FLAGS="-j<N>"` on an idle box): even
-  `-j4` OOMs giant unified TUs and the `gkrust` LTO link against resident
-  training jobs. The box idles through it if training is paused. Linux/macOS
-  stay on mach's default; set `MOZ_MAKE_FLAGS="-j<N>"` if the link OOMs.
-- Rust: the tree needs >= 1.90.0, but a newer rustc can crash on the
-  `gkrust` LTO link (on Windows stable hit `0xc0000409`); 1.95.0 is
-  known-good there. Point `RUSTC`/`CARGO` at it in the build shell
-  (configure-time setting, so re-run `./mach configure` after changing it).
-
-NixOS (2026-10-14, NixOS 26.11, 16 cores: first build 29 min). `mach
-bootstrap` refuses the distro, so use Mozilla's own toolchains, run under
-`steam-run` like everything else here (`nixos-env.sh`):
-
-- add `ac_add_options --enable-bootstrap` to a local mozconfig that sources
-  `mozconfig.compiled`: on the release channel configure does not bootstrap by
-  default, and with it fetches clang, cbindgen, nasm, node, and the Debian
-  sysroot (so no NixOS headers or libraries are involved);
-- bootstrap does not fetch Rust: from `~/.mozbuild`, run
-  `<worktree>/mach artifact toolchain --from-build linux64-rust-1.95` (the
-  rustc this tree's CI uses) and put `~/.mozbuild/rustc/bin` first on `PATH`
-  in the shell that runs mach;
-- set `TMPDIR` to a short path under `/home` when the checkout path is long
-  (Python's forkserver socket path overflows `AF_UNIX`).
 
 ## Edit loop
 
@@ -212,14 +180,8 @@ bash ../../tools/build/test-shell.sh aequera --repeat 4
   resets, `browser_sidebar_expand_on_hover.js` fails its first assertion
   because Aequera ships expand-on-hover on.
 
-On NixOS, use the `-nixos` wrappers, which take the same arguments and
-work from any directory:
-`bash tools/build/test-shell-nixos.sh` for the gate and
-`bash tools/build/aequera-run-nixos.sh [--persistent]` to start the
-browser. They run inside `steam-run` because Mozilla's prebuilt binaries
-need an FHS system. They also keep temp files, the fontconfig cache and
-crash dumps under `.tmp/nixos/`, because the shared `~/.cache/fontconfig`
-crashes the browser at startup (`tools/build/nixos-env.sh`).
+On NixOS, run the gate through its wrapper:
+[linux/README.md](linux/README.md#nixos).
 
 Headless servers are fine: the suite runs `--headless`, and the two
 platform-drag tab tests skip themselves there (no drag service without a
@@ -247,5 +209,5 @@ install the host C++ toolchain (`tools/bootstrap/windows.md`,
 
 ## Known platform gaps
 
-- No installer is built yet on any platform (Windows `msix/`, macOS dmg
-  polish beyond the committed `background.png`/`disk.icns`).
+- No installer is built yet on any platform. Per-OS gaps are listed in each
+  platform README.

@@ -1,0 +1,13 @@
+# Aequera build tuning for Windows hosts (MozillaBuild), sourced through
+# tools/build/mozconfig.platform. Setup: tools/bootstrap/windows.md and
+# tools/build/windows/README.md.
+
+# Parallelism: unrestrained -j OOMs giant unified translation units and the
+# gkrust LTO link on loaded machines. Windows keeps an explicit serialized
+# default (brought up on a 128 GB box shared with ML training, where even -j4
+# OOMed against ~70 GB resident jobs; pause training or raise if the box is
+# idle). AEQUERA_MAKE_FLAGS="-j<N>" overrides it on idle boxes.
+mk_add_options MOZ_MAKE_FLAGS="${AEQUERA_MAKE_FLAGS:--j1}"
+
+# Older Rust (see mozconfig.platform), e.g.
+# export RUSTC=.../toolchains/1.95.0-.../bin/rustc.exe

@@ -1,5 +1,6 @@
-# Shared NixOS setup for the *-nixos.sh wrappers; source it, then call
-# nixos_fhs_exec <script> [args...] to run a repo script under steam-run.
+# Shared NixOS setup for the wrappers in this directory (aequera-run.sh,
+# test-shell.sh); source it, then call nixos_fhs_exec <script> [args...] to
+# run a repo script under steam-run.
 #
 # Mozilla's prebuilt artifact binaries (firefox, xpcshell) expect an FHS
 # system: on NixOS they cannot find GTK/X11, and `mach bootstrap` refuses the

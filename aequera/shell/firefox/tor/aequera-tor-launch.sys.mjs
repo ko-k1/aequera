@@ -9,7 +9,9 @@
 // Firefox's per-profile remoting (the same command line, which a running
 // instance receives instead).
 
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+// What differs per OS (transport, process checks): one module per build
+// (jar.mn).
+import { AequeraTorPlatform } from "chrome://browser/content/aequera/platform/aequera-tor-platform.sys.mjs";
 import { randomHex, removeSocketDir, torModel } from "chrome://browser/content/aequera/tor/aequera-tor-common.sys.mjs";
 
 const lazy = {};
@@ -101,7 +103,7 @@ export const AequeraTorLauncher = {
     if (!Services.prefs.getBoolPref(ENABLED_PREF, true)) {
       return "disabled";
     }
-    if (!["linux", "macosx", "win"].includes(AppConstants.platform)) {
+    if (!AequeraTorPlatform.supported()) {
       return "platform";
     }
     if (Services.prefs.getBoolPref(torModel().INSTANCE_PREF, false)) {
@@ -224,15 +226,15 @@ export const AequeraTorLauncher = {
       // No marker: no instance. A marker that cannot be read: unknown, so
       // assumed running (its profile is never rewritten on a guess).
       if (error?.name == "NotFoundError") {
-        // Windows: the profile lock tells a running instance even without
-        // its marker (one that could not write it, or a removed one).
-        return AppConstants.platform == "win" ? this.profileLocked(paths.profile) : false;
+        // Where the OS can tell (Windows: the profile lock), a running
+        // instance shows even without its marker.
+        return AequeraTorPlatform.runsWithoutMarker(paths.profile);
       }
       console.error("aequera-tor: cannot read the running-session marker", error);
       return true;
     }
     if (!Number.isInteger(pid) || pid <= 0) {
-      return AppConstants.platform == "win" ? this.profileLocked(paths.profile) : false;
+      return AequeraTorPlatform.runsWithoutMarker(paths.profile);
     }
     const alive = this.processAlive ?? ((p, profile) => this.processRunsProfile(p, profile));
     try {
@@ -244,64 +246,10 @@ export const AequeraTorLauncher = {
     }
   },
 
-  /** Whether `pid` is a process whose command line names `profile`
-   *  (Windows: whether a process holds the profile's lock). */
-  async processRunsProfile(pid, profile) {
-    if (AppConstants.platform == "win") {
-      return this.profileLocked(profile);
-    }
-    if (AppConstants.platform == "linux") {
-      // procfs reports a size of 0: without maxBytes IOUtils reads nothing.
-      const readProc = async name =>
-        new TextDecoder().decode(await IOUtils.read(`/proc/${pid}/${name}`, { maxBytes: 1 << 16 }));
-      let stat;
-      try {
-        stat = await readProc("stat");
-      } catch {
-        return false; // no such process
-      }
-      // "pid (comm) S ...": a zombie (exited, not yet reaped) or dead process
-      // runs nothing.
-      const state = stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3);
-      if (state == "Z" || state == "X") {
-        return false;
-      }
-      let cmdline = "";
-      try {
-        cmdline = await readProc("cmdline");
-      } catch {}
-      if (!cmdline) {
-        // A live process whose command line cannot be read: assume it is the
-        // instance rather than rewrite a profile it may be using.
-        return true;
-      }
-      return cmdline.split("\0").includes(profile);
-    }
-    // macOS: no /proc.
-    const proc = await lazy.Subprocess.call({ command: "/bin/ps", arguments: ["-p", String(pid), "-o", "command="] });
-    let out = "";
-    let chunk;
-    while ((chunk = await proc.stdout.readString())) {
-      out += chunk;
-    }
-    const { exitCode } = await proc.wait();
-    return exitCode === 0 && out.includes(profile);
-  },
-
-  /**
-   * Windows: whether a running Firefox holds `profile`. Firefox keeps
-   * <profile>/parent.lock open with no sharing while it runs (nsProfileLock)
-   * and leaves the file behind when it exits. A lock that opens is not held;
-   * no lock is no instance; anything else (held, or an error that says
-   * neither) counts as running: a profile is never rewritten on a guess.
-   */
-  async profileLocked(profile) {
-    try {
-      await IOUtils.read(PathUtils.join(profile, "parent.lock"), { maxBytes: 1 });
-      return false;
-    } catch (error) {
-      return error?.name != "NotFoundError";
-    }
+  /** Whether `pid` is a process running `profile` (per OS:
+   *  AequeraTorPlatform.processRunsProfile). */
+  processRunsProfile(pid, profile) {
+    return AequeraTorPlatform.processRunsProfile(pid, profile);
   },
 
   /** Read and drop the child's output, so a full pipe never blocks it. */
@@ -371,7 +319,7 @@ export const AequeraTorLauncher = {
     const level = await this.rememberedSecurityLevel(paths);
     const common = { dataDir: paths.data, executable, level };
     let prefs;
-    if (AppConstants.platform == "win") {
+    if (AequeraTorPlatform.transport == "tcp") {
       prefs = this.model.instancePrefs({ socksPort: this.freeLoopbackPort(), ...common });
     } else {
       const socksPath = await this.socketPath();

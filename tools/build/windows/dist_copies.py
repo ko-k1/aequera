@@ -17,10 +17,10 @@ the browser's content processes:
 Copies are what Firefox's own Windows builds use when symlinks are
 unavailable, so this restores the layout upstream tests. mach replaces the
 copies with links again on every build, so the launchers and
-test-shell.sh run this each time; a run without links costs one scan.
+test-shell.sh run this each time (tools/build/windows/platform.sh); a run without links costs one scan.
 Copies keep the target's modification time (mach's up-to-date checks
 compare it) and stay writable (mach deletes them to relink). Their new
-change time makes startup-cache.sh purge once after each build, as a
+change time makes common/startup-cache.sh purge once after each build, as a
 rebuild should.
 
 A link whose target is gone is reported and left alone: it is broken with

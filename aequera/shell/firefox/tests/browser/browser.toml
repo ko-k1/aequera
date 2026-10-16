@@ -29,7 +29,23 @@ prefs = [
 
 ["browser_aequera_fullscreen.js"]
 
+["browser_aequera_platform.js"]
+
 ["browser_aequera_material.js"]
+support-files = ["material-helpers.js"]
+
+# Per-OS behavior (platform/<os>/) is tested in per-OS files.
+["browser_aequera_material_linux.js"]
+run-if = ["os == 'linux'"]
+support-files = ["material-helpers.js"]
+
+["browser_aequera_material_macos.js"]
+run-if = ["os == 'mac'"]
+support-files = ["material-helpers.js"]
+
+["browser_aequera_material_windows.js"]
+run-if = ["os == 'win'"]
+support-files = ["material-helpers.js"]
 
 ["browser_aequera_newtab.js"]
 

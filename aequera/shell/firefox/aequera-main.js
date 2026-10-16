@@ -9,8 +9,11 @@
 // these uncached too: add new scripts here (and to jar.mn), never to the
 // bootstrap.
 for (const name of [
-  // First: in the Tor instance it locks the network prefs and starts tor
-  // before any other feature runs.
+  // What differs per OS (platform/<os>/, one per build, jar.mn); defines
+  // AequeraPlatform and nothing else, so it runs before every feature.
+  "platform/aequera-platform.js",
+  // First feature: in the Tor instance it locks the network prefs and starts
+  // tor before any other feature runs.
   "tor/tor-model.js",
   "tor/aequera-tor.js",
   "aequera-frame.js",

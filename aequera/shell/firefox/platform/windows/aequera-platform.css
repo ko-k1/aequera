@@ -1,0 +1,28 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Windows chrome styling: what the shell paints differently on this OS.
+ * Packaged as chrome://browser/content/aequera/platform/aequera-platform.css
+ * on Windows builds only (jar.mn) and imported last by aequera-shell.css, so
+ * these rules keep the place in the cascade they had there.
+ *
+ * Frame material "glass" (aequera-frame.js sets :root[aequera-material]):
+ * DWM draws Acrylic behind the window (AequeraPlatform.publishBackdrop) and
+ * upstream's (-moz-windows-mica) styles make the frame transparent, except
+ * with Windows' "Show accent color on title bars": upstream then paints the
+ * accent (ActiveCaption) over the whole frame and its caption text, hiding
+ * the backdrop. The frame keeps the backdrop and the scheme's text color;
+ * the accent stays on the window border. Same conditions as upstream's
+ * transparent Mica frame (browser/themes/windows/browser.css). The page card
+ * and popups stay opaque (no stacked blur, MATERIAL.md); themes with their
+ * own colors or images (lwtheme) keep the solid frame. */
+@media (-moz-windows-mica) {
+  :root[aequera-material="glass"][customtitlebar]:not([lwtheme], [builtintheme]) body {
+    &, &:-moz-window-inactive {
+      background-color: transparent;
+    }
+    --toolbox-text-color: -moz-headerbartext;
+    --toolbox-text-color-inactive: -moz-headerbarinactivetext;
+  }
+}

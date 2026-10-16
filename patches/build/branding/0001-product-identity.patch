@@ -22,7 +22,7 @@ What it changes:
   tools/build/mozconfig.branding (branding directory, basename, remoting
   name). Artifact builds run Mozilla's prebuilt binary, where this flag
   has no effect; their launch ini carries UAName=Firefox instead
-  (tools/build/aequera_app_ini.py).
+  (tools/build/common/aequera_app_ini.py).
 
 Depends on: nothing.
 Validation: generated dist/bin/application.ini carries Vendor=Aequera,

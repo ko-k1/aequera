@@ -103,7 +103,7 @@ aequera/
 │   ├── bootstrap/
 │   ├── upstream/
 │   ├── patch/                  # assemble.py (Git-native series helper)
-│   ├── build/
+│   ├── build/                  # entry points; common/, windows/, linux/, macos/
 │   ├── benchmark/
 │   ├── branding/               # brand asset renderer
 │   ├── cli/                    # `aequera` Rust CLI

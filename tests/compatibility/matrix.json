@@ -16,7 +16,7 @@
       "arch": "x86_64",
       "status": "supported",
       "build_profiles": ["artifact", "compiled"],
-      "launchers": ["tools/build/aequera.cmd", "tools/build/aequera-run.sh"],
+      "launchers": ["tools/build/windows/aequera.cmd", "tools/build/aequera-run.sh"],
       "validated": [
         "cli-smoke (PR CI + local)",
         "artifact build + run",
@@ -28,7 +28,7 @@
         "158.0 (adopted 2026-10-16): artifact build and the full shell gate re-run on 158.0; the compiled build was last built on 157.0.1"
       ],
       "workarounds": [
-        "mozconfig.platform serializes Windows builds to -j1 on loaded hosts; export MOZ_MAKE_FLAGS with a higher -j when the box is idle"
+        "tools/build/windows/mozconfig serializes Windows builds to -j1 on loaded hosts; export AEQUERA_MAKE_FLAGS with a higher -j when the box is idle"
       ]
     },
     {
@@ -40,7 +40,7 @@
       "launchers": [
         "tools/build/aequera.sh",
         "tools/build/aequera-run.sh",
-        "tools/build/aequera-run-nixos.sh"
+        "tools/build/linux/nixos/aequera-run.sh"
       ],
       "validated": [
         "cli-smoke (PR CI + local)",
@@ -56,10 +56,10 @@
         "desktop entry, hicolor icons, and search-provider files ship as source; no installer copies them yet"
       ],
       "workarounds": [
-        "NixOS: Mozilla's prebuilt binaries need an FHS environment; use tools/build/test-shell-nixos.sh and aequera-run-nixos.sh (steam-run, setup in nixos-env.sh)",
+        "NixOS: Mozilla's prebuilt binaries need an FHS environment; use tools/build/linux/nixos/test-shell.sh and aequera-run.sh (steam-run, setup in env.sh)",
         "NixOS 26.11+: the steam FHS no longer ships GTK 3; add gtk3, at-spi2-core, and libxcomposite via programs.steam.package extraLibraries",
         "NixOS: after switching system generations, move .tmp/nixos/cache/fontconfig aside; a cache written by another fontconfig version crashes startup",
-        "NixOS compiled build: --enable-bootstrap plus Mozilla's linux64-rust-1.95 on PATH (tools/build/README.md, Compiled build)"
+        "NixOS compiled build: --enable-bootstrap plus Mozilla's linux64-rust-1.95 on PATH (tools/build/linux/README.md, Compiled build)"
       ]
     },
     {

@@ -12,7 +12,7 @@
 # on the desktop: tab switches need a real compositor (headless Firefox never
 # finishes one), and the benchmark must not open windows on the user's
 # session. Needs `sway` on PATH (nix shell nixpkgs#sway) and steam-run, with
-# the TMPDIR and fontconfig cache recipe of tools/build/nixos-env.sh.
+# the TMPDIR and fontconfig cache recipe of tools/build/linux/nixos/env.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -35,7 +35,7 @@ if [ "${1:-}" = "--aequera" ]; then
   BIN="$OBJDIR/dist/bin"
   [ -x "$BIN/firefox" ] || { echo "browser-bench: no build in $BIN" >&2; exit 1; }
   INI="$BIN/browser/aequera-application.ini"
-  steam-run python3 "$ROOT/tools/build/aequera_app_ini.py" "$BIN/application.ini" "$INI"
+  steam-run python3 "$ROOT/tools/build/common/aequera_app_ini.py" "$BIN/application.ini" "$INI"
   TOPSRCDIR="$(readlink -f "$BIN/browser/defaults/preferences/aequera-prefs.js")"
   TOPSRCDIR="${TOPSRCDIR%/browser/aequera/aequera-prefs.js}"
   # As aequera-run.sh: dist symlinks into the source tree, and the content

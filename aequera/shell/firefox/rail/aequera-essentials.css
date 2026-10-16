@@ -42,10 +42,8 @@
 :root[aequera-rail] {
   --aequera-essential-height: 46px;
   --aequera-essential-gap: 4px;
+  /* 6px on macOS: platform/macos/aequera-platform.css. */
   --aequera-essential-inset: 5px;
-  @media (-moz-platform: macos) {
-    --aequera-essential-inset: 6px;
-  }
 }
 
 :root[aequera-rail] #tabbrowser-tabs[expanded] > #pinned-tabs-container[orient="vertical"]::part(items-wrapper) {

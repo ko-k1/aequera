@@ -1,0 +1,52 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* macOS chrome styling: what the shell paints differently on this OS.
+ * Packaged as chrome://browser/content/aequera/platform/aequera-platform.css
+ * on macOS builds only (jar.mn) and imported last by aequera-shell.css, so
+ * these rules keep the place in the cascade they had there.
+ *
+ * Frame material "glass" (aequera-frame.js sets :root[aequera-material]):
+ * body paints the one frame behind all chrome, tinted at
+ * --aequera-material-opacity so the blur behind it shows through. The window
+ * server blurs the desktop behind a vibrant region: the titlebar material
+ * upstream already puts behind the toolbox, here spread over the whole frame
+ * (body::before); Liquid Glass on macOS 26+ (patches/gecko/macos-glass). The
+ * page card (.browserContainer) and popups stay opaque (no stacked blur,
+ * MATERIAL.md); themes with their own colors or images (lwtheme) keep the
+ * solid frame. */
+:root[aequera-material="glass"]:not([lwtheme]) body {
+  background-color: color-mix(
+    in srgb, var(--toolbox-background-color) var(--aequera-material-opacity, 80%), transparent
+  );
+
+  &:-moz-window-inactive {
+    background-color: color-mix(
+      in srgb, var(--toolbox-background-color-inactive) var(--aequera-material-opacity, 80%), transparent
+    );
+  }
+}
+
+/* The vibrant region behind the whole frame. Upstream keeps the toolbox's
+ * own vibrancy out of native fullscreen (the toolbox floats there), and so
+ * does the frame. A solid frame drops upstream's toolbox vibrancy too, so
+ * nothing behind the window shows through. */
+:root[aequera-material="glass"]:not([lwtheme], [macOSNativeFullscreen]) body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  -moz-default-appearance: -moz-window-titlebar;
+  appearance: auto;
+}
+
+:root[aequera-material="solid"][customtitlebar]:not([lwtheme]) #navigator-toolbox::after {
+  appearance: none;
+}
+
+/* Essentials (rail/aequera-essentials.css): the grid's inset matches Zen's
+ * toolbox padding, which is 6px on macOS (5px elsewhere). */
+:root[aequera-rail] {
+  --aequera-essential-inset: 6px;
+}

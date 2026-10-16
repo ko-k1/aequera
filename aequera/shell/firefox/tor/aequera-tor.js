@@ -27,6 +27,9 @@ var AequeraTor = (() => {
   const { AequeraTorDaemon } = ChromeUtils.importESModule(
     "chrome://browser/content/aequera/tor/aequera-tor-daemon.sys.mjs",
   );
+  const { AequeraTorPlatform } = ChromeUtils.importESModule(
+    "chrome://browser/content/aequera/platform/aequera-tor-platform.sys.mjs",
+  );
   const KEY_ID = "aequera-key-tor-window";
   const NOTIFICATION = "aequera-tor-status";
   const WARNING_NOTIFICATION = "aequera-tor-warning";
@@ -368,7 +371,7 @@ var AequeraTor = (() => {
       // script runs.
       if (this.instance) {
         AequeraTorDaemon.ensureStarted()?.catch?.(error => console.error("aequera-tor: startup failed", error));
-      } else if (AppConstants.platform == "win" && !this.unavailable()) {
+      } else if (AequeraTorPlatform.transport == "tcp" && !this.unavailable()) {
         // A Tor instance can outlive this one: ban its port from the start,
         // not only when the next Tor window is opened (idempotent).
         AequeraTorLauncher.banTorPort().catch(error => console.error("aequera-tor: cannot ban tor's port", error));

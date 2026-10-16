@@ -17,6 +17,9 @@ const { AequeraTorLauncher } = ChromeUtils.importESModule(
 const { AequeraTorDaemon } = ChromeUtils.importESModule(
   "chrome://browser/content/aequera/tor/aequera-tor-daemon.sys.mjs",
 );
+const { AequeraTorPlatform } = ChromeUtils.importESModule(
+  "chrome://browser/content/aequera/platform/aequera-tor-platform.sys.mjs",
+);
 
 const OFFLINE_TOPIC = "network:offline-status-changed";
 const BANNED = "network.security.ports.banned";
@@ -93,13 +96,13 @@ add_task(async function test_the_ordinary_instance_bans_the_tor_port() {
 });
 
 add_task(async function test_a_running_instance_is_told_by_its_profile_lock() {
-  ok(await AequeraTorLauncher.profileLocked(PathUtils.profileDir), "this running instance holds its profile");
+  ok(await AequeraTorPlatform.runsWithoutMarker(PathUtils.profileDir), "this running instance holds its profile");
 
   const paths = await tempTorPaths("lock");
   await IOUtils.makeDirectory(paths.profile);
-  ok(!(await AequeraTorLauncher.profileLocked(paths.profile)), "no lock file: not running");
+  ok(!(await AequeraTorPlatform.runsWithoutMarker(paths.profile)), "no lock file: not running");
   await IOUtils.writeUTF8(PathUtils.join(paths.profile, "parent.lock"), "");
-  ok(!(await AequeraTorLauncher.profileLocked(paths.profile)), "a lock file left by an exited instance: not running");
+  ok(!(await AequeraTorPlatform.runsWithoutMarker(paths.profile)), "a lock file left by an exited instance: not running");
 
   ok(
     await AequeraTorLauncher.processRunsProfile(Services.appinfo.processID, PathUtils.profileDir),
