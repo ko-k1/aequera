@@ -84,6 +84,12 @@ patches:
   # offered under the same conditions as rail-position, after it.
   - id: rail-magnify
     series: browser/rail-magnify
+  # Settings > Browser layout: "Keep the tab rail open" (aequera.rail.pinned)
+  # and "Keep the bookmarks toolbar in place" (the inverse of
+  # aequera.bookmarks.hoverPeek), the static alternatives to the hover rail
+  # and drawer; after rail-magnify. Firefox's defaults hide both.
+  - id: static-chrome
+    series: browser/static-chrome
   # Frame material on Linux (docs/design/MATERIAL.md): Wayland toplevels ask
   # the compositor to blur behind their translucent parts
   # (ext-background-effect-v1: KDE Plasma 6.7+, GNOME), and chrome reads

@@ -1,0 +1,119 @@
+Subject: [PATCH] preferences: static tab rail and bookmarks toolbar options
+
+Why Firefox source must change:
+  Aequera's tab rail and bookmarks toolbar reveal themselves on hover by
+  default (rail/aequera-rail.js, bookmarks/aequera-bookmarks.js). Both
+  already have a static mode: aequera.rail.pinned keeps the rail expanded
+  beside the page, aequera.bookmarks.hoverPeek=false puts the toolbar back
+  in the page flow. Settings is Firefox's own settings surface and no pref,
+  policy, or theme can add a control to it; without one the choice would
+  live only in about:config.
+
+What it changes:
+  - Settings > Tabs and browsing > Browser layout: a "Keep the tab rail
+    open" checkbox bound to aequera.rail.pinned, shown under the same
+    conditions as the vertical tabs side choice (vertical tabs on,
+    sidebar.verticalTabs.requireRevamp false).
+  - A "Keep the bookmarks toolbar in place" checkbox bound to the inverse
+    of aequera.bookmarks.hoverPeek, shown only while
+    browser.toolbars.bookmarks.visibility is "always" (the drawer applies
+    only then; Never / Only on new tab work as in Firefox).
+  - Four en-US strings (two labels, two descriptions) in preferences.ftl.
+  With Firefox's defaults (horizontal tabs, toolbar visibility "newtab")
+  both stay hidden, so the group is unchanged (neither Aequera pref exists
+  in Firefox).
+
+Depends on: browser/rail-magnify (the checkbox these sit after, in the same
+  group and string block).
+Validation: aequera/shell/firefox/tests/browser/browser_aequera_rail_side.js
+  (both checkboxes show, write their prefs, and switch the rail and the
+  drawer); Firefox's browser_tabs_browsing_pane.js and
+  browser_appearance_pane.js with Firefox's defaults
+  (tools/build/test-shell.sh upstream).
+Upstream risk: low-medium; same settings-redesign config as rail-position.
+
+diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
+index c6e8323f14db..1e370738aac4 100644
+--- a/browser/components/preferences/config/tabs-browsing.mjs
++++ b/browser/components/preferences/config/tabs-browsing.mjs
+@@ -103,6 +103,9 @@
+   { id: "sidebar.verticalTabs", type: "bool" },
+   { id: "sidebar.position_start", type: "bool" },
+   { id: "aequera.rail.magnify", type: "bool" },
++  { id: "aequera.rail.pinned", type: "bool" },
++  { id: "browser.toolbars.bookmarks.visibility", type: "string" },
++  { id: "aequera.bookmarks.hoverPeek", type: "bool" },
+ ]);
+ 
+ if (lazy.AppConstants.platform === "win") {
+@@ -591,6 +594,36 @@
+     !Services.prefs.getBoolPref("sidebar.verticalTabs.requireRevamp", true),
+ });
+ 
++// Static rail: the shell-hosted rail stays expanded beside the page instead
++// of widening over it on hover (aequera.rail.pinned, an Aequera pref).
++// Offered with the side choice above, under the same conditions.
++Preferences.addSetting({
++  id: "browserLayoutRailPinned",
++  pref: "aequera.rail.pinned",
++  deps: ["browserLayoutRadioGroup"],
++  visible: ({ browserLayoutRadioGroup }) =>
++    browserLayoutRadioGroup.value === "true" &&
++    !Services.prefs.getBoolPref("sidebar.verticalTabs.requireRevamp", true),
++});
++
++// Static bookmarks toolbar: the shell's hover drawer off
++// (aequera.bookmarks.hoverPeek false, an Aequera pref), so the toolbar sits
++// in the page flow as in Firefox. The drawer applies only on top of the
++// toolbar's "always" visibility, so the switch is offered only then.
++Preferences.addSetting({
++  id: "browserLayoutBookmarksVisibility",
++  pref: "browser.toolbars.bookmarks.visibility",
++});
++Preferences.addSetting({
++  id: "browserLayoutBookmarksStatic",
++  pref: "aequera.bookmarks.hoverPeek",
++  deps: ["browserLayoutBookmarksVisibility"],
++  visible: ({ browserLayoutBookmarksVisibility }) =>
++    browserLayoutBookmarksVisibility.value === "always",
++  get: prefValue => !prefValue,
++  set: value => !value,
++});
++
+ SettingGroupManager.registerGroups({
+   browserLayout: {
+     subcategory: "layout",
+@@ -645,6 +678,14 @@
+         id: "browserLayoutTabsMagnify",
+         l10nId: "browser-layout-tabs-magnify",
+       },
++      {
++        id: "browserLayoutRailPinned",
++        l10nId: "browser-layout-rail-pinned",
++      },
++      {
++        id: "browserLayoutBookmarksStatic",
++        l10nId: "browser-layout-bookmarks-static",
++      },
+     ],
+   },
+   tabs: {
+diff --git a/browser/locales/en-US/browser/preferences/preferences.ftl b/browser/locales/en-US/browser/preferences/preferences.ftl
+index 4d11e2396282..d657f56889b2 100644
+--- a/browser/locales/en-US/browser/preferences/preferences.ftl
++++ b/browser/locales/en-US/browser/preferences/preferences.ftl
+@@ -378,6 +378,14 @@
+     .label = Magnify tab icons under the pointer
+     .description = The icons near the pointer grow so the one you are about to click is easy to spot. Tabs stay in place.
+ 
++browser-layout-rail-pinned =
++    .label = Keep the tab rail open
++    .description = Tab titles stay visible beside the page instead of appearing when you point at the rail.
++
++browser-layout-bookmarks-static =
++    .label = Keep the bookmarks toolbar in place
++    .description = The toolbar stays under the address bar instead of appearing when you point at it. The page sits below it.
++
+ page-navigation-group =
+     .label = Page navigation
+ 

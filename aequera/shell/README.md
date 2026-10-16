@@ -94,7 +94,9 @@ the pointer is not on may come to lie under it while it rests, e.g. widened
 by the address bar, and the pointer hovers it only once it moves, presses,
 or scrolls); holds (keyboard focus in the rail, a context menu opened from it,
 address-bar focus; focus holds only while the window is active);
-pinned mode (`aequera.rail.pinned`, takes layout space); and
+pinned mode (`aequera.rail.pinned`, takes layout space; Settings > Tabs and
+browsing > Browser layout > Keep the tab rail open,
+`patches/browser/static-chrome`); and
 `tabbrowser-tabs[expanded]`. The widened rail overlays the page and the page
 card clips back on the same timing. Turning `sidebar.revamp` on hands the
 rail back to Firefox's launcher.
@@ -437,7 +439,10 @@ is open) and no `focusout` for a removed focused control, so while a menu or
 keyboard focus outside the address bar holds the drawer, a MutationObserver
 re-decides on removals (nothing is observed otherwise, so typing in the
 address bar costs nothing). Firefox's own "Never" / "Only on new tab"
-behave natively; customize mode turns it off.
+behave natively; customize mode turns it off. Settings > Tabs and browsing >
+Browser layout > Keep the bookmarks toolbar in place
+(`patches/browser/static-chrome`, offered while the visibility is "always")
+writes `hoverPeek` false: the toolbar stays in the page flow, as in Firefox.
 
 Tests: `tests/browser/browser_aequera_bookmarks_drawer.js`.
 
