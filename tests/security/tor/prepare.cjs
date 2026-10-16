@@ -30,6 +30,7 @@ const torPort = Number(process.argv[3] ?? 28282);
       throw new Error("a Tor instance is running on this profile; quit it first");
     }
     await L.prepareProfile(paths);
+    await L.banTorPort(paths);
     return { profile: paths.profile, entryPoint: !!document.getElementById("menu_aequeraTorWindow") };
   `);
   if (!info.entryPoint) {

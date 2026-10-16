@@ -30,6 +30,8 @@ const {
   securityLevel,
   parseUserJs,
   securityLevelPrefs,
+  SOCKS_PORT_PREF,
+  socksPortProblem,
 } = model;
 
 const SOCKET = "/run/user/1000/aequera-tor-ab12cd34/socks";
@@ -391,4 +393,114 @@ test("only web URLs are handed to a Tor window", () => {
   assert.ok(!isTorOpenableUrl("javascript:alert(1)"));
   assert.ok(!isTorOpenableUrl("https://a b"));
   assert.ok(!isTorOpenableUrl(null));
+});
+
+// Windows (docs/design/TOR.md, Windows): a loopback TCP port in place of the
+// Unix socket.
+
+const PORT = 49731;
+
+test("SOCKS ports: integers in 1024-65535 only", () => {
+  assert.equal(socksPortProblem(PORT), null);
+  assert.equal(socksPortProblem(1024), null);
+  assert.equal(socksPortProblem(65535), null);
+  for (const bad of [0, 80, 1023, 65536, 49731.5, "49731", null, undefined, -1]) {
+    assert.ok(socksPortProblem(bad), String(bad));
+  }
+});
+
+test("instance prefs over TCP: 127.0.0.1 at the launcher's port, no socket path", () => {
+  const prefs = new Map(instancePrefs({ socksPort: PORT }));
+  assert.equal(prefs.get("network.proxy.socks"), "127.0.0.1");
+  assert.equal(prefs.get("network.proxy.socks_port"), PORT);
+  assert.equal(prefs.get(SOCKS_PORT_PREF), PORT);
+  assert.equal(prefs.get(SOCKS_PATH_PREF), "");
+  for (const p of PREFS) {
+    assert.equal(prefs.get(p.name), p.value, p.name);
+  }
+  // The Unix form carries port 0.
+  assert.equal(new Map(instancePrefs({ socksPath: SOCKET, socksUrl: URL_ })).get(SOCKS_PORT_PREF), 0);
+  // Exactly one endpoint, and only a valid port.
+  assert.throws(() => instancePrefs({}), /endpoint/);
+  assert.throws(() => instancePrefs({ socksPath: SOCKET, socksUrl: URL_, socksPort: PORT }), /endpoint/);
+  assert.throws(() => instancePrefs({ socksPort: 80 }), /port/);
+});
+
+test("the SOCKS port pref is required (locked and checked)", () => {
+  assert.ok(requiredNames().includes(SOCKS_PORT_PREF));
+});
+
+test("checkRequired over TCP: exactly 127.0.0.1, a valid port, the same port everywhere", () => {
+  const prefs = new Map(instancePrefs({ socksPort: PORT }));
+  assert.deepEqual(checkRequired(name => prefs.get(name), prefs), []);
+
+  const otherHost = new Map(prefs).set("network.proxy.socks", "localhost");
+  assert.ok(checkRequired(name => otherHost.get(name), otherHost).includes("network.proxy.socks"));
+  const remote = new Map(prefs).set("network.proxy.socks", "10.0.0.5");
+  assert.ok(checkRequired(name => remote.get(name), remote).includes("network.proxy.socks"));
+
+  const lowPort = new Map(prefs).set("network.proxy.socks_port", 80).set(SOCKS_PORT_PREF, 80);
+  assert.ok(checkRequired(name => lowPort.get(name), lowPort).includes("network.proxy.socks"));
+
+  const mismatch = new Map(prefs).set("network.proxy.socks_port", PORT + 1);
+  assert.ok(checkRequired(name => mismatch.get(name), mismatch).includes("network.proxy.socks"));
+
+  // A read that differs from the wanted port is not in force.
+  assert.ok(checkRequired(name => (name == "network.proxy.socks_port" ? 9150 : prefs.get(name)), prefs)
+    .includes("network.proxy.socks_port"));
+});
+
+test("torrc over TCP: SOCKS on 127.0.0.1 with SOCKS-auth isolation, Windows paths quoted", () => {
+  const dataDir = String.raw`C:\Users\u\AppData\Roaming\Aequera\p\tor\data`;
+  const text = torrc({ dataDir, socksPort: PORT, ownerPid: 4242, geoipFile: String.raw`C:\app\tor\geoip` });
+  const lines = text.split("\n");
+  // torQuote doubles each backslash (tor reads C escapes in quoted values).
+  assert.ok(lines.includes(String.raw`DataDirectory "C:\\Users\\u\\AppData\\Roaming\\Aequera\\p\\tor\\data"`));
+  assert.ok(lines.includes(`SocksPort 127.0.0.1:${PORT} IsolateSOCKSAuth`));
+  assert.ok(lines.includes(String.raw`GeoIPFile "C:\\app\\tor\\geoip"`));
+  assert.ok(lines.includes("ControlPort 0"));
+  assert.ok(!/unix:/.test(text), "no Unix socket");
+  assert.throws(() => torrc({ dataDir, socksPort: 22, ownerPid: 1 }), /port/);
+  assert.throws(() => torrc({ dataDir, ownerPid: 1 }), /endpoint/);
+  assert.throws(() => torrc({ dataDir, socksPath: SOCKET, socksPort: PORT, ownerPid: 1 }), /endpoint/);
+  assert.throws(() => torrc({ dataDir: "data", socksPort: PORT, ownerPid: 1 }), /absolute/);
+  assert.throws(() => torrc({ dataDir: "C:data", socksPort: PORT, ownerPid: 1 }), /absolute/);
+});
+
+test("tor log: the SOCKS listener tor opened", () => {
+  assert.deepEqual(
+    parseLogLine("Oct 16 02:00:00.000 [notice] Opened Socks listener connection (ready) on 127.0.0.1:49731"),
+    { kind: "listener", address: "127.0.0.1", port: 49731 },
+  );
+  assert.deepEqual(
+    parseLogLine("Oct 16 02:00:00.000 [notice] Opened Socks listener on 127.0.0.1:9150"),
+    { kind: "listener", address: "127.0.0.1", port: 9150 },
+  );
+  // Not a listener: another listener kind, or a closed one.
+  assert.equal(parseLogLine("[notice] Opened Control listener connection (ready) on 127.0.0.1:9151"), null);
+  assert.equal(parseLogLine("[notice] Closing no-longer-configured Socks listener on 127.0.0.1:49731"), null);
+});
+
+test("launch arguments take a Windows profile path", () => {
+  const profileDir = String.raw`C:\Users\u\AppData\Roaming\Aequera\p\tor\profile`;
+  assert.deepEqual(launchArgs({ profileDir }), ["-profile", profileDir, "-offline", "-private-window"]);
+  assert.throws(() => launchArgs({ profileDir: String.raw`tor\profile` }), /absolute/);
+});
+
+test("tor log: Windows line endings (tor writes CRLF to its stdout there)", () => {
+  assert.deepEqual(parseLogLine("Oct 16 02:00:00.000 [notice] Bootstrapped 5% (conn): Connecting to a relay\r"), {
+    kind: "bootstrap",
+    progress: 5,
+    tag: "conn",
+    summary: "Connecting to a relay",
+  });
+  assert.deepEqual(parseLogLine("Oct 16 02:00:00.000 [notice] Opened Socks listener connection (ready) on 127.0.0.1:61898\r"), {
+    kind: "listener",
+    address: "127.0.0.1",
+    port: 61898,
+  });
+  assert.deepEqual(parseLogLine("Oct 16 02:00:00.000 [warn] Could not bind to 127.0.0.1:61898: Address already in use\r"), {
+    kind: "warn",
+    message: "Could not bind to 127.0.0.1:61898: Address already in use",
+  });
 });

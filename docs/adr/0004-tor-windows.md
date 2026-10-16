@@ -119,7 +119,11 @@ Design, prefs, and verification: `docs/design/TOR.md`.
   Tor window panel and in the doc.
 - Unix (Linux, macOS) first: Firefox reaches a local SOCKS proxy on Windows
   only through a named pipe, which tor does not offer. Windows needs a TCP
-  port design and its own review.
+  port design and its own review. Amended 2026-10-16 (reviewed, implemented):
+  on Windows the proxy is a loopback TCP port the launcher picks and the
+  instance goes online only after tor reports its listener, offline again
+  when tor exits, because a TCP proxy setting does not fail closed by itself
+  (`docs/design/TOR.md`, Windows).
 - The prefs that keep the instance on Tor are Firefox prefs. Upstream can
   add network features that need a new entry. Every pref is listed with its
   reason in `tor/tor-model.js`, and `docs/design/TOR.md` names the

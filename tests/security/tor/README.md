@@ -66,6 +66,16 @@ recovery, "checks never run" and refusal were checked by hand
 fixes: the real "New Tor window" flow with the bundled tor passed
 (`IsTor: true`); the live check itself was not re-run.
 
+2026-10-16, Windows 11 x86_64, the bundled `tor.exe` 0.4.9.14: live check
+24/24, including the Windows checks (online only while tor listens, a
+taken port stays offline, the port banned in the ordinary instance). On
+Windows, start both instances with `tools\build\aequera.cmd` and the same
+arguments instead of `aequera-run.sh --persistent` (in PowerShell through
+`Start-Process`: a pipe on its output stays open as long as the browser
+runs), and pass both Marionette ports to the check:
+`node tests/security/tor/live-check.cjs 28282 28281`. Steps 1-2 need no
+window system there; the handoff (step 3) was not run.
+
 A Tor instance started here by hand (step 2) has no ordinary instance
 watching it. Quit it through Firefox (close its windows, or Quit), not
 SIGTERM: SIGTERM ends Firefox before any quit code runs (its profile lock

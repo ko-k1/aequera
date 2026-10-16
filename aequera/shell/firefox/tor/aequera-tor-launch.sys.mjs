@@ -21,6 +21,11 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 const ENABLED_PREF = "aequera.tor.enabled";
 
+/** Ports Firefox refuses to connect to (nsIOService). On Windows the
+ *  ordinary instance adds its Tor instance's SOCKS port for the session, so
+ *  its pages and requests never reach tor's port. */
+const BANNED_PORTS_PREF = "network.security.ports.banned";
+
 /** Environment variables the Tor instance must not inherit: those that pick
  *  a profile ahead of `-profile` (a restart sets them; Firefox clears them
  *  after startup, removed here regardless) or turn the remoting client off
@@ -96,9 +101,7 @@ export const AequeraTorLauncher = {
     if (!Services.prefs.getBoolPref(ENABLED_PREF, true)) {
       return "disabled";
     }
-    if (!["linux", "macosx"].includes(AppConstants.platform)) {
-      // Windows: Firefox reaches a local SOCKS proxy only through a named
-      // pipe, which tor does not offer (ADR 0004).
+    if (!["linux", "macosx", "win"].includes(AppConstants.platform)) {
       return "platform";
     }
     if (Services.prefs.getBoolPref(torModel().INSTANCE_PREF, false)) {
@@ -135,6 +138,7 @@ export const AequeraTorLauncher = {
     if (!running) {
       await this.prepareProfile(paths);
     }
+    await this.banTorPort(paths);
 
     const exe = Services.dirsvc.get("XREExeF", Ci.nsIFile).path;
     // Always -offline (launchArgs): if `running` was wrong and this process
@@ -220,13 +224,15 @@ export const AequeraTorLauncher = {
       // No marker: no instance. A marker that cannot be read: unknown, so
       // assumed running (its profile is never rewritten on a guess).
       if (error?.name == "NotFoundError") {
-        return false;
+        // Windows: the profile lock tells a running instance even without
+        // its marker (one that could not write it, or a removed one).
+        return AppConstants.platform == "win" ? this.profileLocked(paths.profile) : false;
       }
       console.error("aequera-tor: cannot read the running-session marker", error);
       return true;
     }
     if (!Number.isInteger(pid) || pid <= 0) {
-      return false;
+      return AppConstants.platform == "win" ? this.profileLocked(paths.profile) : false;
     }
     const alive = this.processAlive ?? ((p, profile) => this.processRunsProfile(p, profile));
     try {
@@ -238,8 +244,12 @@ export const AequeraTorLauncher = {
     }
   },
 
-  /** Whether `pid` is a process whose command line names `profile`. */
+  /** Whether `pid` is a process whose command line names `profile`
+   *  (Windows: whether a process holds the profile's lock). */
   async processRunsProfile(pid, profile) {
+    if (AppConstants.platform == "win") {
+      return this.profileLocked(profile);
+    }
     if (AppConstants.platform == "linux") {
       // procfs reports a size of 0: without maxBytes IOUtils reads nothing.
       const readProc = async name =>
@@ -276,6 +286,22 @@ export const AequeraTorLauncher = {
     }
     const { exitCode } = await proc.wait();
     return exitCode === 0 && out.includes(profile);
+  },
+
+  /**
+   * Windows: whether a running Firefox holds `profile`. Firefox keeps
+   * <profile>/parent.lock open with no sharing while it runs (nsProfileLock)
+   * and leaves the file behind when it exits. A lock that opens is not held;
+   * no lock is no instance; anything else (held, or an error that says
+   * neither) counts as running: a profile is never rewritten on a guess.
+   */
+  async profileLocked(profile) {
+    try {
+      await IOUtils.read(PathUtils.join(profile, "parent.lock"), { maxBytes: 1 });
+      return false;
+    } catch (error) {
+      return error?.name != "NotFoundError";
+    }
   },
 
   /** Read and drop the child's output, so a full pipe never blocks it. */
@@ -341,12 +367,74 @@ export const AequeraTorLauncher = {
     await IOUtils.makeDirectory(paths.data, { permissions: 0o700 });
     await IOUtils.setPermissions(paths.data, 0o700);
 
-    const socksPath = await this.socketPath();
-    const socksUrl = Services.io.newFileURI(new lazy.FileUtils.File(socksPath)).spec;
     const executable = Services.prefs.getStringPref(this.model.EXECUTABLE_PREF, "");
     const level = await this.rememberedSecurityLevel(paths);
-    const prefs = this.model.instancePrefs({ socksPath, socksUrl, dataDir: paths.data, executable, level });
+    const common = { dataDir: paths.data, executable, level };
+    let prefs;
+    if (AppConstants.platform == "win") {
+      prefs = this.model.instancePrefs({ socksPort: this.freeLoopbackPort(), ...common });
+    } else {
+      const socksPath = await this.socketPath();
+      const socksUrl = Services.io.newFileURI(new lazy.FileUtils.File(socksPath)).spec;
+      prefs = this.model.instancePrefs({ socksPath, socksUrl, ...common });
+    }
     await IOUtils.writeUTF8(PathUtils.join(paths.profile, "user.js"), this.model.userJs(prefs));
+  },
+
+  /**
+   * Windows: a loopback port no one listens on now (the OS picks it from a
+   * listening socket that is closed at once). tor binds it later; if
+   * another program takes it first, tor cannot, never reports its listener,
+   * and the Tor instance stays offline (docs/design/TOR.md, Windows).
+   */
+  freeLoopbackPort() {
+    const socket = Cc["@mozilla.org/network/server-socket;1"].createInstance(Ci.nsIServerSocket);
+    socket.init(-1, /* loopbackOnly */ true, 1);
+    const port = socket.port;
+    socket.close();
+    const problem = this.model.socksPortProblem(port);
+    if (problem) {
+      throw new Error(`aequera-tor: the OS gave an unusable port ${port} (${problem})`);
+    }
+    return port;
+  },
+
+  /**
+   * Windows: ban the Tor profile's SOCKS port in this (ordinary) instance
+   * for the session, on the default branch so it is never saved: its pages
+   * and requests never reach tor's port, even where Local Network Access
+   * would let them. A Unix socket has no port (0): nothing to ban.
+   */
+  async banTorPort(paths = torPaths()) {
+    this.model ??= torModel();
+    let text;
+    try {
+      text = await IOUtils.readUTF8(PathUtils.join(paths.profile, "user.js"));
+    } catch (error) {
+      if (error?.name != "NotFoundError") {
+        console.warn("aequera-tor: cannot read the Tor profile to ban its port", error);
+      }
+      return;
+    }
+    const port = this.model.parseUserJs(text).get(this.model.SOCKS_PORT_PREF);
+    if (port === 0 || port === undefined) {
+      return; // a Unix socket: no port
+    }
+    if (this.model.socksPortProblem(port)) {
+      console.warn("aequera-tor: the Tor profile names an unusable port, not banned:", port);
+      return;
+    }
+    if (Services.prefs.prefHasUserValue(BANNED_PORTS_PREF)) {
+      // A user value shadows the default branch: the ban does not apply.
+      // Local Network Access still asks before a page reaches loopback.
+      console.warn(`aequera-tor: ${BANNED_PORTS_PREF} has a user value; tor's port ${port} is not banned here`);
+    }
+    const defaults = Services.prefs.getDefaultBranch("");
+    const banned = defaults.getStringPref(BANNED_PORTS_PREF, "");
+    const ports = banned.split(",").map(item => item.trim()).filter(Boolean);
+    if (!ports.includes(String(port))) {
+      defaults.setStringPref(BANNED_PORTS_PREF, [...ports, String(port)].join(","));
+    }
   },
 
   /**

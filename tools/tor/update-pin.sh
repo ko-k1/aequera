@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOCK="$ROOT/upstream/manifests/tor-expert-bundle.lock"
 SIGNING_KEY=EF6E286DDA85EA2A4BA7DE684E2C6E8793298290
-PLATFORMS="linux-x86_64 macos-aarch64 macos-x86_64"
+PLATFORMS="linux-x86_64 macos-aarch64 macos-x86_64 windows-x86_64"
 
 VERSION="${1:?usage: update-pin.sh <tor-browser-version> [tor-version]}"
 case "$VERSION" in
@@ -29,7 +29,12 @@ URL="https://dist.torproject.org/torbrowser/$VERSION/"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 export GNUPGHOME="$WORK/gnupg"
-mkdir -m 700 "$GNUPGHOME"
+case "$(uname -s)" in
+  # Git Bash / MozillaBuild: NTFS takes no Unix modes, and the per-user
+  # temporary directory is already private to the user.
+  MINGW*|MSYS*|CYGWIN*) mkdir "$GNUPGHOME" ;;
+  *) mkdir -m 700 "$GNUPGHOME" ;;
+esac
 cd "$WORK"
 
 curl -fsSL --proto '=https' --tlsv1.2 -O "${URL}sha256sums-signed-build.txt" -O "${URL}sha256sums-signed-build.txt.asc"
