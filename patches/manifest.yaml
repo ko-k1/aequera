@@ -84,6 +84,12 @@ patches:
   # offered under the same conditions as rail-position, after it.
   - id: rail-magnify
     series: browser/rail-magnify
+  # Settings > Browser layout: "Static layout", one switch for the static
+  # forms of the dynamic layout (the rail pinned open, aequera.rail.pinned;
+  # the bookmarks toolbar shown, aequera.bookmarks.hoverPeek off), offered
+  # whenever a shell hosts the layout, after rail-magnify.
+  - id: static-layout
+    series: browser/static-layout
   # Frame material on Linux (docs/design/MATERIAL.md): Wayland toplevels ask
   # the compositor to blur behind their translucent parts
   # (ext-background-effect-v1: KDE Plasma 6.7+, GNOME), and chrome reads

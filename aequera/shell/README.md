@@ -94,8 +94,10 @@ the pointer is not on may come to lie under it while it rests, e.g. widened
 by the address bar, and the pointer hovers it only once it moves, presses,
 or scrolls); holds (keyboard focus in the rail, a context menu opened from it,
 address-bar focus; focus holds only while the window is active);
-pinned mode (`aequera.rail.pinned`, takes layout space); and
-`tabbrowser-tabs[expanded]`. The widened rail overlays the page and the page
+pinned mode (`aequera.rail.pinned`, takes layout space; Settings > Tabs
+and browsing > Browser layout > Static layout pins the rail and turns the
+bookmarks drawer into the plain toolbar in one switch,
+`patches/browser/static-layout`); and `tabbrowser-tabs[expanded]`. The widened rail overlays the page and the page
 card clips back on the same timing. Turning `sidebar.revamp` on hands the
 rail back to Firefox's launcher.
 
@@ -337,6 +339,13 @@ The macOS and Linux blur requests are Gecko patches: they need a compiled
 build (`tools/build/mozconfig.compiled`). An artifact build runs Mozilla's
 prebuilt binary, where Linux `auto` is glass on Hyprland only and macOS stays
 on plain vibrancy. Test: `browser_aequera_material.js`.
+
+Window-modal dialogs (the default-browser prompt, the workspace close
+prompt) dim the window with the dialog's `::backdrop` in Firefox, which over
+the glass frame reads as the material breaking. Under glass the backdrop is
+transparent and only the page card dims (a `#tabbrowser-tabbox::after` in
+Firefox's overlay color, inside the card's clip); a solid frame keeps
+Firefox's whole-window dim (`aequera-shell.css`).
 
 ## Workspaces (`workspaces/`)
 

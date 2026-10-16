@@ -139,6 +139,65 @@ add_task(async function test_settings_offers_the_side() {
   BrowserTestUtils.removeTab(tab);
 });
 
+// patches/browser/static-layout: one switch for the static layout, the rail
+// pinned open (aequera.rail.pinned) and the bookmarks toolbar shown
+// (aequera.bookmarks.hoverPeek off), with either tab orientation.
+add_task(async function test_settings_offers_static_layout() {
+  registerCleanupFunction(() => Services.prefs.clearUserPref("aequera.bookmarks.hoverPeek"));
+  // The drawer works on top of Firefox's "Always" visibility (Aequera's
+  // default; the test profile's differs), as browser_aequera_bookmarks_drawer.js.
+  await SpecialPowers.pushPrefEnv({ set: [["browser.toolbars.bookmarks.visibility", "always"]] });
+  const pinned = () => Services.prefs.getBoolPref("aequera.rail.pinned", false);
+  const peek = () => Services.prefs.getBoolPref("aequera.bookmarks.hoverPeek", false);
+  const tab = BrowserTestUtils.addTab(gBrowser, "about:preferences#tabsBrowsing");
+  const initialized = BrowserTestUtils.waitForEvent(tab.linkedBrowser, "Initialized", true);
+  gBrowser.selectedTab = tab;
+  await initialized;
+  const doc = tab.linkedBrowser.contentDocument;
+  const group = await TestUtils.waitForCondition(
+    () =>
+      [...doc.querySelectorAll('setting-group[groupid="browserLayout"]')].find(
+        g => g.getBoundingClientRect().height > 0
+      ),
+    "the visible Browser layout group"
+  );
+  const control = await TestUtils.waitForCondition(
+    () => group.querySelector("#setting-control-browserLayoutStatic"),
+    "the static layout control"
+  );
+  await control.updateComplete;
+  ok(!control.hidden, "offered with the Aequera shell");
+  const checkbox = () => control.controlEl;
+  ok(checkbox()?.inputEl, "as a checkbox");
+  is(checkbox().checked, false, "dynamic by default");
+  ok(ROOT.hasAttribute("aequera-bookmarks-peek"), "the bookmarks toolbar is a hover drawer by default");
+
+  checkbox().inputEl.click();
+  await TestUtils.waitForCondition(() => pinned() && !peek(), "checking it pins the rail and ends the drawer");
+  await TestUtils.waitForCondition(() => ROOT.hasAttribute("aequera-rail-pinned"), "the rail stays open");
+  await TestUtils.waitForCondition(
+    () => !ROOT.hasAttribute("aequera-bookmarks-peek"),
+    "the bookmarks toolbar stays shown"
+  );
+
+  // Either pref changed elsewhere (about:config) shows here.
+  Services.prefs.setBoolPref("aequera.bookmarks.hoverPeek", true);
+  await TestUtils.waitForCondition(() => !checkbox().checked, "a hover drawer again: not static");
+  Services.prefs.setBoolPref("aequera.bookmarks.hoverPeek", false);
+  await TestUtils.waitForCondition(() => checkbox().checked, "both static again: checked");
+
+  checkbox().inputEl.click();
+  await TestUtils.waitForCondition(() => !pinned() && peek(), "unchecking restores the dynamic layout");
+  await TestUtils.waitForCondition(() => !ROOT.hasAttribute("aequera-rail-pinned"), "the rail widens on hover again");
+
+  await SpecialPowers.pushPrefEnv({ set: [["sidebar.verticalTabs", false]] });
+  await control.updateComplete;
+  ok(!control.hidden, "still offered with horizontal tabs (the bookmarks half applies)");
+  await SpecialPowers.popPrefEnv();
+  BrowserTestUtils.removeTab(tab);
+  await SpecialPowers.popPrefEnv();
+});
+
 add_task(async function test_rail_on_the_right() {
   const tab = BrowserTestUtils.addTab(gBrowser, "about:blank");
   registerCleanupFunction(() => {

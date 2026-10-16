@@ -1,0 +1,102 @@
+Subject: [PATCH] preferences: static layout option in Browser layout
+
+Why Firefox source must change:
+  Aequera's layout is dynamic by default: the tab rail widens on hover and
+  the bookmarks toolbar is a hover drawer. Both have a static form already
+  (aequera.rail.pinned, aequera.bookmarks.hoverPeek), but Settings is
+  Firefox's own settings surface and no pref, policy, or theme can add a
+  control to it; without one the static layout lives only in about:config.
+
+What it changes:
+  - Settings > Tabs and browsing > Browser layout: a "Static layout"
+    checkbox. Checked means aequera.rail.pinned on and
+    aequera.bookmarks.hoverPeek off; it reads both, so either changed
+    elsewhere shows here, and writes both.
+  - Shown whenever a shell hosts the layout
+    (sidebar.verticalTabs.requireRevamp false), with either tab
+    orientation (the bookmarks half applies to both). With Firefox's
+    defaults the group is unchanged (the prefs do not exist in Firefox).
+  - Two en-US strings (label, description) in preferences.ftl.
+
+Depends on: browser/rail-magnify (the switch this sits after, in the same
+  group and string block).
+Validation: aequera/shell/firefox/tests/browser/browser_aequera_rail_side.js
+  (the checkbox shows with the Aequera shell, writes both prefs, follows
+  them, and pins the rail and ends the drawer); Firefox's
+  browser_tabs_browsing_pane.js and browser_appearance_pane.js with
+  Firefox's defaults (tools/build/test-shell.sh upstream).
+Upstream risk: low-medium; same settings-redesign config as rail-position.
+
+diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
+index c6e8323f14db80c0334cc6d930a78da6f4e34dda..eaf71d7bcb6b5b7e5027caa50e0a8b70b9002f22 100644
+--- a/browser/components/preferences/config/tabs-browsing.mjs
++++ b/browser/components/preferences/config/tabs-browsing.mjs
+@@ -103,6 +103,8 @@ Preferences.addAll([
+   { id: "sidebar.verticalTabs", type: "bool" },
+   { id: "sidebar.position_start", type: "bool" },
+   { id: "aequera.rail.magnify", type: "bool" },
++  { id: "aequera.rail.pinned", type: "bool" },
++  { id: "aequera.bookmarks.hoverPeek", type: "bool" },
+ ]);
+ 
+ if (lazy.AppConstants.platform === "win") {
+@@ -591,6 +593,33 @@ Preferences.addSetting({
+     !Services.prefs.getBoolPref("sidebar.verticalTabs.requireRevamp", true),
+ });
+ 
++// Static layout: the shell's rail stays open and its bookmarks toolbar stays
++// shown, so nothing widens or slides in on hover (Aequera prefs
++// aequera.rail.pinned on, aequera.bookmarks.hoverPeek off). Offered whenever
++// a shell hosts the layout, with either tab orientation: the bookmarks half
++// applies to both.
++Preferences.addSetting({
++  id: "aequeraRailPinned",
++  pref: "aequera.rail.pinned",
++});
++Preferences.addSetting({
++  id: "aequeraBookmarksHoverPeek",
++  pref: "aequera.bookmarks.hoverPeek",
++});
++Preferences.addSetting({
++  id: "browserLayoutStatic",
++  deps: ["aequeraRailPinned", "aequeraBookmarksHoverPeek"],
++  visible: () =>
++    !Services.prefs.getBoolPref("sidebar.verticalTabs.requireRevamp", true),
++  get: (_, { aequeraRailPinned, aequeraBookmarksHoverPeek }) =>
++    aequeraRailPinned.value && !aequeraBookmarksHoverPeek.value,
++  set: (value, { aequeraRailPinned, aequeraBookmarksHoverPeek }) => {
++    aequeraRailPinned.value = value;
++    aequeraBookmarksHoverPeek.value = !value;
++    return value;
++  },
++});
++
+ SettingGroupManager.registerGroups({
+   browserLayout: {
+     subcategory: "layout",
+@@ -645,6 +674,10 @@ SettingGroupManager.registerGroups({
+         id: "browserLayoutTabsMagnify",
+         l10nId: "browser-layout-tabs-magnify",
+       },
++      {
++        id: "browserLayoutStatic",
++        l10nId: "browser-layout-static",
++      },
+     ],
+   },
+   tabs: {
+diff --git a/browser/locales/en-US/browser/preferences/preferences.ftl b/browser/locales/en-US/browser/preferences/preferences.ftl
+index 4d11e239628282207249f55fa64f1b20f8cc214c..ead98532dd39b1543b03b8183e08b93f77d09b2c 100644
+--- a/browser/locales/en-US/browser/preferences/preferences.ftl
++++ b/browser/locales/en-US/browser/preferences/preferences.ftl
+@@ -378,6 +378,10 @@ browser-layout-tabs-magnify =
+     .label = Magnify tab icons under the pointer
+     .description = The icons near the pointer grow so the one you are about to click is easy to spot. Tabs stay in place.
+ 
++browser-layout-static =
++    .label = Static layout
++    .description = The tab rail stays open at full width and the bookmarks toolbar stays shown. Nothing widens or slides in when you hover.
++
+ page-navigation-group =
+     .label = Page navigation
+ 
