@@ -33,7 +33,9 @@ pref("aequera.hover.closeDelayMs", 150);
 // Expanded rail width: tokens.toml [chrome] panel. The collapsed width is
 // Firefox's own --tab-collapsed-width, so UI density keeps tabs square.
 pref("aequera.rail.expandedWidth", 220);
-// Pinned: stay expanded and take layout space (prototype green light).
+// Pinned (static rail): stay expanded and take layout space (prototype green
+// light). Settings > Tabs and browsing > Browser layout > Keep the tab rail
+// open.
 pref("aequera.rail.pinned", false);
 // Prototype: focusing the address bar widens the rail (unified search).
 pref("aequera.rail.expandOnAddressFocus", true);
@@ -48,7 +50,9 @@ pref("aequera.rail.magnifyPercent", 150);
 // mode). The toolbar stays built ("always") and aequera-bookmarks.js turns it
 // into a drawer that opens on hover (or while the address bar is focused)
 // and never shifts the page. Setting Firefox's own "Never" / "Only on new
-// tab" still works as in Firefox; hoverPeek=false restores plain "Always".
+// tab" still works as in Firefox; hoverPeek=false restores plain "Always"
+// (a static toolbar: Settings > Tabs and browsing > Browser layout > Keep the
+// bookmarks toolbar in place).
 pref("browser.toolbars.bookmarks.visibility", "always");
 pref("aequera.bookmarks.hoverPeek", true);
 

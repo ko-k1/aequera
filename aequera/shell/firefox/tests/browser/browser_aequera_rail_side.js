@@ -5,7 +5,8 @@
 
 // Rail side: Settings > Browser layout > Vertical tabs side
 // (patches/browser/rail-position) writes sidebar.position_start (and
-// "Magnify tab icons", patches/browser/rail-magnify, sits with it); Firefox
+// "Magnify tab icons", patches/browser/rail-magnify, and the static rail and
+// bookmarks toolbar switches, patches/browser/static-chrome, sit with it); Firefox
 // orders the rail after the page, and the Aequera rail mirrors its own
 // geometry (:root[aequera-rail-end]): it widens toward the page from the
 // right edge, the page clip and its rounded corner follow, and icons stay
@@ -49,6 +50,8 @@ add_setup(async () => {
       ["aequera.hover.closeDelayMs", 0],
       ["aequera.motion.durationMs", 100],
       ["aequera.rail.pinned", false],
+      ["aequera.bookmarks.hoverPeek", true],
+      ["browser.toolbars.bookmarks.visibility", "always"],
     ],
   });
   // Turning vertical tabs off and on saves the horizontal tab strip layout.
@@ -130,9 +133,61 @@ add_task(async function test_settings_offers_the_side() {
       "unchecking turns it off"
     );
 
+    // patches/browser/static-chrome: a static rail, kept open beside the page.
+    const pinnedControl = group.querySelector("#setting-control-browserLayoutRailPinned");
+    ok(pinnedControl && !pinnedControl.hidden, "Keep the tab rail open is offered");
+    ok(pinnedControl.controlEl?.inputEl, "as a checkbox");
+    is(pinnedControl.controlEl.checked, false, "off by default");
+    pinnedControl.controlEl.inputEl.click();
+    await TestUtils.waitForCondition(
+      () => Services.prefs.getBoolPref("aequera.rail.pinned", false),
+      "checking it writes aequera.rail.pinned"
+    );
+    await TestUtils.waitForCondition(
+      () => ROOT.hasAttribute("aequera-rail-pinned") && ROOT.hasAttribute("aequera-rail-expanded"),
+      "and the rail stays open"
+    );
+    pinnedControl.controlEl.inputEl.click();
+    await TestUtils.waitForCondition(
+      () => !Services.prefs.getBoolPref("aequera.rail.pinned", true),
+      "unchecking unpins it"
+    );
+    await TestUtils.waitForCondition(() => !ROOT.hasAttribute("aequera-rail-pinned"), "the rail hovers again");
+
+    // And a static bookmarks toolbar: the hover drawer off.
+    const bookmarksControl = group.querySelector("#setting-control-browserLayoutBookmarksStatic");
+    ok(bookmarksControl && !bookmarksControl.hidden, "Keep the bookmarks toolbar in place is offered");
+    ok(bookmarksControl.controlEl?.inputEl, "as a checkbox");
+    is(bookmarksControl.controlEl.checked, false, "off by default: the drawer");
+    ok(ROOT.hasAttribute("aequera-bookmarks-peek"), "the drawer is on");
+    bookmarksControl.controlEl.inputEl.click();
+    await TestUtils.waitForCondition(
+      () => !Services.prefs.getBoolPref("aequera.bookmarks.hoverPeek", true),
+      "checking it writes aequera.bookmarks.hoverPeek = false"
+    );
+    await TestUtils.waitForCondition(
+      () => !ROOT.hasAttribute("aequera-bookmarks-peek"),
+      "and the toolbar returns to the page flow"
+    );
+    bookmarksControl.controlEl.inputEl.click();
+    await TestUtils.waitForCondition(
+      () => Services.prefs.getBoolPref("aequera.bookmarks.hoverPeek", false),
+      "unchecking restores the drawer"
+    );
+    await TestUtils.waitForCondition(() => ROOT.hasAttribute("aequera-bookmarks-peek"), "the drawer is back");
+
+    // The drawer applies only on top of "always": with Firefox's other
+    // visibilities the switch would do nothing, so it is not offered.
+    await SpecialPowers.pushPrefEnv({ set: [["browser.toolbars.bookmarks.visibility", "newtab"]] });
+    await TestUtils.waitForCondition(() => bookmarksControl.hidden, "hidden unless the toolbar shows always");
+    await SpecialPowers.popPrefEnv();
+    await TestUtils.waitForCondition(() => !bookmarksControl.hidden, "back with always");
+
     await SpecialPowers.pushPrefEnv({ set: [["sidebar.verticalTabs", false]] });
     await TestUtils.waitForCondition(() => control.hidden, "hidden with horizontal tabs");
-    ok(magnifyControl.hidden, "both of them");
+    ok(magnifyControl.hidden, "Magnify too");
+    ok(pinnedControl.hidden, "and Keep the tab rail open");
+    ok(!bookmarksControl.hidden, "the bookmarks toolbar switch does not depend on the rail");
     await SpecialPowers.popPrefEnv();
     await TestUtils.waitForCondition(() => !control.hidden, "back with vertical tabs");
   }
