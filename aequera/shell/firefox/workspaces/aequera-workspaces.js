@@ -29,9 +29,8 @@ var AequeraWorkspaces = (() => {
   const SORT_OVER_PREF = "aequera.tabs.sortBySite.over";
   const SORT_KEY_ID = "aequera-key-sort-tabs";
   const WARN_CLOSE_PREF = "aequera.workspaces.warnOnClose";
-  // Firefox selects tabs with Alt+1..9 on Linux and Cmd+1..9 on macOS, so
-  // Ctrl+digit is free there; on Windows its tabs take Ctrl+digit.
-  const DIGIT_MODIFIER = AppConstants.platform == "win" ? "alt" : "control";
+  // The modifier Firefox's own tab digits leave free on this OS.
+  const DIGIT_MODIFIER = AequeraPlatform.workspaceDigitModifier;
 
   // Loaded before this script by aequera-main.js.
   const {

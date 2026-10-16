@@ -7,6 +7,23 @@ browser.jar:
     content/browser/aequera/aequera-main.js                    (aequera-main.js)
     content/browser/aequera/aequera-frame.js                   (aequera-frame.js)
     content/browser/aequera/aequera-hover.js                   (aequera-hover.js)
+# What differs per OS: each build packages its own OS's files at the same
+# URLs, so shared code never asks which OS it runs on. Every OS directory
+# has the same files with the same members (platform/platform-contract.test.mjs).
+# Builds that are neither Windows nor macOS take the Linux files.
+#ifdef XP_WIN
+    content/browser/aequera/platform/aequera-platform.js       (platform/windows/aequera-platform.js)
+    content/browser/aequera/platform/aequera-platform.css      (platform/windows/aequera-platform.css)
+    content/browser/aequera/platform/aequera-tor-platform.sys.mjs (platform/windows/aequera-tor-platform.sys.mjs)
+#elifdef XP_MACOSX
+    content/browser/aequera/platform/aequera-platform.js       (platform/macos/aequera-platform.js)
+    content/browser/aequera/platform/aequera-platform.css      (platform/macos/aequera-platform.css)
+    content/browser/aequera/platform/aequera-tor-platform.sys.mjs (platform/macos/aequera-tor-platform.sys.mjs)
+#else
+    content/browser/aequera/platform/aequera-platform.js       (platform/linux/aequera-platform.js)
+    content/browser/aequera/platform/aequera-platform.css      (platform/linux/aequera-platform.css)
+    content/browser/aequera/platform/aequera-tor-platform.sys.mjs (platform/linux/aequera-tor-platform.sys.mjs)
+#endif
     content/browser/aequera/rail/aequera-rail.js               (rail/aequera-rail.js)
     content/browser/aequera/rail/aequera-rail.css              (rail/aequera-rail.css)
     content/browser/aequera/rail/aequera-essentials.css        (rail/aequera-essentials.css)

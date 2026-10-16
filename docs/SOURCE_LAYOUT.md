@@ -90,19 +90,25 @@ find:
 | Toolchain setup | `tools/bootstrap/windows.md` | `tools/bootstrap/linux.md` | `tools/bootstrap/macos.md` |
 | Build, launch, test tooling | `tools/build/windows/` | `tools/build/linux/` (NixOS: `nixos/`) | `tools/build/macos/` |
 | Tests | `tests/unit/build/windows/`, `tests/security/tor/windows/` | — | — |
+| Shell runtime (window scripts, chrome CSS, Tor) | `aequera/shell/firefox/platform/windows/` | `aequera/shell/firefox/platform/linux/` | `aequera/shell/firefox/platform/macos/` |
+| Shell tests | `browser_aequera_*_windows.js` | `browser_aequera_*_linux.js` | `browser_aequera_*_macos.js` |
 | Branding | branding root (Firefox's layout) | `aequera/design/branding/linux/` | `aequera/design/branding/macos/` |
 
 Each `tools/build/<os>/README.md` is the entry point for that OS and lists
 everything else that belongs to it (patches, branding, shell behavior, CI).
-Shared build scripts reach OS behavior only through the hooks of
-`tools/build/common/host.sh`, which every `tools/build/<os>/platform.sh`
-implements; they never branch on the OS themselves.
+Shared code never branches on the OS itself; it reaches OS behavior
+through one contract per area, which every OS directory implements in full
+and a test checks on every CI runner:
 
-Two exceptions keep their own layout. Patches stay ordered by Firefox layer
+- build tooling: the hooks of `tools/build/common/host.sh`, implemented by
+  `tools/build/<os>/platform.sh` (`tests/unit/build/test_platform_hooks.py`);
+- shell runtime: `AequeraPlatform`, `AequeraTorPlatform`, and the platform
+  stylesheet in `aequera/shell/firefox/platform/<os>/`, of which `jar.mn`
+  packages only the build's own OS (`platform/platform-contract.test.mjs`).
+
+One exception keeps its own layout: patches stay ordered by Firefox layer
 (`patches/<layer>/<series>`); the series name says which OS it is for
-(`linux-desktop`, `macos-glass`). Shell runtime code
-(`aequera/shell/firefox`) branches on `AppConstants.platform` where Firefox
-does, because the overlay is one chrome package for every OS.
+(`linux-desktop`, `macos-glass`).
 
 ## Source-of-Truth Rule
 

@@ -82,7 +82,8 @@ turns Mica on, Firefox leaves it off.
 | Dist copies | `tools/build/windows/dist_copies.py`, tested by `tests/unit/build/windows/` |
 | Tor port-takeover check | `tests/security/tor/windows/port-takeover/` (elevated PowerShell) |
 | Branding assets | `aequera/design/branding/*.ico`, `*.bmp`, `VisualElements_*`, `branding.nsi` (Firefox's branding layout keeps Windows files at the directory root) |
-| Shell behavior | frame material Mica/Acrylic (`aequera/shell/firefox/aequera-frame.js`), Tor windows over a loopback TCP port (`aequera/shell/firefox/tor/`, `docs/design/TOR.md`) |
+| Shell runtime | `aequera/shell/firefox/platform/windows/`: Acrylic backdrop and frame paint, Alt+digit workspaces, Tor over a loopback TCP port (`docs/design/TOR.md`) |
+| Shell tests | `browser_aequera_material_windows.js`, `browser_aequera_tor_windows.js` |
 | PR CI | `tools/ci/smoke.ps1` |
 
 No Firefox patch is Windows-only.

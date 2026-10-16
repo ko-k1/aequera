@@ -13,10 +13,11 @@ pref-gated browser patches. No telemetry, no network.
 | File | Role |
 |---|---|
 | `aequera-prefs.js` | Default prefs: rail (revamp off, vertical tabs on), motion tokens, hover delays, drawer, workspaces, new tab, private, and in-content pages, promos off, window fullscreen keeps chrome up, frame material (`aequera.material.frame`: Acrylic on Windows, vibrancy or Liquid Glass on macOS, Linux glass on blurring desktops, opaque elsewhere), privacy defaults (telemetry/studies/sponsored/pocket/crash-upload off per `configs/defaults/privacy.toml`), privacy model (Strict tracking protection target, GPC), dark appearance, session restore, Ad Veil on, Tor windows on |
-| `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome; the glass frame material (Linux and macOS tint, macOS vibrant layer) |
+| `aequera-shell.css` | Frame model: the page card clips back (left: widened rail, top: drawer) as plain CSS transitions; unclipped only while fullscreen hides the chrome; imports every feature stylesheet, this OS's last |
 | `aequera-shell.js` | Bootstrap, never changed: loads `aequera-main.js` past the startup cache (below) |
 | `aequera-main.js` | The window scripts, in load order, each loaded past the startup cache |
 | `aequera-frame.js` | `AequeraFrame`: publishes motion tokens and the frame material from prefs, owns the page's top inset |
+| `platform/` | What differs per OS, one directory each (`windows/`, `macos/`, `linux/`); a build packages only its own (below) |
 | `aequera-hover.js` | `AequeraHover`: hover tracking shared by the rail and the bookmarks drawer (hover delays; an open surface coming to lie under a resting pointer is hovered only once the pointer moves, presses, or scrolls) |
 | `fullscreen/` | `AequeraFullscreen`: popups open whole in Wayland fullscreen |
 | `rail/` | The tab rail |
@@ -44,6 +45,33 @@ script `browser.xhtml` names, never changes: it loads `aequera-main.js` with
 scripts compiled per window, no cache reads or writes). The code that runs is
 the code that was built, however Firefox is started. New scripts go in
 `aequera-main.js` and `jar.mn`, never in the bootstrap.
+
+### Per-OS code (`platform/`)
+
+Shared shell code never asks which OS it runs on: no
+`AppConstants.platform`, no `(-moz-platform)`. What differs lives in
+`platform/<os>/`, three files per OS with the same names and members:
+
+| File | Defines | Read by |
+|---|---|---|
+| `aequera-platform.js` | `AequeraPlatform` (window script, loaded first): frame material (`systemBackdrop`, `desktopBlurs()`, `publishBackdrop()`, `watchBlur()`), `updatesDragImage`, `workspaceDigitModifier` | `aequera-frame.js`, `rail/aequera-tabs-drag.js`, `workspaces/aequera-workspaces.js` |
+| `aequera-platform.css` | Frame material paint (Windows Acrylic pass-through, Linux tint, macOS tint + vibrant layer), per-OS metrics | imported last by `aequera-shell.css` |
+| `aequera-tor-platform.sys.mjs` | `AequeraTorPlatform`: `transport` (`tcp` on Windows, `unix` elsewhere), the bundled tor's name and library path variable, whether a process runs a profile | `tor/` |
+
+`jar.mn` packages one OS's files at `chrome://browser/content/aequera/platform/`
+(`#ifdef XP_WIN` / `#elifdef XP_MACOSX` / `#else`: Linux and any other
+Unix), the way Firefox ships its per-OS themes. A new OS difference is a
+member added to all three files, never a branch in shared code.
+`platform/platform-contract.test.mjs` (node, every PR CI runner) checks
+that the three OSes define the same members, that `jar.mn` maps each OS's
+own files, and that no shared code checks the OS;
+`platform/tor-platform.test.mjs` runs every OS's Tor checks on stubbed
+Gecko globals, so their fail-closed answers (an unreadable lock or command
+line counts as a running instance) are tested on every runner;
+`tests/browser/browser_aequera_platform.js` checks that a build runs its own
+OS's files. Tests state per-OS expectations in per-OS files
+(`browser_aequera_material_<os>.js`, `browser_aequera_tor_windows.js`,
+`run-if` in `browser.toml`).
 
 ## Tab rail (`rail/`)
 
@@ -277,13 +305,14 @@ skips themes with their own colors or images (lwtheme)
 and keeps the page card and popups opaque (no stacked blur,
 `docs/design/MATERIAL.md`).
 
-- Windows: DWM draws the backdrop. `aequera-frame.js` sets Firefox's
+- Windows: DWM draws the backdrop. `AequeraPlatform.publishBackdrop`
+  (`platform/windows/`) sets Firefox's
   `widget.windows.mica` (off for solid) and
   `widget.windows.mica.toplevel-backdrop` (2, Acrylic) on the default branch,
   so a user value in about:config still wins; upstream's
   `(-moz-windows-mica)` styles make the frame transparent to it. With
   Windows' "Show accent color on title bars" on, upstream paints the accent
-  over the whole frame; `aequera-shell.css` keeps the frame transparent with
+  over the whole frame; `platform/windows/aequera-platform.css` keeps the frame transparent with
   the scheme's text color, and the accent stays on the window border.
 - macOS: `body::before` carries the titlebar vibrancy
   (`-moz-window-titlebar`, the material upstream puts behind the toolbox) over

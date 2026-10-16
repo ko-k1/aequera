@@ -49,7 +49,8 @@ Parallelism stays on mach's default (`mozconfig` here); set
 | Asset catalog | `tools/branding/build_assets_car.sh` (run on a Mac) |
 | Firefox patches | `patches/gecko/macos-glass` (Liquid Glass titlebar, macOS 26+) |
 | Branding assets | `aequera/design/branding/macos/` (`Assets.xcassets`), `*.icns`, `background.png` |
-| Shell behavior | frame material over titlebar vibrancy (`aequera/shell/firefox/aequera-frame.js`, `aequera-shell.css`) |
+| Shell runtime | `aequera/shell/firefox/platform/macos/`: vibrancy behind the frame, Essentials inset, Tor over a Unix socket (`ps` for liveness) |
+| Shell tests | `browser_aequera_material_macos.js`, `browser_aequera_tor.js` |
 | PR CI | `tools/ci/smoke.sh` |
 
 ## Known gaps

@@ -31,7 +31,9 @@
 // instance stays offline until the current tor reports its listener on that
 // port, and goes offline again the moment that tor stops.
 
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+// What differs per OS (transport, binary name, library path): one module
+// per build (jar.mn).
+import { AequeraTorPlatform } from "chrome://browser/content/aequera/platform/aequera-tor-platform.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import {
   randomHex,
@@ -172,7 +174,7 @@ export const AequeraTorDaemon = {
   /** Whether tor listens on a loopback TCP port (Windows) rather than a
    *  Unix socket. */
   usesTcp() {
-    return AppConstants.platform == "win";
+    return AequeraTorPlatform.transport == "tcp";
   },
 
   /** Whether this process is the Tor instance. */
@@ -544,7 +546,7 @@ export const AequeraTorDaemon = {
       return { path: configured, bundle: null };
     }
     const bundle = this.bundleDir();
-    const bundled = PathUtils.join(bundle, AppConstants.platform == "win" ? "tor.exe" : "tor");
+    const bundled = PathUtils.join(bundle, AequeraTorPlatform.executableName);
     if ((await IOUtils.exists(PathUtils.join(bundle, "aequera-tor-bundle.json"))) && (await IOUtils.exists(bundled))) {
       return { path: bundled, bundle };
     }
@@ -606,11 +608,9 @@ export const AequeraTorDaemon = {
       arguments: ["-f", torrcPath, "--defaults-torrc", defaultsPath],
       stderr: "stdout",
     };
-    if (tor.bundle && !tcp) {
-      // The expert bundle's tor has no RPATH: its libevent and OpenSSL sit
-      // beside it, found as Tor Browser finds them. (Windows: the bundle's
-      // tor.exe is self-contained.)
-      const name = AppConstants.platform == "macosx" ? "DYLD_LIBRARY_PATH" : "LD_LIBRARY_PATH";
+    // Where the bundled tor needs it, point it at the bundle's libraries.
+    const name = AequeraTorPlatform.libraryPathVariable;
+    if (tor.bundle && name) {
       options.environment = { [name]: tor.bundle };
       options.environmentAppend = true;
     }

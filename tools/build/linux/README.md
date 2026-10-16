@@ -71,5 +71,6 @@ benchmark has its own wrapper, `tools/benchmark/browser-bench-nixos.sh`.
 | NixOS wrappers | `tools/build/linux/nixos/`, `tools/benchmark/browser-bench-nixos.sh` |
 | Firefox patches | `patches/toolkit/linux-desktop` (D-Bus, search provider, portal and MPRIS identity), `patches/gecko/background-blur` (Wayland blur, compiled builds only) |
 | Branding assets | `aequera/design/branding/linux/` (desktop entry, D-Bus service, search provider), `default*.png` |
-| Shell behavior | frame material over the compositor's blur (`aequera/shell/firefox/aequera-frame.js`), drag quirks (`rail/aequera-tabs-drag.js`) |
+| Shell runtime | `aequera/shell/firefox/platform/linux/`: frame material over the compositor's blur, drag panel (no mid-drag image swap), Tor over a Unix socket |
+| Shell tests | `browser_aequera_material_linux.js`, `browser_aequera_tor.js` |
 | PR CI | `tools/ci/smoke.sh` |

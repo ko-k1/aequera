@@ -20,6 +20,11 @@
 @import url("chrome://browser/content/aequera/bookmarks/aequera-bookmarks.css");
 @import url("chrome://browser/content/aequera/notifications/aequera-notifications.css");
 @import url("chrome://browser/content/aequera/tor/aequera-tor.css");
+/* What the shell paints differently per OS, frame material "glass" first
+ * (aequera-frame.js sets :root[aequera-material]): platform/<os>/
+ * aequera-platform.css, one per build (jar.mn). Last, so it overrides the
+ * sheets above. */
+@import url("chrome://browser/content/aequera/platform/aequera-platform.css");
 
 /* The page card yields on two edges, each a plain transition on the shared
  * motion tokens (--aequera-motion-*, set from prefs by aequera-frame.js), so
@@ -59,72 +64,6 @@
 @media (prefers-reduced-motion: reduce) {
   #tabbrowser-tabbox {
     transition: none;
-  }
-}
-
-/* Frame material "glass" (aequera-frame.js sets :root[aequera-material]).
- * body paints the one frame behind all chrome, tinted at
- * --aequera-material-opacity so the OS blur behind it shows through:
- *   Linux: the root paints nothing, so the window already has an alpha
- *     channel (browser.css); the compositor blurs the desktop behind the
- *     translucent parts (Hyprland always; other compositors when Gecko asks
- *     through ext-background-effect-v1, patches/gecko/background-blur);
- *   macOS: the window server blurs the desktop behind a vibrant region: the
- *     titlebar material upstream already puts behind the toolbox, here
- *     spread over the whole frame (body::before below); Liquid Glass on
- *     macOS 26+ (patches/gecko/macos-glass).
- *   Windows: DWM draws Acrylic behind the window (aequera-frame.js) and
- *     upstream's (-moz-windows-mica) styles make the frame transparent, except
- *     with Windows' "Show accent color on title bars": upstream then paints
- *     the accent (ActiveCaption) over the whole frame and its caption text,
- *     hiding the backdrop. The frame keeps the backdrop and the scheme's text
- *     color; the accent stays on the window border (Windows block below).
- * The page card (.browserContainer) and popups stay opaque (no stacked blur,
- * MATERIAL.md); themes with their own colors or images (lwtheme) keep the
- * solid frame, and so does a desktop that cannot show transparency. */
-@media ((-moz-platform: linux) and (-moz-gtk-csd-transparency-available)) or (-moz-platform: macos) {
-  :root[aequera-material="glass"]:not([lwtheme]) body {
-    background-color: color-mix(
-      in srgb, var(--toolbox-background-color) var(--aequera-material-opacity, 80%), transparent
-    );
-
-    &:-moz-window-inactive {
-      background-color: color-mix(
-        in srgb, var(--toolbox-background-color-inactive) var(--aequera-material-opacity, 80%), transparent
-      );
-    }
-  }
-}
-
-/* Windows: the frame shows the Acrylic backdrop whatever the title bar
- * accent setting is (see the glass comment above). Same conditions as
- * upstream's transparent Mica frame (browser/themes/windows/browser.css). */
-@media (-moz-windows-mica) {
-  :root[aequera-material="glass"][customtitlebar]:not([lwtheme], [builtintheme]) body {
-    &, &:-moz-window-inactive {
-      background-color: transparent;
-    }
-    --toolbox-text-color: -moz-headerbartext;
-    --toolbox-text-color-inactive: -moz-headerbarinactivetext;
-  }
-}
-
-/* macOS: the vibrant region behind the whole frame. Upstream keeps the
- * toolbox's own vibrancy out of native fullscreen (the toolbox floats
- * there), and so does the frame. A solid frame drops upstream's toolbox
- * vibrancy too, so nothing behind the window shows through. */
-@media (-moz-platform: macos) {
-  :root[aequera-material="glass"]:not([lwtheme], [macOSNativeFullscreen]) body::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    -moz-default-appearance: -moz-window-titlebar;
-    appearance: auto;
-  }
-
-  :root[aequera-material="solid"][customtitlebar]:not([lwtheme]) #navigator-toolbox::after {
-    appearance: none;
   }
 }
 
