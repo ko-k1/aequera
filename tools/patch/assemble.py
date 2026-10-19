@@ -16,6 +16,7 @@ path such as patches/.tmp/, not /tmp, so traversal cannot overwrite
 outside files).
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -27,6 +28,19 @@ REQUIRED_HEADER_FIELDS = (
     "Validation:",
     "Upstream risk:",
 )
+
+# git's quote.c escapes, for unquote_c_style-faithful decoding.
+_C_ESCAPES = {
+    "a": "\a",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+    "\\": "\\",
+    '"': '"',
+}
 
 
 def _inside_repo(path: Path, repo: Path) -> Path:
@@ -42,57 +56,149 @@ def _inside_repo(path: Path, repo: Path) -> Path:
 def _reject_diff_escape(diff: str, diff_file: str) -> None:
     """Refuse diffs whose target paths could write outside the worktree.
 
-    `git apply` trusts `---/+++/diff --git` paths: `../`, absolute, or
-    `/dev/null`-bypass entries would land outside `worktree/firefox/`.
-    Only `a/<path>` / `b/<path>` with plain relative <path> are accepted.
+    `git apply` trusts `---/+++/diff --git` paths: `../`, absolute,
+    `.git/`-targeting, or `/dev/null`-bypass entries would land outside
+    `worktree/firefox/` or inside the repository's own git directory. Only
+    `a/<path>` / `b/<path>` with plain relative <path> are accepted.
 
-    Only file-header lines are validated: `---`/`+++` are only headers
-    before the first `@@` hunk of each file. Diff *content* lines such as
-    `--- ../foo` (a removed line `-- ../foo`) must not be misread as headers.
-    `diff --git` paths are parsed with shell-like quoting so
-    `"a/my file"` works.
+    Only file-header lines are validated: `---`/`+++` are headers before a
+    file's `@@` hunks and again once a hunk's line counts are exhausted (a
+    removed line whose text begins `-- ` renders as `--- `, so hunk contents
+    are counted, not guessed). Quoted paths are decoded exactly as git
+    decodes them (`unquote_c_style`), so what is validated is what git will
+    use. Binary sections are refused: this tool assembles text patches, and
+    their encoded data could hide header-shaped lines.
     """
-    import shlex
-
     in_hunk = False
+    old_left = new_left = 0
     for line in diff.splitlines():
         if line.startswith("diff --git "):
             in_hunk = False
-            try:
-                parts = shlex.split(line)
-            except ValueError:
-                print(f"{diff_file}: suspicious diff header {line!r}; refusing", file=sys.stderr)
-                raise SystemExit(1)
-            # Expect `diff --git a/<src> b/<dst>`.
-            if len(parts) != 4 or parts[0] != "diff" or parts[1] != "--git" or not parts[2].startswith("a/") or not parts[3].startswith("b/"):
+            parts = _split_c(line)
+            # Expect `diff --git a/<src> b/<dst>`; trailing fields are not
+            # part of a header `git diff` writes.
+            if (
+                parts is None
+                or len(parts) != 4
+                or parts[0] != "diff"
+                or parts[1] != "--git"
+                or not parts[2].startswith("a/")
+                or not parts[3].startswith("b/")
+            ):
                 print(f"{diff_file}: suspicious diff header {line!r}; refusing", file=sys.stderr)
                 raise SystemExit(1)
             for candidate in (parts[2][2:], parts[3][2:]):
-                _check_target(_unquote(candidate), diff_file, line)
-        elif line.startswith("@@ "):
+                _check_target(candidate, diff_file, line)
+            continue
+        if line.startswith("GIT binary patch") or line.startswith("Binary files "):
+            print(f"{diff_file}: binary diff sections are not supported; refusing", file=sys.stderr)
+            raise SystemExit(1)
+        if in_hunk:
+            if line.startswith("\\"):
+                continue  # "\ No newline at end of file" consumes no line
+            marker = line[:1]
+            if marker == "-" and old_left > 0:
+                old_left -= 1
+            elif marker == "+" and new_left > 0:
+                new_left -= 1
+            elif marker == " " and old_left > 0 and new_left > 0:
+                old_left -= 1
+                new_left -= 1
+            else:
+                print(f"{diff_file}: hunk does not match its counts at {line!r}; refusing", file=sys.stderr)
+                raise SystemExit(1)
+            if old_left == 0 and new_left == 0:
+                in_hunk = False
+            continue
+        if line.startswith("@@ "):
+            match = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
+            if not match:
+                print(f"{diff_file}: suspicious hunk header {line!r}; refusing", file=sys.stderr)
+                raise SystemExit(1)
             in_hunk = True
-        elif (line.startswith("--- ") or line.startswith("+++ ")) and not in_hunk:
-            path = line[4:].strip().split("\t")[0].strip()
-            path = _unquote(path)
+            old_left = int(match.group(2) or "1")
+            new_left = int(match.group(4) or "1")
+            continue
+        if line.startswith("--- ") or line.startswith("+++ "):
+            path = _unquote(line[4:].strip().split("\t")[0].strip())
             if path in ("-", "/dev/null"):
                 continue
-            if path.startswith(("a/", "b/")):
-                target = path[2:]
-            else:
-                target = path
+            target = path[2:] if path.startswith(("a/", "b/")) else path
             _check_target(target, diff_file, line)
 
 
+def _split_c(line: str) -> list[str] | None:
+    """Split a git header line into space-separated, C-quoted fields.
+
+    The counterpart of git's quoted-path writer: a field is either a
+    `"..."` string with backslash escapes or a run of non-space characters.
+    None when a quoted field is unterminated.
+    """
+    fields = []
+    i = 0
+    while i < len(line):
+        while i < len(line) and line[i] == " ":
+            i += 1
+        if i >= len(line):
+            break
+        if line[i] == '"':
+            j = i + 1
+            while j < len(line):
+                if line[j] == "\\":
+                    j += 2
+                    continue
+                if line[j] == '"':
+                    break
+                j += 1
+            if j >= len(line):
+                return None
+            fields.append(_unquote(line[i : j + 1]))
+            i = j + 1
+        else:
+            j = i
+            while j < len(line) and line[j] != " ":
+                j += 1
+            fields.append(line[i:j])
+            i = j
+    return fields
+
+
 def _unquote(path: str) -> str:
-    """Strip git C-style quoting (`\"a/my file\"`) for validation."""
+    """Decode git's C-style path quoting, as git's unquote_c_style does.
+
+    Unquoted input is returned unchanged (minus stray quotes). Malformed
+    quoting is returned as is: the containment checks still apply.
+    """
     path = path.strip()
-    if len(path) >= 2 and path.startswith('"') and path.endswith('"'):
-        try:
-            # Git quotes with C escapes; unicode_escape covers \\, \t, \".
-            return bytes(path[1:-1], "utf-8").decode("unicode_escape")
-        except Exception:
-            return path[1:-1]
-    return path.strip('"')
+    if len(path) < 2 or not (path.startswith('"') and path.endswith('"')):
+        return path.strip('"')
+    out = bytearray()
+    i = 1
+    end = len(path) - 1
+    while i < end:
+        char = path[i]
+        if char != "\\":
+            out.extend(char.encode("utf-8"))
+            i += 1
+            continue
+        i += 1
+        if i >= end:
+            return path
+        esc = path[i]
+        if esc in _C_ESCAPES:
+            out.extend(_C_ESCAPES[esc].encode())
+            i += 1
+        elif esc in "01234567":
+            j = i
+            while j < end and j < i + 3 and path[j] in "01234567":
+                j += 1
+            out.append(int(path[i:j], 8) & 0xFF)
+            i = j
+        else:
+            # As git: an unknown escape keeps its character, drops the `\`.
+            out.extend(esc.encode("utf-8"))
+            i += 1
+    return out.decode("utf-8", "surrogateescape")
 
 
 def _check_target(target: str, diff_file: str, line: str) -> None:
@@ -102,6 +208,9 @@ def _check_target(target: str, diff_file: str, line: str) -> None:
     parts = target.split("/")
     if any(p in ("", ".", "..") for p in parts):
         print(f"{diff_file}: path escape {line!r}; refusing", file=sys.stderr)
+        raise SystemExit(1)
+    if any(p.lower() == ".git" for p in parts):
+        print(f"{diff_file}: path targets a git directory {line!r}; refusing", file=sys.stderr)
         raise SystemExit(1)
 
 
