@@ -616,7 +616,9 @@ mark, and the wordmark carry a soft shadow in the opposite of the text color,
 white under dark text and black under white text, with or without a
 wallpaper, so they stay legible over busy images. It follows the page's color
 scheme (the theme's, or the wallpaper's `dark`/`light`), is stronger on the
-plain background than over a wallpaper, and forced colors drop it.
+plain background than over a wallpaper, and forced colors drop it. On the
+light theme's plain page the white glow cannot show, so a faint dark shadow
+(black, 0.2) under it gives text and icons their edge.
 
 Defaults that go with it (`aequera-prefs.js`): search-engine shortcut tiles,
 stories, and weather off (their feeds would otherwise keep fetching for a

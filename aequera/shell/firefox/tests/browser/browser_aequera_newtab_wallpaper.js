@@ -134,6 +134,27 @@ add_setup(async () => {
   });
 });
 
+add_task(async function test_plain_page_shadow_in_both_themes() {
+  for (const [dark, text, shadow] of [
+    [0, BLACK_TEXT, "white"],
+    [1, WHITE_TEXT, "black"],
+  ]) {
+    await SpecialPowers.pushPrefEnv({ set: [["ui.systemUsesDarkTheme", dark]] });
+    const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:newtab", true);
+    const page = await readPage(tab.linkedBrowser);
+    const theme = dark ? "dark theme" : "light theme";
+    is(page.text, text, `${theme} text`);
+    checkShadow(page, shadow, `on the ${theme}`);
+    // The white glow cannot show on the light theme's near-white page: a
+    // faint dark shadow gives text and icons their edge there, and only there.
+    const edge = "rgba(0, 0, 0, 0.2)";
+    is(page.textShadow.includes(edge), !dark, `faint dark edge under the text: ${!dark}`);
+    is(page.wordmarkFilter.includes(edge), !dark, `and under the wordmark: ${!dark}`);
+    BrowserTestUtils.removeTab(tab);
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
 add_task(async function test_no_wallpaper_by_default() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:newtab", true);
   const page = await readPage(tab.linkedBrowser);

@@ -33,11 +33,13 @@
 }
 
 /* Stronger on a plain background, where nothing busy competes with it; a
- * wallpaper keeps the lighter one. */
+ * wallpaper keeps the lighter one. The light theme's white glow cannot show
+ * on its near-white page, so a faint dark shadow under it gives the edge. */
 :root:not([data-wallpaper]) {
   --ae-shadow: light-dark(rgb(255 255 255 / 0.95), rgb(0 0 0 / 0.85));
-  --ae-halo: 0 1px 4px var(--ae-shadow);
-  --ae-drop: drop-shadow(0 2px 4px var(--ae-shadow));
+  --ae-edge: light-dark(rgb(0 0 0 / 0.2), transparent);
+  --ae-halo: 0 1px 4px var(--ae-shadow), 0 1px 2px var(--ae-edge);
+  --ae-drop: drop-shadow(0 2px 4px var(--ae-shadow)) drop-shadow(0 1px 2px var(--ae-edge));
 }
 
 /* A theme that sets a dark new tab background without a matching scheme. */
