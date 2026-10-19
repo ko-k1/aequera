@@ -351,8 +351,10 @@ Extensions may not recolour the browser: `browser.theme.update()` from an
 extension with the `theme` permission (Dark Reader's "Change browser theme",
 for one) would make the window a themed window, which keeps the frame solid
 in the theme's colour. With `aequera.extensions.dynamicThemes` off (the
-default) the call succeeds and changes nothing; theme add-ons from the
-Themes tab are unaffected (`patches/toolkit/dynamic-themes`). Test:
+default) the call succeeds, changes nothing, and reports the theme in use
+through `theme.onUpdated`, so `theme.getCurrent()` and listeners agree;
+theme add-ons from the Themes tab are unaffected
+(`patches/toolkit/dynamic-themes`). Test:
 `browser_aequera_extension_themes.js`.
 
 ## Workspaces (`workspaces/`)

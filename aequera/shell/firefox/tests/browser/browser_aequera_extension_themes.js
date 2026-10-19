@@ -7,7 +7,9 @@
 // aequera.extensions.dynamicThemes off by default): an extension with the
 // "theme" permission (Dark Reader's "Change browser theme") calling
 // browser.theme.update() leaves the window unthemed, so the frame keeps its
-// material instead of the extension's opaque colour.
+// material instead of the extension's opaque colour. The call still
+// succeeds and still reports the theme in use through theme.onUpdated, so
+// onUpdated listeners and theme.getCurrent() agree.
 
 const ROOT = document.documentElement;
 const PREF = "aequera.extensions.dynamicThemes";
@@ -17,10 +19,24 @@ function themingExtension() {
   return ExtensionTestUtils.loadExtension({
     manifest: { permissions: ["theme"] },
     background() {
+      const updates = [];
+      let waiting = null;
+      browser.theme.onUpdated.addListener(({ theme, windowId }) => {
+        if (waiting) {
+          waiting({ theme, windowId });
+          waiting = null;
+        } else {
+          updates.push({ theme, windowId });
+        }
+      });
+      function nextUpdate() {
+        return updates.length ? Promise.resolve(updates.shift()) : new Promise(resolve => (waiting = resolve));
+      }
       browser.test.onMessage.addListener(async (msg, color) => {
         if (msg == "update") {
           await browser.theme.update({ colors: { frame: color, tab_background_text: "#ffffff" } });
-          browser.test.sendMessage("updated", await browser.theme.getCurrent());
+          const current = await browser.theme.getCurrent();
+          browser.test.sendMessage("updated", { current, event: await nextUpdate() });
         } else if (msg == "reset") {
           await browser.theme.reset();
           browser.test.sendMessage("reset");
@@ -41,11 +57,13 @@ add_task(async function test_extensions_cannot_recolour_by_default() {
   const extension = themingExtension();
   await extension.startup();
   extension.sendMessage("update", FRAME_COLOR);
-  const current = await extension.awaitMessage("updated");
+  const { current, event } = await extension.awaitMessage("updated");
   await twoFrames();
   ok(!ROOT.hasAttribute("lwtheme"), "the window is not recoloured");
   is(ROOT.getAttribute("aequera-material"), "glass", "the frame keeps its glass material");
   isnot(current?.colors?.frame, FRAME_COLOR, "getCurrent reports the theme in use, not the refused one");
+  is(event.theme?.colors?.frame, current?.colors?.frame, "onUpdated reports the theme in use");
+  is(event.windowId, undefined, "as a global update would");
   await extension.unload();
   await SpecialPowers.popPrefEnv();
 });
@@ -55,9 +73,10 @@ add_task(async function test_extensions_recolour_when_allowed() {
   const extension = themingExtension();
   await extension.startup();
   extension.sendMessage("update", FRAME_COLOR);
-  const current = await extension.awaitMessage("updated");
+  const { current, event } = await extension.awaitMessage("updated");
   await TestUtils.waitForCondition(() => ROOT.hasAttribute("lwtheme"), "the extension's theme applies");
   is(current?.colors?.frame, FRAME_COLOR, "as Firefox does");
+  is(event.theme?.colors?.frame, FRAME_COLOR, "onUpdated reports the applied theme");
   extension.sendMessage("reset");
   await extension.awaitMessage("reset");
   await TestUtils.waitForCondition(() => !ROOT.hasAttribute("lwtheme"), "and resets");

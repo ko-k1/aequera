@@ -237,9 +237,10 @@ pref("aequera.material.frame", "auto");
 pref("aequera.material.opacity", 80);
 // Extensions may not recolour the browser (browser.theme.update, e.g. Dark
 // Reader's "Change browser theme"): a recoloured window is a themed window,
-// which drops the glass frame for an opaque colour. The call succeeds and
-// changes nothing; theme add-ons (the Themes tab) are unaffected. true lets
-// extensions recolour again from their next update
+// which drops the glass frame for an opaque colour. The call succeeds,
+// changes nothing, and reports the theme in use through theme.onUpdated;
+// theme add-ons (the Themes tab) are unaffected. true lets extensions
+// recolour again from their next update
 // (patches/toolkit/dynamic-themes).
 pref("aequera.extensions.dynamicThemes", false);
 // Windows: DWM backdrop (Acrylic) for auto and glass; aequera-frame.js

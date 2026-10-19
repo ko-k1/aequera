@@ -13,11 +13,13 @@ Why Firefox source must change:
 What it changes:
   - theme.update() resolves without applying anything while
     aequera.extensions.dynamicThemes is false (Aequera's default,
-    aequera-prefs.js). The extension keeps running and sees success;
-    theme.getCurrent() then reports the theme actually in use.
+    aequera-prefs.js), and emits theme.onUpdated with the theme actually
+    in use, so listeners stay in sync with theme.getCurrent(). The
+    extension keeps running and sees success. A window ID is still
+    validated as upstream does, so an invalid one is still refused.
   - Static themes (theme add-ons, the Themes tab) are a separate path
-    (onManifestEntry) and are unaffected; so are theme.reset() and
-    onUpdated.
+    (onManifestEntry) and are unaffected; so are theme.reset() and its
+    onUpdated emissions.
   - The pref is absent in Firefox and defaults to true here, so with
     Firefox's defaults nothing changes. Turning it on lets extensions
     recolour again from their next update; turning it off leaves a theme
@@ -26,26 +28,45 @@ What it changes:
 Depends on: nothing.
 Validation: aequera/shell/firefox/tests/browser/browser_aequera_extension_themes.js
   (a "theme"-permission extension cannot recolour the window or end the
-  glass frame by default; with the pref on its theme applies); Firefox's
-  browser_ext_themes_dynamic_*.js, _reset.js, and _static_onUpdated.js
-  with Firefox's defaults (tools/build/test-shell.sh upstream).
-Upstream risk: low; one guard at the top of a small, stable API method.
+  glass frame by default, and is told the theme in use; with the pref on
+  its theme applies); Firefox's browser_ext_themes_dynamic_*.js,
+  _reset.js, and _static_onUpdated.js with Firefox's defaults
+  (tools/build/test-shell.sh upstream).
+Upstream risk: low; one guard and an event emission in a small, stable
+  API method.
 
 diff --git a/toolkit/components/extensions/parent/ext-theme.js b/toolkit/components/extensions/parent/ext-theme.js
 --- a/toolkit/components/extensions/parent/ext-theme.js
 +++ b/toolkit/components/extensions/parent/ext-theme.js
-@@ -241,6 +241,14 @@ this.theme = class extends ExtensionAPIPersistent {
-           return Promise.resolve(defaultTheme.details);
-         },
+@@ -243,9 +243,31 @@ this.theme = class extends ExtensionAPIPersistent {
          update: (windowId, details) => {
+           if (windowId) {
+             const browserWindow = windowTracker.getWindow(windowId, context);
+             if (!browserWindow) {
+               return Promise.reject(`Invalid window ID: ${windowId}`);
+             }
+           }
+ 
 +          if (
 +            !Services.prefs.getBoolPref(
 +              "aequera.extensions.dynamicThemes",
 +              true
 +            )
 +          ) {
++            // The call resolves, changes nothing, and reports the theme in
++            // use, as a successful update would: theme.onUpdated listeners
++            // stay in sync with theme.getCurrent().
++            const browserWindow = windowId
++              ? windowTracker.getWindow(windowId, context)
++              : null;
++            onUpdatedEmitter.emit(
++              "theme-updated",
++              browserWindow && windowOverrides.has(browserWindow)
++                ? windowOverrides.get(browserWindow).details
++                : defaultTheme.details,
++              windowId
++            );
 +            return Promise.resolve();
 +          }
-           if (windowId) {
-             const browserWindow = windowTracker.getWindow(windowId, context);
-             if (!browserWindow) {
++
+           new Theme({
