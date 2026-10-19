@@ -106,8 +106,9 @@ patches:
     series: gecko/linux/background-blur
     platform: linux
   # Frame material on macOS 26+: titlebar vibrancy drawn as Liquid Glass
-  # (NSGlassEffectView). Pref-gated (widget.macos.titlebar-glass.enabled,
-  # off in Firefox). Not yet built or run on a Mac: see the patch header.
+  # (NSGlassEffectView). Pref-gated (widget.macos.titlebar-glass.enabled, off
+  # in Firefox). Not yet built or run on a Mac, so aequera-prefs.js keeps the
+  # pref off: see the patch header for turning it on in a macOS 26 build.
   - id: macos-glass
     series: gecko/macos/macos-glass
     platform: macos

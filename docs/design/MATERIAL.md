@@ -59,10 +59,12 @@ same on every platform:
   on the window border. Windows 10 has no backdrop: solid.
 - macOS: the window server blurs the desktop behind a vibrant region spread
   over the whole frame (the titlebar material upstream already puts behind
-  the toolbox, blending behind the window). On macOS 26 and later that
-  region is Liquid Glass (`NSGlassEffectView`, `widget.macos.titlebar-glass.enabled`,
-  read at startup; `patches/gecko/macos/macos-glass`). Solid also drops upstream's
-  toolbox vibrancy.
+  the toolbox, blending behind the window). Liquid Glass on macOS 26 and
+  later (`NSGlassEffectView`, `widget.macos.titlebar-glass.enabled`,
+  patches/gecko/macos/macos-glass) is not the Aequera default yet: that
+  series has not been built or seen on a Mac, so the pref stays off until
+  it is (see its patch header). Solid also drops upstream's toolbox
+  vibrancy.
 - Linux: glass tints the frame with the theme color at
   `aequera.material.opacity` (60-100%, also on macOS) and the compositor blurs
   the desktop behind it. Hyprland blurs every translucent window; other

@@ -248,10 +248,14 @@ pref("aequera.extensions.dynamicThemes", false);
 pref("widget.windows.mica", true);
 // macOS: the titlebar vibrancy (upstream's, behind the toolbox, and the
 // frame's) blurs the desktop behind the window instead of only the window's
-// own background, and is Liquid Glass on macOS 26+ (patches/gecko/
-// macos-glass; read at startup).
+// own background. The Liquid Glass variant on macOS 26+
+// (patches/gecko/macos/macos-glass, read at startup) stays off until that
+// patch is built and seen on a Mac: a vibrancy view samples the desktop
+// behind the window, and whether an NSGlassEffectView does too is the
+// patch header's open question. Turning it on is the compiled-build trial;
+// off keeps the vibrancy frame.
 pref("widget.macos.titlebar-blend-mode.behind-window", true);
-pref("widget.macos.titlebar-glass.enabled", true);
+pref("widget.macos.titlebar-glass.enabled", false);
 // Linux (Wayland): ask the compositor to blur what is behind the frame's
 // translucent parts (ext-background-effect-v1, patches/gecko/
 // background-blur). Off: only desktops that blur every translucent window

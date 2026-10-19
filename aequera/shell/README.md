@@ -320,9 +320,11 @@ and keeps the page card and popups opaque (no stacked blur,
   (`-moz-window-titlebar`, the material upstream puts behind the toolbox) over
   the whole frame, blending behind the window
   (`widget.macos.titlebar-blend-mode.behind-window`), off in native
-  fullscreen like upstream's. On macOS 26+ the titlebar region is Liquid Glass
-  (`NSGlassEffectView`) when `widget.macos.titlebar-glass.enabled` (read at
-  startup, `patches/gecko/macos/macos-glass`).
+  fullscreen like upstream's. Liquid Glass (`NSGlassEffectView`) on macOS 26+
+  (`widget.macos.titlebar-glass.enabled`, read at startup,
+  `patches/gecko/macos/macos-glass`) has not been built or seen on a Mac, so
+  the pref ships off and the frame is vibrancy; turning it on is the
+  compiled-build trial the patch header describes.
 - Linux: the root paints nothing, so Gecko already gives the window an alpha
   channel; glass needs `-moz-gtk-csd-transparency-available` (a compositing
   desktop). A desktop blurs when it is Hyprland (blurs every translucent
