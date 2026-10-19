@@ -10,8 +10,11 @@
 // and every change go through the port Firefox's own new tab page uses
 // (ActivityStream:MainToContent / ContentToMain, granted to about:newtab and
 // about:home only), so pin, unpin, and dismiss behave exactly as in Firefox
-// and share its storage. This page reads only the TopSites slice and the two
-// prefs that size it; it never sends telemetry actions.
+// and share its storage. This page reads only the TopSites slice, the two
+// prefs that size it, and the custom wallpaper's prefs; it never sends
+// telemetry actions. The wallpaper is saved and removed by Firefox's own
+// wallpaper feed (WALLPAPER_UPLOAD / WALLPAPER_REMOVE_UPLOAD), so it is the
+// same image Firefox's page would show.
 
 (() => {
   const TO_CONTENT = "ActivityStream:MainToContent";
@@ -22,7 +25,7 @@
   const list = document.getElementById("shortcuts");
   const menu = document.getElementById("shortcut-menu");
   const empty = document.getElementById("shortcuts-empty");
-  const state = { rows: [], topSitesRows: 1, enabled: true, hydrated: false };
+  const state = { rows: [], topSitesRows: 1, enabled: true, hydrated: false, wallpaper: {} };
   /** The options button whose menu is open, and its site. */
   let menuFor = null;
 
@@ -140,6 +143,7 @@
         state.topSitesRows = Prefs?.values?.topSitesRows ?? 1;
         state.enabled = Prefs?.values?.["feeds.topsites"] ?? true;
         state.hydrated = true;
+        readWallpaperPrefs(Prefs?.values);
         render();
         break;
       }
@@ -157,11 +161,17 @@
       case "PREFS_INITIAL_VALUES":
         state.topSitesRows = action.data?.topSitesRows ?? state.topSitesRows;
         state.enabled = action.data?.["feeds.topsites"] ?? state.enabled;
+        readWallpaperPrefs(action.data);
         if (state.hydrated) {
           render();
         }
         break;
       case "PREF_CHANGED":
+        if (WALLPAPER_PREFS.has(action.data?.name)) {
+          state.wallpaper[action.data.name] = action.data.value;
+          renderWallpaper();
+          break;
+        }
         if (!state.hydrated) {
           break;
         }
@@ -178,6 +188,9 @@
         if (!state.hydrated) {
           send("NEW_TAB_STATE_REQUEST");
         }
+        break;
+      case "WALLPAPER_UPLOAD_RESULT":
+        onWallpaperSaved(action.data);
         break;
     }
   }
@@ -295,6 +308,235 @@
       if (!document.activeElement || document.activeElement == document.body || menu.contains(document.activeElement)) {
         button.focus({ focusVisible: true });
       }
+    }
+  });
+
+  // ---- custom wallpaper ----------------------------------------------------
+
+  const PREF_SELECTED = "newtabWallpapers.wallpaper";
+  const PREF_FILE = "newtabWallpapers.customWallpaper.uuid";
+  const PREF_THEME = "newtabWallpapers.customWallpaper.theme";
+  const PREF_POSITION = "newtabWallpapers.customWallpaper.position";
+  const PREF_SIZE_LIMITED = "newtabWallpapers.customWallpaper.fileSize.enabled";
+  const PREF_SIZE_LIMIT = "newtabWallpapers.customWallpaper.fileSize";
+  const WALLPAPER_PREFS = new Set([
+    PREF_SELECTED,
+    PREF_FILE,
+    PREF_THEME,
+    PREF_POSITION,
+    PREF_SIZE_LIMITED,
+    PREF_SIZE_LIMIT,
+  ]);
+  // Firefox's saved image names (lib/Wallpapers/WallpaperFileNames.mjs):
+  // v1-<type>-<theme>-<position>-<number>-<uuid>, or a bare UUID from before
+  // the library. Matching the whole name also keeps it safe inside url().
+  const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  const SAVED_NAME = new RegExp(`^v1-[a-z]+-(light|dark)-([a-z]+)-[1-9][0-9]*-${UUID}$`);
+  const LEGACY_NAME = new RegExp(`^${UUID}$`);
+  const POSITIONS = new Map([
+    ["center", "center"],
+    ["top", "top"],
+    ["bottom", "bottom"],
+    ["left", "left"],
+    ["right", "right"],
+    ["topleft", "top left"],
+    ["topright", "top right"],
+    ["bottomleft", "bottom left"],
+    ["bottomright", "bottom right"],
+  ]);
+  // Perceived lightness (CIE L*, 0 to 100) where the text turns from white
+  // to black. 50 is mid grey, and it is also where white and black text have
+  // the same contrast against the image's mean luminance.
+  const LIGHTNESS_THRESHOLD = 50;
+
+  const layer = document.getElementById("wallpaper");
+  const customize = document.getElementById("customize-button");
+  const panel = document.getElementById("customize-panel");
+  const addButton = document.getElementById("wallpaper-add");
+  const removeButton = document.getElementById("wallpaper-remove");
+  const errorText = document.getElementById("wallpaper-error");
+  /** The newest save asked for; an older one finishing late is ignored. */
+  let saveId = 0;
+
+  function readWallpaperPrefs(values) {
+    if (!values) {
+      return;
+    }
+    for (const name of WALLPAPER_PREFS) {
+      if (name in values) {
+        state.wallpaper[name] = values[name];
+      }
+    }
+    renderWallpaper();
+  }
+
+  /** The applied custom wallpaper: its file, light or dark, and position. */
+  function appliedWallpaper() {
+    const prefs = state.wallpaper;
+    const file = prefs[PREF_FILE];
+    if (prefs[PREF_SELECTED] != "custom" || typeof file != "string") {
+      return null;
+    }
+    const saved = SAVED_NAME.exec(file);
+    if (saved) {
+      return { file, theme: saved[1], position: POSITIONS.get(saved[2]) ?? "center" };
+    }
+    if (LEGACY_NAME.test(file)) {
+      return {
+        file,
+        theme: prefs[PREF_THEME] == "dark" ? "dark" : "light",
+        position: [...POSITIONS.values()].includes(prefs[PREF_POSITION]) ? prefs[PREF_POSITION] : "center",
+      };
+    }
+    return null;
+  }
+
+  // Text, wordmark, and icons follow the wallpaper: on a dark image (below
+  // the threshold) text is white and the mark keeps its colors; on a light
+  // one text is black and the mark is darkened (aequera-newtab.css).
+  function renderWallpaper() {
+    const wallpaper = appliedWallpaper();
+    const root = document.documentElement;
+    removeButton.hidden = !wallpaper;
+    if (!wallpaper) {
+      layer.hidden = true;
+      layer.style.removeProperty("background-image");
+      delete root.dataset.wallpaper;
+      return;
+    }
+    layer.style.setProperty("background-image", `url("moz-newtab-wallpaper://${wallpaper.file}")`);
+    layer.style.setProperty("background-position", wallpaper.position);
+    layer.hidden = false;
+    root.dataset.wallpaper = wallpaper.theme;
+  }
+
+  // sRGB byte to linear light, once.
+  const LINEAR = Array.from({ length: 256 }, (_, byte) => {
+    const c = byte / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+
+  /**
+   * The image's perceived lightness: CIE L* of its mean relative luminance
+   * (WCAG), from a copy at most 256px on a side. Transparent pixels count by
+   * their opacity.
+   *
+   * @param {Blob} image
+   * @returns {Promise<number>} 0 (black) to 100 (white).
+   */
+  async function lightness(image) {
+    const bitmap = await createImageBitmap(image);
+    try {
+      const scale = Math.min(1, 256 / Math.max(bitmap.width, bitmap.height));
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = new OffscreenCanvas(width, height).getContext("2d");
+      context.drawImage(bitmap, 0, 0, width, height);
+      const { data } = context.getImageData(0, 0, width, height);
+      let luminance = 0;
+      let weight = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const alpha = data[i + 3] / 255;
+        luminance += alpha * (0.2126 * LINEAR[data[i]] + 0.7152 * LINEAR[data[i + 1]] + 0.0722 * LINEAR[data[i + 2]]);
+        weight += alpha;
+      }
+      if (!weight) {
+        return 100;
+      }
+      const y = luminance / weight;
+      return y > 216 / 24389 ? 116 * Math.cbrt(y) - 16 : (y * 24389) / 27;
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  function showError(id, args) {
+    document.l10n.setAttributes(errorText, id, args);
+    errorText.hidden = false;
+  }
+
+  async function saveWallpaper(file) {
+    const id = String(++saveId);
+    errorText.hidden = true;
+    if (!file.type.startsWith("image/")) {
+      showError("newtab-wallpaper-error-upload-file-type");
+      return;
+    }
+    // Firefox's optional size limit, in MB (off by default).
+    const limit = state.wallpaper[PREF_SIZE_LIMIT];
+    if (state.wallpaper[PREF_SIZE_LIMITED] && limit > 0 && file.size > limit * 1024 * 1024) {
+      showError("newtab-wallpaper-error-max-file-size", { file_size: limit });
+      return;
+    }
+    let theme;
+    try {
+      theme = (await lightness(file)) < LIGHTNESS_THRESHOLD ? "dark" : "light";
+    } catch (error) {
+      console.error("Could not decode the wallpaper image", error);
+      if (id == saveId) {
+        showError("newtab-wallpaper-error-upload-file-type");
+      }
+      return;
+    }
+    if (id != saveId) {
+      return;
+    }
+    send("WALLPAPER_UPLOAD", { file, theme, requestId: id });
+  }
+
+  // The feed answers the page that asked. Only once the image is on disk does
+  // it become the selection, so a failed save leaves the old one showing.
+  function onWallpaperSaved(data) {
+    if (data?.requestId != String(saveId)) {
+      return;
+    }
+    if (!data.filename) {
+      showError("newtab-wallpaper-error-upload-file-type");
+      return;
+    }
+    send("SET_PREF", { name: PREF_SELECTED, value: "custom" });
+    // Shown now rather than when the prefs come back round.
+    state.wallpaper[PREF_FILE] = data.filename;
+    state.wallpaper[PREF_SELECTED] = "custom";
+    renderWallpaper();
+  }
+
+  addButton.addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", () => {
+      const [file] = input.files;
+      if (file) {
+        saveWallpaper(file);
+      }
+    });
+    input.click();
+  });
+
+  removeButton.addEventListener("click", () => {
+    // Supersedes a save still in flight.
+    saveId++;
+    errorText.hidden = true;
+    send("WALLPAPER_REMOVE_UPLOAD", {});
+    // The feed clears the prefs; the page goes back to its canvas now, and
+    // focus moves off the button that is about to hide.
+    state.wallpaper[PREF_SELECTED] = "";
+    addButton.focus();
+    renderWallpaper();
+  });
+
+  // Open: focus its first control. Closed: focus back on the button when it
+  // was inside (Escape, or a click on the button), not when the user clicked
+  // somewhere else on the page.
+  panel.addEventListener("toggle", event => {
+    const open = event.newState == "open";
+    customize.setAttribute("aria-expanded", String(open));
+    if (open) {
+      errorText.hidden = true;
+      addButton.focus();
+    } else if (!document.activeElement || document.activeElement == document.body || panel.contains(document.activeElement)) {
+      customize.focus({ focusVisible: true });
     }
   });
 

@@ -30,6 +30,39 @@
   color-scheme: dark;
 }
 
+/* A custom wallpaper decides text and icon colors over the browser theme:
+ * its lightness is measured once when it is added (aequera-newtab.js). Below
+ * 50 (L*) text and wordmark are white and the mark keeps its own colors; from
+ * 50 up they are black and the mark is darkened, since its pale cyan would
+ * vanish into a light image. Labels get a faint halo against busy images. */
+:root[data-wallpaper="dark"] {
+  color-scheme: dark;
+  --ae-text: #fbfbfe;
+  --ae-surface: rgb(255 255 255 / 0.16);
+  --ae-halo: 0 1px 3px rgb(0 0 0 / 0.6);
+  --ae-mark-filter: none;
+}
+
+:root[data-wallpaper="light"] {
+  color-scheme: light;
+  --ae-text: #15141a;
+  --ae-surface: rgb(0 0 0 / 0.12);
+  --ae-halo: 0 1px 3px rgb(255 255 255 / 0.7);
+  --ae-mark-filter: brightness(0.55);
+}
+
+#wallpaper {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+#wallpaper[hidden] {
+  display: none;
+}
+
 html,
 body {
   height: 100%;
@@ -78,6 +111,7 @@ main {
   width: 48px;
   height: 48px;
   background: url("chrome://branding/content/about-logo.svg") center / contain no-repeat;
+  filter: var(--ae-mark-filter, none);
 }
 
 /* The wordmark SVG is 310x96, its text stretched to that width whatever the
@@ -167,6 +201,11 @@ main {
   font-weight: 600;
   color: var(--ae-text-dim);
   text-transform: uppercase;
+}
+
+.tile-label,
+#shortcuts-empty {
+  text-shadow: var(--ae-halo, none);
 }
 
 .tile-label {
@@ -263,21 +302,112 @@ main {
   display: none;
 }
 
+/* Customize: one button in the end corner, a small panel above it. */
+#customize-button {
+  position: fixed;
+  inset-block-end: 16px;
+  inset-inline-end: 16px;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--ae-rad);
+  background: url("chrome://global/skin/icons/settings.svg") center / 16px no-repeat;
+  background-color: var(--ae-surface);
+  -moz-context-properties: fill;
+  fill: currentColor;
+  color: inherit;
+  transition: background-color var(--ae-feedback) ease-out;
+}
+
+#customize-button:hover {
+  background-color: var(--ae-hover);
+}
+
+#customize-button:hover:active {
+  background-color: var(--ae-active);
+}
+
+#customize-panel {
+  position: fixed;
+  inset: auto;
+  inset-block-end: 56px;
+  inset-inline-end: 16px;
+  box-sizing: border-box;
+  width: 240px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--ae-border);
+  border-radius: var(--ae-rad);
+  background-color: var(--ae-menu-bg);
+  color: var(--ae-text);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.16);
+}
+
+#customize-panel > h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#customize-panel > button {
+  display: block;
+  width: 100%;
+  margin: 0 0 var(--ae-gap);
+  padding: 6px 10px;
+  border: 1px solid var(--ae-border);
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+#customize-panel > button:is(:hover, :focus-visible) {
+  background-color: var(--ae-hover);
+}
+
+#customize-panel > button[hidden],
+#wallpaper-error[hidden] {
+  display: none;
+}
+
+#wallpaper-error {
+  margin: 0;
+  color: light-dark(#c50042, #ff9aa2);
+  font-size: 12px;
+}
+
+:is(#customize-button, #customize-panel > button):focus-visible {
+  outline: 2px solid var(--ae-focus);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tile-link,
-  .tile-options {
+  .tile-options,
+  #customize-button {
     transition: none;
   }
 }
 
 @media (forced-colors: active) {
   .tile-icon,
-  #shortcut-menu {
+  #shortcut-menu,
+  #customize-button,
+  #customize-panel {
     border: 1px solid CanvasText;
   }
   .tile-pin,
   .tile-options,
-  .brand-wordmark {
+  .brand-wordmark,
+  #customize-button {
     fill: CanvasText;
+  }
+  /* The system colors stand, so the image would sit under text it was not
+   * measured for. */
+  #wallpaper {
+    display: none;
   }
 }

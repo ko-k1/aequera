@@ -5,14 +5,16 @@
 <!-- Aequera new tab page, served at about:newtab and about:home when
      aequera.newtab.enabled is on (patches/browser/newtab). Shortcuts only:
      the address bar is focused and is the search. Nothing is fetched from
-     the network (img-src has no http). -->
+     the network (img-src has no http). The one custom wallpaper is a file in
+     the profile, served by moz-newtab-wallpaper: (privileged about process
+     only). -->
 <!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; object-src 'none'; script-src chrome:; style-src chrome:; img-src chrome: data:"
+      content="default-src 'none'; object-src 'none'; script-src chrome:; style-src chrome:; img-src chrome: data: moz-newtab-wallpaper:"
     />
     <meta name="color-scheme" content="light dark" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -25,6 +27,9 @@
     <script defer src="chrome://browser/content/aequera/newtab/aequera-newtab.js"></script>
   </head>
   <body>
+    <!-- The custom wallpaper: a fixed layer under the page, so scrolling
+         never repaints it. -->
+    <div id="wallpaper" hidden></div>
     <main>
       <!-- The branding's mark and wordmark, named by Firefox's own string
            (the brand's full name). -->
@@ -43,5 +48,18 @@
       <button type="button" role="menuitem" data-action="unpin" data-l10n-id="newtab-menu-unpin"></button>
       <button type="button" role="menuitem" data-action="dismiss" data-l10n-id="newtab-menu-dismiss"></button>
     </div>
+    <button
+      type="button"
+      id="customize-button"
+      popovertarget="customize-panel"
+      aria-expanded="false"
+      data-l10n-id="newtab-customize-panel-icon-button"
+    ></button>
+    <section id="customize-panel" role="dialog" aria-labelledby="customize-wallpaper-heading" popover>
+      <h2 id="customize-wallpaper-heading" data-l10n-id="newtab-wallpaper-title"></h2>
+      <button type="button" id="wallpaper-add" data-l10n-id="newtab-wallpaper-add-an-image"></button>
+      <button type="button" id="wallpaper-remove" data-l10n-id="newtab-wallpaper-remove-image-confirm" hidden></button>
+      <p id="wallpaper-error" role="alert" hidden></p>
+    </section>
   </body>
 </html>
