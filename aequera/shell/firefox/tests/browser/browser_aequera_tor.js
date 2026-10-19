@@ -628,12 +628,16 @@ add_task(async function test_restart_ignores_the_old_tor() {
 add_task(async function test_refused_stays_offline() {
   // A refused instance re-asserts offline when something turns it online
   // (Work Offline). Restored at once: this test browser needs the network.
+  const daemon = AequeraTorDaemon;
+  const savedState = daemon.state;
   const wasOffline = Services.io.offline;
   try {
+    daemon.state = { ...daemon.state, status: "refused" };
     Services.io.offline = false;
-    AequeraTorDaemon.observe(null, "network:offline-status-changed", "online");
+    daemon.observe(null, "network:offline-status-changed", "online");
     ok(Services.io.offline, "back offline");
   } finally {
+    daemon.state = savedState;
     Services.io.offline = wasOffline;
   }
 });
