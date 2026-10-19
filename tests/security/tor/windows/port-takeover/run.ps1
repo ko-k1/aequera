@@ -9,6 +9,12 @@
 # once as NT AUTHORITY\LOCAL SERVICE through a temporary scheduled task (no
 # account is created), and connects to 127.0.0.1:<port> for every bind the
 # attacker gets. Removes the task, the shared directory, and tor afterwards.
+#
+# The shared directory is writable by LOCAL SERVICE (the account under test),
+# so cleanup must never recurse through a reparse point (a junction or
+# symlink pointing elsewhere would have its target deleted here, as this
+# script runs elevated): the path is random per run, the task is stopped
+# first, and Remove-ProbeTree removes links without following them.
 param(
   [string]$Tor = (Join-Path $PSScriptRoot "..\..\..\..\..\obj\firefox\artifact\dist\bin\tor\tor.exe"),
   [string]$Log = (Join-Path $env:TEMP "aequera-port-takeover.log")
@@ -16,11 +22,27 @@ param(
 $ErrorActionPreference = "Stop"
 $tor = (Resolve-Path $Tor).Path
 $task = "AequeraTorTakeoverProbe"
-$shared = "C:\ProgramData\aequera-takeover-probe"
+$shared = Join-Path "C:\ProgramData" ("aequera-takeover-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
 $work = Join-Path $env:TEMP ("aequera-takeover-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
 $torProc = $null
 
 function Log($text) { $text | Tee-Object -FilePath $Log -Append }
+
+# Recursive delete that never follows a reparse point: the link itself is
+# removed, never what it points at. Used for every probe path.
+function Remove-ProbeTree([string]$Path) {
+  $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+  if (-not $item) { return }
+  if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+    Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    return
+  }
+  if ($item.PSIsContainer) {
+    Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue |
+      ForEach-Object { Remove-ProbeTree -Path $_.FullName }
+  }
+  Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+}
 Remove-Item $Log -ErrorAction SilentlyContinue
 
 try {
@@ -38,8 +60,9 @@ try {
   }
   Log "tor.exe pid $($torProc.Id) as $([Security.Principal.WindowsIdentity]::GetCurrent().Name), listening on 127.0.0.1:$port (its own report)"
 
-  # Shared directory: this user, SYSTEM, and LOCAL SERVICE only.
-  Remove-Item $shared -Recurse -Force -ErrorAction SilentlyContinue
+  # Shared directory: this user, SYSTEM, and LOCAL SERVICE only. The GUID
+  # name cannot be pre-planted with a junction by the account under test.
+  Remove-ProbeTree $shared
   New-Item -ItemType Directory $shared | Out-Null
   icacls $shared /inheritance:r /grant:r "*S-1-5-19:(OI)(CI)M" "$($env:USERNAME):(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" | Out-Null
   Copy-Item (Join-Path $PSScriptRoot "attacker.ps1") (Join-Path $shared "attacker.ps1")
@@ -66,10 +89,13 @@ try {
   Log "tor still running: $(-not $torProc.HasExited)"
 }
 finally {
+  # Stop the writer before deleting, so no LOCAL SERVICE process is still
+  # creating files (or reparse points) in the tree while it is removed.
+  Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
   Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue
-  Remove-Item $shared -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-ProbeTree $shared
   if ($torProc -and -not $torProc.HasExited) { Stop-Process -Id $torProc.Id -Force }
   Start-Sleep -Milliseconds 500
-  Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-ProbeTree $work
   Log "cleanup: task registered=$([bool](Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue)), shared dir exists=$(Test-Path $shared)"
 }
