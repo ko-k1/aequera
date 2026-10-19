@@ -722,6 +722,12 @@ fn load_state(
     if state.next > state.files.len() || state.results.len() != state.next {
         return Err(format!("{}: inconsistent state", path.display()));
     }
+    // A pending file must have a file to resume: `pending: Some` with
+    // `next == files.len()` is never written by this tool and would make
+    // `resume` index past the end of `files`.
+    if state.pending.is_some() && state.next >= state.files.len() {
+        return Err(format!("{}: inconsistent state", path.display()));
+    }
     let count = upstream::git(
         wt,
         &[
@@ -1082,6 +1088,33 @@ mod tests {
             "resolved\n"
         );
         let _ = &f.base;
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn resume_refuses_pending_state_with_no_file_left_to_commit() {
+        // Crafted state: every file committed, yet `pending` claims one is
+        // applied-but-uncommitted. `resume` used to index `files[next]` with
+        // `next == files.len()` and panic.
+        let f = fixture(
+            "pending-oob",
+            &[("0001-c.patch", "c.txt", "c\none\n")],
+            &[("b.txt", "b\ncandidate\n")],
+        );
+        let root = &f.root;
+        patch::apply(root, &f.lock).expect("apply on old base");
+        let done = start(root, &f.lock, &f.candidate).expect("rebase runs");
+        assert!(done.done, "got: {done:?}");
+
+        let state_path = root.join(CANDIDATE_WORKTREE_RELATIVE).join(STATE_FILE);
+        let mut state: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&state_path).unwrap()).unwrap();
+        assert!(state["pending"].is_null(), "state should be settled");
+        state["pending"] = serde_json::Value::String("clean".into());
+        std::fs::write(&state_path, serde_json::to_string_pretty(&state).unwrap()).unwrap();
+
+        let err = resume(root, &f.lock, &f.candidate).expect_err("crafted state must be refused");
+        assert!(err.contains("inconsistent state"), "got: {err}");
         std::fs::remove_dir_all(root).ok();
     }
 

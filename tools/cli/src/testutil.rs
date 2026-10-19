@@ -39,6 +39,25 @@ pub fn git(dir: &Path, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
+/// Best-effort directory symlink for tests. Windows without developer mode
+/// (SeCreateSymbolicLinkPrivilege) cannot create one; callers in tests skip
+/// when this returns false.
+pub fn dir_symlink(target: &Path, link: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link).is_ok()
+    }
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_dir(target, link).is_ok()
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (target, link);
+        false
+    }
+}
+
 /// A tiny origin repo under `scratch`: one commit (`base.txt`) tagged
 /// FIXTURE_1. Returns (origin path, tagged commit SHA).
 pub fn fixture_origin(scratch: &Path) -> (PathBuf, String) {

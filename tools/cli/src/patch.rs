@@ -540,7 +540,8 @@ pub(crate) fn validate_overlay(
     overlay: &OverlayEntry,
 ) -> Result<(), String> {
     let source = root.join(plain_relative("source", &overlay.id, &overlay.source)?);
-    plain_relative("dest", &overlay.id, &overlay.dest)?;
+    let dest_rel = plain_relative("dest", &overlay.id, &overlay.dest)?;
+    reject_symlinked_ancestors(wt, &dest_rel, &overlay.id)?;
     if !source.is_dir() {
         return Err(format!(
             "overlay {:?}: source directory {} missing",
@@ -561,6 +562,49 @@ pub(crate) fn validate_overlay(
     Ok(())
 }
 
+/// Refuse a symlinked *ancestor* of `dest` inside the worktree. The final
+/// component may be replaced (a symlink there is removed, never followed),
+/// but any earlier component being a link means `remove_dir_all`,
+/// `create_dir_all`, and `copy_tree` would operate on whatever the link
+/// points at — outside the worktree and potentially outside the repository.
+/// A link can be planted by a patch committed in the same series, so this
+/// must be checked at sync time, after the series has applied.
+fn reject_symlinked_ancestors(wt: &Path, dest_rel: &Path, id: &str) -> Result<(), String> {
+    let Some(parent) = dest_rel.parent() else {
+        return Ok(());
+    };
+    let mut cur = wt.to_path_buf();
+    for comp in parent.components() {
+        cur.push(comp);
+        match std::fs::symlink_metadata(&cur) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(format!(
+                    "overlay {id:?}: dest {} traverses symlink {}; refusing to write through it",
+                    dest_rel.display(),
+                    cur.display()
+                ));
+            }
+            Ok(_) => {}
+            // Nothing further exists, so nothing further can be a link.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(format!("{}: {e}", cur.display())),
+        }
+    }
+    Ok(())
+}
+
+/// Remove a symlink at `dest` itself. On Windows a link to a directory (or a
+/// junction) must be removed with `remove_dir`; `remove_file` refuses it.
+fn remove_symlink(path: &Path) -> Result<(), String> {
+    let is_dir_link = std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false);
+    let result = if is_dir_link {
+        std::fs::remove_dir(path)
+    } else {
+        std::fs::remove_file(path)
+    };
+    result.map_err(|e| format!("{}: {e}", path.display()))
+}
+
 /// Replace every overlay dest with a fresh copy of its source. Returns the
 /// number of files copied across all overlays.
 pub(crate) fn sync_overlays(
@@ -576,6 +620,7 @@ pub(crate) fn sync_overlays(
         // and `remove_dir_all` would wipe the worktree itself.
         let source_rel = plain_relative("source", &overlay.id, &overlay.source)?;
         let dest_rel = plain_relative("dest", &overlay.id, &overlay.dest)?;
+        reject_symlinked_ancestors(wt, &dest_rel, &overlay.id)?;
         let source = root.join(source_rel);
         let dest = wt.join(dest_rel);
         // Never follow a symlink at `dest`: a planted link to `/` or `$HOME`
@@ -583,7 +628,7 @@ pub(crate) fn sync_overlays(
         // recurse through it.
         match std::fs::symlink_metadata(&dest) {
             Ok(meta) if meta.file_type().is_symlink() => {
-                std::fs::remove_file(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+                remove_symlink(&dest)?;
             }
             Ok(meta) if meta.is_dir() => {
                 std::fs::remove_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
@@ -681,6 +726,36 @@ fn validate_manifest_pointers(root: &Path, manifest: &PatchManifest) -> Result<(
     Ok(())
 }
 
+/// A patch file name: `NNNN-<slug>.patch`, `NNNN` the zero-padded order the
+/// series applies in. The sort below is byte order, which is numeric order
+/// exactly while the number stays four digits wide, so an unpadded
+/// `10-foo.patch` would apply in the wrong place (or read as first).
+fn check_series_file_name(id: &str, name: &str) -> Result<(), String> {
+    let out = |why: &str| {
+        Err(format!(
+            "series {id:?}: patch file {name:?} {why} (want NNNN-<slug>.patch: four digits, lowercase words)"
+        ))
+    };
+    let Some(stem) = name.strip_suffix(".patch") else {
+        return out("must end in .patch");
+    };
+    let Some((number, slug)) = stem.split_once('-') else {
+        return out("has no NNNN- prefix");
+    };
+    if number.len() != 4 || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return out("must start with a four-digit number");
+    }
+    if !slug.split('-').all(|word| {
+        !word.is_empty()
+            && word
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+    }) {
+        return out("must be lowercase words joined by single hyphens");
+    }
+    Ok(())
+}
+
 /// Resolve a series entry to its ordered patch files.
 pub(crate) fn series_files(root: &Path, entry: &PatchEntry) -> Result<Vec<PathBuf>, String> {
     // `series` comes from the manifest: validate before joining so
@@ -714,6 +789,9 @@ pub(crate) fn series_files(root: &Path, entry: &PatchEntry) -> Result<Vec<PathBu
                 p.display()
             ));
         }
+        if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+            check_series_file_name(&entry.id, name)?;
+        }
     }
     if files.is_empty() {
         return Err(format!(
@@ -729,6 +807,24 @@ pub(crate) fn series_files(root: &Path, entry: &PatchEntry) -> Result<Vec<PathBu
 /// `git worktree add --detach` on first use; thereafter requires HEAD to
 /// match the lock (rebuilds are explicit: delete the directory).
 fn ensure_worktree_shell(root: &Path, lock: &LockFile) -> Result<PathBuf, String> {
+    // `worktree/` is gitignored, but a committed symlink by that name still
+    // materializes on checkout, and `create_dir_all`/`worktree add` would
+    // then build the source tree through it, outside the repository. The
+    // leaf is checked too: a link there would make the checks below judge
+    // (and later writes touch) someone else's tree.
+    let mut cur = root.to_path_buf();
+    for comp in Path::new(WORKTREE_RELATIVE).components() {
+        cur.push(comp);
+        if std::fs::symlink_metadata(&cur)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false)
+        {
+            return Err(format!(
+                "worktree path {WORKTREE_RELATIVE} is behind symlink {}; refusing",
+                cur.display()
+            ));
+        }
+    }
     let wt = root.join(WORKTREE_RELATIVE);
     let sha = &lock.upstream.revision.git;
     if lock::substantive_present(&wt) {
@@ -1191,6 +1287,114 @@ mod tests {
     }
 
     #[test]
+    fn overlay_refuses_symlinked_dest_ancestor() {
+        let (root, lock, sha) = baseline("overlay-symlink-ancestor");
+        let src = root.join("aequera/shell/firefox");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("a.css"), "x\n").unwrap();
+        // A victim directory outside the worktree: following a planted link
+        // in `dest` would wipe or overwrite its contents.
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("keep.txt"), "keep\n").unwrap();
+        let link = root.join(WORKTREE_RELATIVE).join("zz");
+        if !testutil::dir_symlink(&outside, &link) {
+            std::fs::remove_dir_all(&root).ok();
+            return; // no symlink support (Windows CI without privilege)
+        }
+        write_manifest_with_overlays(
+            &root,
+            &sha,
+            "  - id: evil\n    source: aequera/shell/firefox\n    dest: zz/payload\n",
+        );
+        let err = apply(&root, &lock).expect_err("symlinked ancestor must fail");
+        assert!(err.contains("traverses symlink"), "got: {err}");
+        assert!(
+            outside.join("keep.txt").exists(),
+            "the link's target must be untouched"
+        );
+        assert!(
+            !outside.join("payload").exists(),
+            "no write through the link"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn sync_overlays_refuses_symlinked_ancestor_at_sync_time() {
+        // The link is planted *after* validation but before sync, as a patch
+        // in the same series could: sync time is the authoritative check.
+        let (root, lock, sha) = baseline("overlay-sync-symlink");
+        let src = root.join("aequera/shell/firefox");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("a.css"), "x\n").unwrap();
+        write_manifest_with_overlays(
+            &root,
+            &sha,
+            "  - id: evil\n    source: aequera/shell/firefox\n    dest: zz/payload\n",
+        );
+        let manifest = load_manifest(&root, &lock).unwrap();
+        let wt = root.join(WORKTREE_RELATIVE);
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("keep.txt"), "keep\n").unwrap();
+        if !testutil::dir_symlink(&outside, &wt.join("zz")) {
+            std::fs::remove_dir_all(&root).ok();
+            return;
+        }
+        let err = sync_overlays(&root, &wt, &manifest).expect_err("symlink must be refused");
+        assert!(err.contains("traverses symlink"), "got: {err}");
+        assert!(
+            outside.join("keep.txt").exists(),
+            "target must be untouched"
+        );
+        assert!(
+            !outside.join("payload").exists(),
+            "no write through the link"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn overlay_replaces_symlinked_dest_leaf_without_touching_target() {
+        let (root, lock, sha) = baseline("overlay-symlink-leaf");
+        let src = root.join("aequera/shell/firefox");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("a.css"), "x\n").unwrap();
+        write_manifest_with_overlays(
+            &root,
+            &sha,
+            "  - id: shell\n    source: aequera/shell/firefox\n    dest: zz\n",
+        );
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("keep.txt"), "keep\n").unwrap();
+        let dest = root.join(WORKTREE_RELATIVE).join("zz");
+        if !testutil::dir_symlink(&outside, &dest) {
+            std::fs::remove_dir_all(&root).ok();
+            return;
+        }
+        let report = apply(&root, &lock).expect("apply replaces the link itself");
+        assert_eq!(report.overlay_files, 1);
+        assert!(
+            outside.join("keep.txt").exists(),
+            "the link's target must be untouched"
+        );
+        assert!(
+            !outside.join("a.css").exists(),
+            "nothing may be written through the link"
+        );
+        assert!(dest.join("a.css").is_file(), "dest is now a real directory");
+        assert!(
+            !std::fs::symlink_metadata(&dest)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
     fn check_validates_dependent_series_cumulatively() {
         let (root, lock, sha) = baseline("dependent");
         // 0002's context only exists after 0001: each alone against base
@@ -1267,6 +1471,73 @@ mod tests {
             assert!(err.contains("must be a plain relative path"), "got: {err}");
         }
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn series_file_names_are_zero_padded_lowercase_numbers() {
+        let root = scratch("series-names");
+        let dir = root.join("patches/toolkit/demo");
+        std::fs::create_dir_all(&dir).unwrap();
+        let entry = PatchEntry {
+            id: "demo".into(),
+            series: "toolkit/demo".into(),
+            platform: None,
+        };
+        let good = ["0001-a.patch", "0010-two-words1.patch"];
+        let bad = [
+            "10-foo.patch",
+            "0001-Foo.patch",
+            "0001-foo_bar.patch",
+            "0001-.patch",
+            "0001--foo.patch",
+            "0001-foo-.patch",
+            "0001foo.patch",
+            "foo.patch",
+        ];
+        for name in good.iter().chain(bad.iter()) {
+            std::fs::write(dir.join(name), "x").unwrap();
+            let result = series_files(&root, &entry);
+            if good.contains(name) {
+                assert!(result.is_ok(), "{name}: {result:?}");
+            } else {
+                let err = result.expect_err(name);
+                assert!(err.contains("NNNN-<slug>.patch"), "{name}: {err}");
+            }
+            std::fs::remove_file(dir.join(name)).unwrap();
+        }
+        // Byte sort is numeric order for these names: the order applied.
+        for name in good {
+            std::fs::write(dir.join(name), "x").unwrap();
+        }
+        let files = series_files(&root, &entry).unwrap();
+        let names: Vec<_> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
+        assert_eq!(names, good);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn ensure_worktree_shell_refuses_a_symlinked_parent() {
+        let root = scratch("worktree-symlink-parent");
+        std::fs::create_dir_all(&root).unwrap();
+        let outside = scratch("worktree-symlink-parent-outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        if !testutil::dir_symlink(&outside, &root.join("worktree")) {
+            std::fs::remove_dir_all(&root).ok();
+            std::fs::remove_dir_all(&outside).ok();
+            return; // no symlink support (Windows CI without privilege)
+        }
+        let lock = lock_for("https://example.invalid/x.git", &"a".repeat(40));
+        let err = ensure_worktree_shell(&root, &lock).expect_err("symlinked parent must fail");
+        assert!(err.contains("behind symlink"), "got: {err}");
+        assert!(
+            !outside.join("firefox").exists(),
+            "nothing may be created through the link"
+        );
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&outside).ok();
     }
 
     /// load_manifest on a manifest whose only entry is `entry_yaml`.
