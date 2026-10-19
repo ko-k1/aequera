@@ -606,10 +606,16 @@ a copy at most 256px on a side (a few ms, off the input path), stored as
 white and black text have equal contrast against the mean) the text and
 wordmark are white and the mark keeps its colors; from 50 up they are black,
 the icon surfaces darker, and the mark is darkened (`brightness(0.55)`), since
-its pale cyan disappears into a light image. Labels get a faint halo for busy
-images. Forced colors hide the wallpaper (the system colors stand). A
+its pale cyan disappears into a light image. Forced colors hide the
+wallpaper (the system colors stand). A
 wallpaper Firefox's page saved uses Firefox's own threshold (WCAG luminance
 0.179, L* 49.5), close enough to read the same.
+
+Shadow: text (labels, letter tiles, the empty-state line), icon tiles, the
+mark, and the wordmark carry a soft shadow in the opposite of the text color,
+white under dark text and black under white text, with or without a
+wallpaper, so they stay legible over busy images. It follows the page's color
+scheme (the theme's, or the wallpaper's `dark`/`light`); forced colors drop it.
 
 Defaults that go with it (`aequera-prefs.js`): search-engine shortcut tiles,
 stories, and weather off (their feeds would otherwise keep fetching for a

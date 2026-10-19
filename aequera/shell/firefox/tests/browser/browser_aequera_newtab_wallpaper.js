@@ -42,6 +42,22 @@ async function grayImage(level, name) {
   return IOUtils.getFile(path);
 }
 
+/** "white", "black", or the raw value: the shadow color in a computed
+ *  text-shadow or drop-shadow(). */
+function shadowColor(value) {
+  if (value.includes("rgba(255, 255, 255")) {
+    return "white";
+  }
+  return value.includes("rgba(0, 0, 0") ? "black" : value;
+}
+
+/** Text and icons carry the shadow opposite to the text color. */
+function checkShadow(page, expected, what) {
+  is(shadowColor(page.textShadow), expected, `${expected} shadow under the text ${what}`);
+  is(shadowColor(page.wordmarkFilter), expected, `and under the wordmark ${what}`);
+  is(shadowColor(page.markFilter), expected, `and under the mark ${what}`);
+}
+
 /** The page's wallpaper and the colors it puts on text and icons. */
 function readPage(browser) {
   return SpecialPowers.spawn(browser, [], () => {
@@ -55,6 +71,8 @@ function readPage(browser) {
       text: style("main").color,
       wordmarkFill: style(".brand-wordmark").fill,
       markFilter: style(".brand-mark").filter,
+      wordmarkFilter: style(".brand-wordmark").filter,
+      textShadow: style("#shortcuts-empty").textShadow,
       removable: !document.getElementById("wallpaper-remove").hidden,
     };
   });
@@ -121,7 +139,8 @@ add_task(async function test_no_wallpaper_by_default() {
   const page = await readPage(tab.linkedBrowser);
   ok(!page.shown, "no wallpaper on a fresh profile");
   is(page.theme, null, "text follows the browser theme");
-  is(page.markFilter, "none", "the mark keeps its colors");
+  ok(!page.markFilter.includes("brightness(0.55)"), "the mark keeps its colors");
+  checkShadow(page, page.text == WHITE_TEXT ? "black" : "white", "of the theme");
   ok(!page.removable, "nothing to remove");
   BrowserTestUtils.removeTab(tab);
 });
@@ -151,7 +170,8 @@ add_task(async function test_dark_wallpaper_white_text() {
   is(page.image, `url("moz-newtab-wallpaper://${saved}/")`, "the page shows that file");
   is(page.text, WHITE_TEXT, "white text");
   is(page.wordmarkFill, WHITE_TEXT, "white wordmark");
-  is(page.markFilter, "none", "the mark keeps its default colors");
+  ok(!page.markFilter.includes("brightness(0.55)"), "the mark keeps its default colors");
+  checkShadow(page, "black", "on a dark image");
   ok(page.removable, "Remove is offered");
 
   // The page's CSP and the protocol let the image load.
@@ -183,7 +203,8 @@ add_task(async function test_light_wallpaper_black_text_dark_mark() {
   const page = await waitForTheme(browser, "light");
   is(page.text, BLACK_TEXT, "black text");
   is(page.wordmarkFill, BLACK_TEXT, "black wordmark");
-  is(page.markFilter, "brightness(0.55)", "the mark is darkened");
+  ok(page.markFilter.startsWith("brightness(0.55)"), "the mark is darkened");
+  checkShadow(page, "white", "on a light image");
   const saved = Services.prefs.getStringPref(
     "browser.newtabpage.activity-stream.newtabWallpapers.customWallpaper.uuid"
   );
@@ -218,7 +239,7 @@ add_task(async function test_remove_and_escape() {
   await TestUtils.waitForCondition(async () => !(await readPage(browser)).shown, "wallpaper gone");
   const page = await readPage(browser);
   is(page.theme, null, "text follows the browser theme again");
-  is(page.markFilter, "none", "the mark has its colors back");
+  ok(!page.markFilter.includes("brightness(0.55)"), "the mark has its colors back");
   ok(!page.removable, "Remove hidden");
   await TestUtils.waitForCondition(
     () => !Services.prefs.getStringPref("browser.newtabpage.activity-stream.newtabWallpapers.wallpaper", ""),

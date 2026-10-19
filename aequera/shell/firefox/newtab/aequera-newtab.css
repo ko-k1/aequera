@@ -23,6 +23,13 @@
   --ae-icon: 56px;
   --ae-tile: 88px;
   --ae-feedback: 120ms;
+  /* A shadow in the opposite of the text color under text and icons: white
+   * under dark text, black under white text. It follows the color scheme,
+   * which the theme (lwt-newtab-brighttext) or the wallpaper sets. */
+  --ae-shadow: light-dark(rgb(255 255 255 / 0.7), rgb(0 0 0 / 0.6));
+  --ae-halo: 0 1px 3px var(--ae-shadow);
+  --ae-drop: drop-shadow(0 1px 3px var(--ae-shadow));
+  --ae-mark-filter: brightness(1);
 }
 
 /* A theme that sets a dark new tab background without a matching scheme. */
@@ -34,20 +41,18 @@
  * its lightness is measured once when it is added (aequera-newtab.js). Below
  * 50 (L*) text and wordmark are white and the mark keeps its own colors; from
  * 50 up they are black and the mark is darkened, since its pale cyan would
- * vanish into a light image. Labels get a faint halo against busy images. */
+ * vanish into a light image. The text and icon shadow follows the scheme
+ * set here. */
 :root[data-wallpaper="dark"] {
   color-scheme: dark;
   --ae-text: #fbfbfe;
   --ae-surface: rgb(255 255 255 / 0.16);
-  --ae-halo: 0 1px 3px rgb(0 0 0 / 0.6);
-  --ae-mark-filter: none;
 }
 
 :root[data-wallpaper="light"] {
   color-scheme: light;
   --ae-text: #15141a;
   --ae-surface: rgb(0 0 0 / 0.12);
-  --ae-halo: 0 1px 3px rgb(255 255 255 / 0.7);
   --ae-mark-filter: brightness(0.55);
 }
 
@@ -111,7 +116,7 @@ main {
   width: 48px;
   height: 48px;
   background: url("chrome://branding/content/about-logo.svg") center / contain no-repeat;
-  filter: var(--ae-mark-filter, none);
+  filter: var(--ae-mark-filter) var(--ae-drop);
 }
 
 /* The wordmark SVG is 310x96, its text stretched to that width whatever the
@@ -122,6 +127,7 @@ main {
   background: url("chrome://branding/content/firefox-wordmark.svg") center / contain no-repeat;
   -moz-context-properties: fill;
   fill: var(--ae-text);
+  filter: var(--ae-drop);
 }
 
 #shortcuts {
@@ -181,6 +187,7 @@ main {
   height: var(--ae-icon);
   border-radius: 14px;
   background-color: var(--ae-surface);
+  box-shadow: var(--ae-halo);
   overflow: hidden;
 }
 
@@ -204,8 +211,9 @@ main {
 }
 
 .tile-label,
+.tile-letter,
 #shortcuts-empty {
-  text-shadow: var(--ae-halo, none);
+  text-shadow: var(--ae-halo);
 }
 
 .tile-label {
@@ -409,5 +417,9 @@ main {
    * measured for. */
   #wallpaper {
     display: none;
+  }
+  .brand-mark,
+  .brand-wordmark {
+    filter: none;
   }
 }
