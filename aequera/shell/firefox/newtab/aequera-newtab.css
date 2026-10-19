@@ -32,6 +32,14 @@
   --ae-mark-filter: brightness(1);
 }
 
+/* Stronger on a plain background, where nothing busy competes with it; a
+ * wallpaper keeps the lighter one. */
+:root:not([data-wallpaper]) {
+  --ae-shadow: light-dark(rgb(255 255 255 / 0.95), rgb(0 0 0 / 0.85));
+  --ae-halo: 0 1px 4px var(--ae-shadow);
+  --ae-drop: drop-shadow(0 2px 4px var(--ae-shadow));
+}
+
 /* A theme that sets a dark new tab background without a matching scheme. */
 :root[lwt-newtab-brighttext] {
   color-scheme: dark;

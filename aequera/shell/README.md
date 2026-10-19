@@ -615,7 +615,8 @@ Shadow: text (labels, letter tiles, the empty-state line), icon tiles, the
 mark, and the wordmark carry a soft shadow in the opposite of the text color,
 white under dark text and black under white text, with or without a
 wallpaper, so they stay legible over busy images. It follows the page's color
-scheme (the theme's, or the wallpaper's `dark`/`light`); forced colors drop it.
+scheme (the theme's, or the wallpaper's `dark`/`light`), is stronger on the
+plain background than over a wallpaper, and forced colors drop it.
 
 Defaults that go with it (`aequera-prefs.js`): search-engine shortcut tiles,
 stories, and weather off (their feeds would otherwise keep fetching for a
