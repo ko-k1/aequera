@@ -64,8 +64,11 @@ version lowered, plus a TEMP-only `smoke.html` runner — none of it is committe
 - `cargo test -p aequera-core` green (20 tests).
 - `node --test src/palette.test.js` green (6 tests: order, case-folding, gating, cap).
 - `aequera upstream verify` → verified; `aequera patch status` → base match, applied state matches manifest.
-- `manifest.json` parses; `strict_min_version` == lock version `158.0`; permissions ⊆ {tabs, sessions, storage, history, bookmarks}; `icons` 16/32/48/128 resolve to `icons/` (real mark).
-- `background.js` / `palette.js` contain no `fetch(` / `XMLHttpRequest` / `WebSocket` call sites, no telemetry.
+- `python3 -m unittest discover -s tests/unit/build` green
+  (`test_shell_chrome_manifest.py` enforces the manifest bullets below in CI:
+  it parses; `strict_min_version` == lock version `158.0`; permissions ⊆
+  {tabs, sessions, storage, history, bookmarks}; icons 16/32/48/128 resolve
+  to real PNGs; background scripts exist; no network call sites).
 - Live Marionette smoke in real Firefox green (4/4 steps; see above).
 - Temporary load in the pinned 158.0 build remains the final gate (manual; full Firefox build is hours).
 
