@@ -29,6 +29,14 @@
   // When to look again at a slot whose ad has not been drawn yet (ms); it is
   // also looked at whenever the page changes, until the last of these.
   const RETRIES = [1000, 3000, 8000, 15000, 30000, 60000];
+  // A hostile page can mint class names, ids, and ad descriptions without
+  // limit. These bound what the script remembers for the document's life
+  // (names are only ever sent once; the background reads at most MAX_NAMES
+  // of them per message). A page past a cap simply stops teaching it new
+  // things, which can only under-hide, never over-hide.
+  const MAX_NAMES = 2000;
+  const MAX_SENT = 20000;
+  const MAX_REPORTED = 5000;
 
   const sent = new Set();
   let classes = [];
@@ -47,16 +55,23 @@
 
   function note(element) {
     for (const name of element.classList) {
-      if (!sent.has(`.${name}`)) {
-        sent.add(`.${name}`);
+      const key = `.${name}`;
+      if (!sent.has(key) && hasRoom()) {
+        sent.add(key);
         classes.push(name);
       }
     }
     const id = element.id;
-    if (id && !sent.has(`#${id}`)) {
+    if (id && !sent.has(`#${id}`) && hasRoom()) {
       sent.add(`#${id}`);
       ids.push(id);
     }
+  }
+
+  // Names are held until a flush sends them; a full batch waits for the
+  // flush (names stay untracked and are picked up from later mutations).
+  function hasRoom() {
+    return sent.size < MAX_SENT && classes.length + ids.length < MAX_NAMES;
   }
 
   function applied(list) {
@@ -192,7 +207,7 @@
     const fresh = [];
     for (const { image, ...ad } of ads) {
       const key = `${ad.link}|${ad.creative}|${ad.loaded}`;
-      if (reported.has(key)) {
+      if (reported.has(key) || reported.size >= MAX_REPORTED) {
         continue;
       }
       reported.add(key);
@@ -598,7 +613,18 @@
   addEventListener("pointerdown", noteClick, { capture: true, passive: true });
   addEventListener("click", noteClick, { capture: true, passive: true });
 
-  // As VeilModel.siteKey (the background's), for the redirect guard.
+  // As VeilModel.siteKey (the background's), for the redirect guard. Keep
+  // the hosting-suffix list in step with model.js: it is what keeps one
+  // tenant of a shared platform (github.io, blogspot.com, ...) from passing
+  // for another tenant's own page.
+  const HOSTING_SUFFIXES = [
+    "blogspot.com", "wordpress.com", "tumblr.com", "weebly.com", "wixsite.com",
+    "github.io", "gitlab.io", "netlify.app", "vercel.app", "pages.dev",
+    "web.app", "firebaseapp.com", "onrender.com", "fly.dev", "glitch.me",
+    "surge.sh", "herokuapp.com", "azurewebsites.net", "cloudfront.net",
+    "s3.amazonaws.com", "workers.dev", "ondigitalocean.app",
+  ];
+
   function siteKey(url) {
     let host = "";
     try {
@@ -610,6 +636,11 @@
       return host || null;
     }
     const labels = host.split(".");
+    for (const suffix of HOSTING_SUFFIXES) {
+      if (host == suffix || host.endsWith(`.${suffix}`)) {
+        return labels.slice(-(suffix.split(".").length + 1)).join(".");
+      }
+    }
     const n = labels.length >= 3 && labels.at(-1).length == 2 && labels.at(-2).length <= 3 ? 3 : 2;
     return labels.slice(-n).join(".");
   }

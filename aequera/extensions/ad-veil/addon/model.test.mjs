@@ -181,6 +181,46 @@ test("siteKey and sameSite: a page's own subdomains, not another site", () => {
   assert.ok(sameSite("https://shop.example.com/", "https://www.example.com/x"));
   assert.ok(!sameSite("https://example.org/", "https://example.com/"));
   assert.ok(!sameSite("about:blank", "about:blank"));
+  // One tenant of a shared platform is not another tenant's own page.
+  assert.equal(siteKey("https://evil.github.io/x"), "evil.github.io");
+  assert.equal(siteKey("https://blog.example.blogspot.com/"), "example.blogspot.com");
+  assert.equal(siteKey("https://bucket.s3.amazonaws.com/k"), "bucket.s3.amazonaws.com");
+  assert.ok(!sameSite("https://evil.github.io/", "https://victim.github.io/"));
+  assert.ok(sameSite("https://a.github.io/", "https://a.github.io/x"));
+  assert.equal(siteKey("https://github.io/"), "github.io");
+});
+
+test("fetchableImageUrl: only public http(s) images reach the vault fetch", () => {
+  const { fetchableImageUrl } = model;
+  assert.equal(fetchableImageUrl("https://cdn.example.com/ad.png"), "https://cdn.example.com/ad.png");
+  assert.equal(fetchableImageUrl("http://cdn.example.com/ad.png"), "http://cdn.example.com/ad.png");
+  for (const url of [
+    "http://127.0.0.1:8123/x.png",
+    "http://localhost/x.png",
+    "http://[::1]/x.png",
+    "http://10.0.0.5/x.png",
+    "http://192.168.1.1/x.png",
+    "http://172.16.0.1/x.png",
+    "http://169.254.169.254/latest/meta-data",
+    "http://100.64.0.1/x.png",
+    "http://[fd00::1]/x.png",
+    "http://[fe80::1]/x.png",
+    "http://[::ffff:192.168.0.1]/x.png",
+    "http://[64:ff9b::a00:1]/x.png",
+    "http://printer.local/x.png",
+    "http://foo.internal/x.png",
+    "http://host.home.arpa/x.png",
+    "http://999.1.1.1/x.png",
+    "file:///etc/passwd.png",
+    "ftp://example.com/x.png",
+    "blob:https://example.com/x",
+    "",
+  ]) {
+    assert.equal(fetchableImageUrl(url), null, url);
+  }
+  // A public host that merely starts like a private name is still fetched.
+  assert.equal(fetchableImageUrl("https://localhost.example.com/x.png"), "https://localhost.example.com/x.png");
+  assert.equal(fetchableImageUrl("https://172.32.0.1/x.png"), "https://172.32.0.1/x.png");
 });
 
 test("popupVerdict: click-anywhere and link-riding popups close, controls and links open", () => {

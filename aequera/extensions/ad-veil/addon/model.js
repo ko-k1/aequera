@@ -165,6 +165,62 @@ var VeilModel = (() => {
     return parse(value)?.href ?? null;
   }
 
+  // Whether the background may fetch an image URL into the vault. The URL
+  // comes from a page's hidden elements and is fetched with the add-on's
+  // host permissions, which ignore CORS: a hostile page could aim it at
+  // loopback, a home-network host, or a cloud metadata endpoint to probe or
+  // read it. Only http(s) to a host that is not a loopback, private,
+  // link-local, or otherwise non-public IP literal is fetched; whether a
+  // *name* resolves to such an address is not decidable here, so this
+  // narrows the capability rather than removing it.
+  const LOCAL_NAME_SUFFIXES = [".localhost", ".local", ".internal", ".home.arpa"];
+
+  function fetchableImageUrl(value) {
+    if (typeof value != "string" || value.length > MAX_URL) {
+      return null;
+    }
+    const parsed = parse(value);
+    if (!parsed) {
+      return null;
+    }
+    const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    if (!host || host == "localhost" || LOCAL_NAME_SUFFIXES.some(suffix => host.endsWith(suffix))) {
+      return null;
+    }
+    return localAddress(host) ? null : parsed.href;
+  }
+
+  // Non-public IP literals: loopback, RFC 1918 private, link-local (the
+  // cloud metadata range included), carrier NAT, benchmarking, unspecified,
+  // and the IPv6 forms (ULA, link-local, v4-mapped, NAT64, documentation).
+  function localAddress(host) {
+    const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+    if (v4) {
+      const parts = v4.slice(1).map(Number);
+      if (parts.some(part => part > 255)) {
+        return true; // not a valid address: refuse rather than guess
+      }
+      const [a, b] = parts;
+      return a == 0 || a == 10 || a == 127
+        || (a == 100 && b >= 64 && b <= 127)
+        || (a == 169 && b == 254)
+        || (a == 172 && b >= 16 && b <= 31)
+        || (a == 192 && b == 168)
+        || (a == 198 && (b == 18 || b == 19));
+    }
+    if (!host.includes(":")) {
+      return false;
+    }
+    return host == "::" || host == "::1"
+      || /^f[cd]/.test(host)
+      || /^fe[89ab]/.test(host)
+      || /^fec/.test(host)
+      || /^ff/.test(host)
+      || /^::ffff:/.test(host)
+      || /^64:ff9b:/.test(host)
+      || /^2001:db8/.test(host);
+  }
+
   // One hidden ad as reported by a content script (untrusted input), or
   // null when it carries nothing worth keeping.
   function adFrom(raw) {
@@ -180,10 +236,25 @@ var VeilModel = (() => {
     return { link, creative, text, loaded: raw.loaded === true && !!creative };
   }
 
-  // A site's key for "same site": its last two host labels, or three when
-  // the last two look like a country's second level (example.co.uk). An
-  // approximation of the public suffix list, enough to tell a page's own
-  // pages from another site's.
+  // A site's key for "same site": the registrable domain, as an
+  // approximation of the public suffix list. Its last two host labels, three
+  // when the last two look like a country's second level (example.co.uk), or
+  // one more when the host is a tenant of a shared platform
+  // (evil.github.io and victim.github.io are different sites, not one).
+  //
+  // HOSTING_SUFFIXES: platforms where each `<name>.<suffix>` belongs to a
+  // different owner, so the name label is part of the key. Only unrelated-
+  // tenant platforms belong here (medium.com is one site and must not be);
+  // kept small on purpose, and overviewed by the country-code rule below.
+  // content.js duplicates this function (it does not load this file).
+  const HOSTING_SUFFIXES = [
+    "blogspot.com", "wordpress.com", "tumblr.com", "weebly.com", "wixsite.com",
+    "github.io", "gitlab.io", "netlify.app", "vercel.app", "pages.dev",
+    "web.app", "firebaseapp.com", "onrender.com", "fly.dev", "glitch.me",
+    "surge.sh", "herokuapp.com", "azurewebsites.net", "cloudfront.net",
+    "s3.amazonaws.com", "workers.dev", "ondigitalocean.app",
+  ];
+
   function siteKey(url) {
     const host = hostOf(url);
     if (!host) {
@@ -193,6 +264,11 @@ var VeilModel = (() => {
       return host;
     }
     const labels = host.split(".");
+    for (const suffix of HOSTING_SUFFIXES) {
+      if (host == suffix || host.endsWith(`.${suffix}`)) {
+        return labels.slice(-(suffix.split(".").length + 1)).join(".");
+      }
+    }
     const n = labels.length >= 3 && labels.at(-1).length == 2 && labels.at(-2).length <= 3 ? 3 : 2;
     return labels.slice(-n).join(".");
   }
@@ -594,6 +670,7 @@ var VeilModel = (() => {
     withMode,
     adHostsFrom,
     adFrom,
+    fetchableImageUrl,
     siteKey,
     sameSite,
     popupVerdict,

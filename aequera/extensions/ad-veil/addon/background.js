@@ -107,9 +107,12 @@ function pumpImages() {
 }
 
 function wantImage(url) {
-  if (url && !imagesWanted.has(url)) {
-    imagesWanted.add(url);
-    imageQueue.push(url);
+  // The URL comes from page content: only public http(s) images are ever
+  // fetched with the add-on's host permissions (fetchableImageUrl).
+  const savable = VeilModel.fetchableImageUrl(url);
+  if (savable && !imagesWanted.has(savable)) {
+    imagesWanted.add(savable);
+    imageQueue.push(savable);
     pumpImages();
   }
 }
