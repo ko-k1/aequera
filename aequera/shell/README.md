@@ -23,7 +23,7 @@ pref-gated browser patches. No telemetry, no network.
 | `rail/` | The tab rail |
 | `workspaces/` | Workspaces + dock, sort tabs by site |
 | `command/` | Command surface: Aequera rows in the address bar |
-| `newtab/` | New tab page (about:newtab, about:home): shortcuts grid |
+| `newtab/` | New tab page (about:newtab, about:home): shortcuts grid, custom wallpaper |
 | `privatebrowsing/` | about:privatebrowsing in the new tab page design (stylesheet) |
 | `incontent/` | Firefox's in-content pages (Settings, Add-ons, error pages...) in the Aequera palette (token stylesheet), Aequera illustrations in place of Firefox's mascot art |
 | `privacy/` | Privacy model: applies Strict tracking protection once per profile |
@@ -533,8 +533,10 @@ mark and wordmark over your shortcuts (Firefox's top sites: pinned and
 most-visited) as one grid, the two centered as one block a little above the
 middle of the page, nothing else. The address bar is focused and is the search, so there is
 no second search box and no search-engine tiles. No stories, weather,
-sponsored tiles, or wallpapers; nothing is fetched from the network (the
-page's CSP allows images from `chrome:` and `data:` only).
+sponsored tiles, or wallpaper catalog; nothing is fetched from the network
+(the page's CSP allows images from `chrome:`, `data:`, and the profile's own
+wallpaper file only). The one customization is a wallpaper of your own
+(below).
 
 `patches/browser/newtab` (one pref-gated line in `AboutNewTabRedirector`)
 serves the page when `aequera.newtab.enabled` is on. The address stays
@@ -573,11 +575,43 @@ anchors: middle-click, the context menu, and drag work natively.
   an English literal: Firefox has no string for it.
 - Data: the page renders from the full state or from any full shortcut list
   (`TOP_SITES_UPDATED`), so it never depends on one reply alone.
+- Customize (gear, end corner): a popover panel with "Add an image" and
+  "Remove" for a custom wallpaper; focus moves into it and back to the button
+  on Escape.
+
+Custom wallpaper: saved and removed by Firefox's own wallpaper feed through
+the same port (`WALLPAPER_UPLOAD`, `WALLPAPER_REMOVE_UPLOAD`), so it is a file
+in the profile (`wallpaper/`), shared with Firefox's page and kept by its
+cleanup. One image: Firefox keeps a library of every image added, which this
+page has no view of, so `aequera-prefs.js` turns the library off and the feed
+deletes the image a new one replaces. The page reads
+Firefox's prefs (`newtabWallpapers.wallpaper` = `custom`,
+`newtabWallpapers.customWallpaper.uuid` for the file name) and shows the file
+from `moz-newtab-wallpaper:` (loadable only in the privileged about process)
+as a fixed layer under the page, `cover`, at the saved position. The
+selection is set only after the feed reports the file written, so a failed
+save leaves the old wallpaper; a newer choice supersedes one still in flight.
+Firefox's optional size limit (`customWallpaper.fileSize.enabled`, MB) is
+honored. Firefox's built-in wallpaper catalog is not offered: its images are
+downloaded, this page fetches nothing.
+
+Text and icons follow the image, not the browser theme. Its lightness is
+measured once, when it is added: CIE L* of its mean relative luminance, from
+a copy at most 256px on a side (a few ms, off the input path), stored as
+`dark` or `light` in the saved file name. Below L* 50 (mid grey, and where
+white and black text have equal contrast against the mean) the text and
+wordmark are white and the mark keeps its colors; from 50 up they are black,
+the icon surfaces darker, and the mark is darkened (`brightness(0.55)`), since
+its pale cyan disappears into a light image. Labels get a faint halo for busy
+images. Forced colors hide the wallpaper (the system colors stand). A
+wallpaper Firefox's page saved uses Firefox's own threshold (WCAG luminance
+0.179, L* 49.5), close enough to read the same.
 
 Defaults that go with it (`aequera-prefs.js`): search-engine shortcut tiles,
 stories, and weather off (their feeds would otherwise keep fetching for a
 page that does not show them), and the about:home startup cache off (it holds
-a render of Firefox's page).
+a render of Firefox's page), and the custom wallpaper library off (see
+Custom wallpaper).
 
 Startup dependency: the new tab backend starts from BrowserGlue's
 first-window step, which reads `app.update.checkInstallTime.days` whenever
@@ -593,11 +627,12 @@ false in the profile. The remote agent's recommended prefs include
 backend without the feed that answers a page's state request.
 
 Measured against Firefox's page on the same build (headless, Linux,
-8 pinned shortcuts, medians; the pref switches the page):
+8 pinned shortcuts, medians; the pref switches the page). The timings and
+memory predate the Customize panel, which added 12 KB of script and style:
 
 | | Firefox page | Aequera page |
 |---|---:|---:|
-| Script and style loaded | ~1.8 MB JS + 0.7 MB CSS | 22 KB (incl. Firefox's 6 KB theme script) |
+| Script and style loaded | ~1.8 MB JS + 0.7 MB CSS | 34 KB (incl. Firefox's 6 KB theme script) |
 | Cold load: DOMContentLoaded | 68 ms | 14 ms |
 | Cold load: shortcuts on screen | 101 ms | 30 ms |
 | Preloaded: open to shortcuts on screen | 23.2 ms | 19.1 ms |
@@ -606,8 +641,13 @@ Measured against Firefox's page on the same build (headless, Linux,
 
 Tests: `tests/browser/browser_aequera_newtab.js` (served at both addresses,
 preloaded with the address bar focused, shortcuts, empty state,
-pin/unpin/dismiss by keyboard, Escape, pref off, startup prefs). The
-upstream gate runs Firefox's about:home cache tests with the pref off.
+pin/unpin/dismiss by keyboard, Escape, pref off, startup prefs) and
+`tests/browser/browser_aequera_newtab_wallpaper.js` (add by keyboard through
+the file picker, saved file and prefs, the image decodes under the page's
+CSP, white text below L* 50 and black text with a darkened mark above it,
+about:home shows the same image, remove, Escape, a file that is not an
+image). The upstream gate runs Firefox's about:home cache tests with the
+pref off.
 
 ## Private browsing page (`privatebrowsing/`)
 

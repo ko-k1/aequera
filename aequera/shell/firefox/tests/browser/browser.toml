@@ -51,6 +51,8 @@ support-files = ["material-helpers.js"]
 
 ["browser_aequera_newtab.js"]
 
+["browser_aequera_newtab_wallpaper.js"]
+
 ["browser_aequera_private.js"]
 
 ["browser_aequera_incontent.js"]

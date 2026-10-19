@@ -68,6 +68,11 @@ pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", 
 pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
 pref("browser.newtabpage.activity-stream.showWeather", false);
 pref("browser.startup.homepage.abouthome_cache.enabled", false);
+// The page's custom wallpaper is saved by Firefox's wallpaper feed. The page
+// keeps one image and has no "Your images" library to remove old ones from,
+// so the feed deletes the image a new one replaces instead of piling them up
+// in the profile.
+pref("browser.newtabpage.activity-stream.newtabWallpapers.customWallpaper.library.enabled", false);
 
 // Private browsing page (privatebrowsing/, patches/browser/privatebrowsing):
 // Firefox's page in the new tab page's design. Its product promos (Mozilla
