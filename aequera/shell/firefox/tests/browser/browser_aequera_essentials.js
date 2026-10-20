@@ -5,7 +5,8 @@
 
 // Essentials (rail/aequera-essentials.css/.js): pinned tabs as pill tiles
 // (Zen metrics: 46px tiles, 4px grid gap) in balanced rows for 1-9
-// essentials; one column while collapsed.
+// essentials; one card of favicons while collapsed, the same height as the
+// grid so the tab list below never moves.
 
 const ROOT = document.documentElement;
 const container = () => document.getElementById("sidebar-container");
@@ -69,6 +70,64 @@ add_task(async function test_collapsed_is_one_column() {
   is(lefts.size, 1, "collapsed essentials share one column");
   const tops = pinnedTabs().map(t => rect(t).top);
   ok(tops.every((top, i) => i == 0 || top > tops[i - 1]), "stacked top to bottom");
+});
+
+add_task(async function test_collapsed_is_one_card() {
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
+  gBrowser.selectedTab = gBrowser.tabs.find(t => !t.pinned);
+  const wrapper = document
+    .getElementById("pinned-tabs-container")
+    .shadowRoot.querySelector("[part~='items-wrapper']");
+  isnot(getComputedStyle(wrapper).backgroundColor, "rgba(0, 0, 0, 0)", "the card is painted");
+  for (const tab of pinnedTabs()) {
+    is(
+      getComputedStyle(tab.querySelector(".tab-background")).backgroundColor,
+      "rgba(0, 0, 0, 0)",
+      "no tile of its own at rest"
+    );
+  }
+  const card = wrapper.getBoundingClientRect();
+  const centers = pinnedTabs().map(t => {
+    const icon = t.querySelector(".tab-icon-stack").getBoundingClientRect();
+    return { x: icon.left + icon.width / 2, y: icon.top + icon.height / 2 };
+  });
+  for (const { x, y } of centers) {
+    Assert.less(
+      Math.abs(x - (card.left + card.width / 2)),
+      1,
+      `favicon at ${x} on the card's center line (${card.left}..${card.right})`
+    );
+    ok(y > card.top && y < card.bottom, "favicon inside the card");
+  }
+  const pitch = card.height / centers.length;
+  centers.forEach(({ y }, i) =>
+    Assert.less(Math.abs(y - (card.top + pitch * (i + 0.5))), 1, `favicon ${i} evenly spaced`)
+  );
+});
+
+add_task(async function test_height_is_the_same_in_both_states() {
+  const pinnedBox = () => document.getElementById("pinned-tabs-container").getBoundingClientRect();
+  const listTop = () => document.getElementById("aequera-tabs").getBoundingClientRect().top;
+  for (let count = 1; count <= 9; count++) {
+    setPinnedCount(count);
+    await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
+    await TestUtils.waitForCondition(
+      () => pinnedTabs().length == count && rect(pinnedTabs()[count - 1]).height > 0,
+      `${count} collapsed`
+    );
+    const collapsed = { height: pinnedBox().height, list: listTop() };
+    await SpecialPowers.pushPrefEnv({ set: [["aequera.rail.pinned", true]] });
+    await TestUtils.waitForCondition(() => gBrowser.tabContainer.hasAttribute("expanded"), "expanded");
+    await TestUtils.waitForCondition(
+      () => count < 2 || round(rect(pinnedTabs()[1]).top) == round(rect(pinnedTabs()[0]).top),
+      `${count} grid laid out`
+    );
+    is(round(pinnedBox().height), round(collapsed.height), `${count}: same height expanded`);
+    is(round(listTop()), round(collapsed.list), `${count}: the tab list does not move`);
+    await SpecialPowers.popPrefEnv();
+  }
+  setPinnedCount(5);
+  await TestUtils.waitForCondition(isFullyCollapsed, "collapsed");
 });
 
 add_task(async function test_expanded_is_a_grid_of_uniform_pills() {
