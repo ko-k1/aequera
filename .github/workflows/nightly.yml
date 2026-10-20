@@ -7,9 +7,6 @@ on:
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
-  # Proving the workflow on its own branch before it lands (removed then).
-  push:
-    branches: [ci/nightly]
 
 permissions:
   contents: read
@@ -67,6 +64,17 @@ jobs:
       - name: Tor bundle
         working-directory: worktree/firefox
         run: bash ../../tools/tor/fetch-bundle.sh
+
+      # An audio device: tests of tabs playing sound (Firefox's
+      # browser_list_all_tabs_menu_items.js) wait for audio that a runner
+      # without one never plays. A null sink, as Firefox's own Linux CI.
+      - name: Audio (PulseAudio null sink)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=null
+          pactl set-default-sink null
 
       - name: Shell tests (Aequera-owned browser tests)
         working-directory: worktree/firefox
