@@ -435,7 +435,7 @@ const PRIVACY_PREFS: &[(&str, &[&str])] = &[
 
 /// The value of the last `pref("name", value);` line for `name` (a later
 /// default overrides an earlier one, as in Firefox).
-fn shipped_pref<'a>(prefs_js: &'a str, name: &str) -> Option<&'a str> {
+pub(crate) fn shipped_pref<'a>(prefs_js: &'a str, name: &str) -> Option<&'a str> {
     prefs_js.lines().rev().find_map(|line| {
         let rest = line.trim().strip_prefix("pref(\"")?;
         let (key, rest) = rest.split_once('"')?;

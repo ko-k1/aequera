@@ -11,6 +11,9 @@ use std::path::Path;
 
 pub const TOKENS_RELATIVE: &str = "aequera/design/tokens.toml";
 
+/// Default prefs that mirror tokens (`mirrored_prefs`).
+const PREFS_RELATIVE: &str = crate::config::SHIPPED_PREFS_RELATIVE;
+
 /// Every generated stylesheet, relative to the repository root.
 pub const TARGETS: &[&str] = &[
     "aequera/extensions/ad-veil/addon/pages/tokens.css",
@@ -115,7 +118,11 @@ struct Motion {
 pub struct TokensReport {
     pub source: String,
     pub targets: Vec<TargetState>,
-    /// Every target matches the source (after writing, unless `--check`).
+    /// Mirrored prefs in aequera-prefs.js that differ from their token
+    /// (fixed by hand: the file is not generated).
+    pub prefs: Vec<String>,
+    /// Every target matches the source (after writing, unless `--check`),
+    /// and so does every mirrored pref.
     pub up_to_date: bool,
 }
 
@@ -194,8 +201,7 @@ fn curve(name: &str, value: &str) -> Result<String, String> {
     }
 }
 
-/// The stylesheet for `text` (the contents of tokens.toml).
-pub fn render(text: &str) -> Result<String, String> {
+fn parse(text: &str) -> Result<Tokens, String> {
     let t: Tokens = toml::from_str(text).map_err(|e| format!("{TOKENS_RELATIVE}: {e}"))?;
     if t.meta.schema_version != 1 {
         return Err(format!(
@@ -203,19 +209,28 @@ pub fn render(text: &str) -> Result<String, String> {
             t.meta.schema_version
         ));
     }
+    Ok(t)
+}
+
+/// The curve `[motion] easing` names.
+fn ease(t: &Tokens) -> Result<String, String> {
+    match t.motion.easing.as_str() {
+        "swift" => curve("swift", &t.motion.swift),
+        "snappy" => curve("snappy", &t.motion.snappy),
+        "smooth" => curve("smooth", &t.motion.smooth),
+        other => Err(format!(
+            "[motion] easing = {other:?}: expected swift, snappy, or smooth"
+        )),
+    }
+}
+
+/// The stylesheet for `text` (the contents of tokens.toml).
+pub fn render(text: &str) -> Result<String, String> {
+    let t = parse(text)?;
     let swift = curve("swift", &t.motion.swift)?;
     let snappy = curve("snappy", &t.motion.snappy)?;
     let smooth = curve("smooth", &t.motion.smooth)?;
-    let ease = match t.motion.easing.as_str() {
-        "swift" => &swift,
-        "snappy" => &snappy,
-        "smooth" => &smooth,
-        other => {
-            return Err(format!(
-                "[motion] easing = {other:?}: expected swift, snappy, or smooth"
-            ));
-        }
-    };
+    let ease = ease(&t)?;
     let px = [
         ("top", t.chrome.top),
         ("rail", t.chrome.rail),
@@ -288,6 +303,48 @@ pub fn render(text: &str) -> Result<String, String> {
     Ok(css)
 }
 
+/// Default prefs that carry a token, for chrome code that reads prefs
+/// instead of CSS: (pref, the value it must ship, the token).
+fn mirrored_prefs(t: &Tokens) -> Result<Vec<(&'static str, String, &'static str)>, String> {
+    Ok(vec![
+        (
+            "aequera.motion.durationMs",
+            t.motion.dur_ms.to_string(),
+            "[motion] dur_ms",
+        ),
+        (
+            "aequera.motion.easing",
+            format!("\"{}\"", ease(t)?),
+            "[motion] easing",
+        ),
+        (
+            "aequera.rail.expandedWidth",
+            t.chrome.panel.to_string(),
+            "[chrome] panel",
+        ),
+    ])
+}
+
+/// Where `prefs_js` (aequera-prefs.js) ships a value other than the token
+/// it mirrors. The file is written by hand, so it is checked, not generated.
+pub fn prefs_mismatches(text: &str, prefs_js: &str) -> Result<Vec<String>, String> {
+    let t = parse(text)?;
+    Ok(mirrored_prefs(&t)?
+        .into_iter()
+        .filter_map(
+            |(pref, want, token)| match crate::config::shipped_pref(prefs_js, pref) {
+                Some(value) if value == want => None,
+                Some(value) => Some(format!(
+                    "{PREFS_RELATIVE}: {pref} ships {value}, {TOKENS_RELATIVE} {token} is {want}"
+                )),
+                None => Some(format!(
+                    "{PREFS_RELATIVE}: {pref} is not set ({TOKENS_RELATIVE} {token} is {want})"
+                )),
+            },
+        )
+        .collect())
+}
+
 /// Regenerate every target (or, with `check`, only compare).
 pub fn tokens(root: &Path, check: bool) -> Result<TokensReport, String> {
     let source = root.join(TOKENS_RELATIVE);
@@ -313,10 +370,15 @@ pub fn tokens(root: &Path, check: bool) -> Result<TokensReport, String> {
             state: state.to_string(),
         });
     }
+    let prefs_path = root.join(PREFS_RELATIVE);
+    let prefs_js = std::fs::read_to_string(&prefs_path)
+        .map_err(|e| format!("{}: {e}", prefs_path.display()))?;
+    let prefs = prefs_mismatches(&text, &prefs_js)?;
     Ok(TokensReport {
         source: TOKENS_RELATIVE.to_string(),
         targets,
-        up_to_date,
+        up_to_date: up_to_date && prefs.is_empty(),
+        prefs,
     })
 }
 
@@ -433,5 +495,46 @@ mod tests {
     fn missing_token_rejected() {
         let text = shipped().replace("rad = 9", "");
         assert!(render(&text).is_err());
+    }
+
+    fn shipped_prefs() -> String {
+        std::fs::read_to_string(repo().join(PREFS_RELATIVE)).unwrap()
+    }
+
+    #[test]
+    fn shipped_prefs_mirror_tokens() {
+        assert_eq!(
+            prefs_mismatches(&shipped(), &shipped_prefs()).unwrap(),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn changed_token_flags_its_pref() {
+        let text = shipped()
+            .replace("dur_ms = 250", "dur_ms = 200")
+            .replace("easing = \"swift\"", "easing = \"snappy\"")
+            .replace("panel = 220", "panel = 240");
+        let found = prefs_mismatches(&text, &shipped_prefs()).unwrap();
+        assert_eq!(found.len(), 3, "got: {found:?}");
+        assert!(
+            found[0].contains("aequera.motion.durationMs ships 250") && found[0].contains("is 200"),
+            "got: {found:?}"
+        );
+        assert!(found[1].contains("aequera.motion.easing"), "got: {found:?}");
+        assert!(
+            found[2].contains("aequera.rail.expandedWidth ships 220"),
+            "got: {found:?}"
+        );
+    }
+
+    #[test]
+    fn missing_mirrored_pref_flagged() {
+        let prefs = shipped_prefs().replace("pref(\"aequera.rail.expandedWidth\", 220);\n", "");
+        let found = prefs_mismatches(&shipped(), &prefs).unwrap();
+        assert!(
+            found.len() == 1 && found[0].contains("aequera.rail.expandedWidth is not set"),
+            "got: {found:?}"
+        );
     }
 }

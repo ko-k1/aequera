@@ -5,7 +5,8 @@
 // Aequera shell defaults. Unless marked `locked`, these are defaults only: a
 // user's own choice in Settings or about:config wins, and resetting a pref
 // returns here. Values mirror aequera/design/tokens.toml and the prototype
-// (prototype/shell).
+// (prototype/shell); the ones that carry a token are checked against it by
+// `aequera design tokens --check` (tools/cli/src/design.rs, mirrored_prefs).
 
 // Aequera-owned tab rail (rail/aequera-rail.js): Firefox's vertical tab strip
 // hosted in Aequera chrome, with the legacy sidebar instead of the revamp
