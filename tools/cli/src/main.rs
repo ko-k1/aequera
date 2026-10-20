@@ -2,7 +2,7 @@
 //!
 //! Agents and humans invoke operations (`upstream status`, `patch apply`)
 //! instead of reconstructing Git/upstream mechanics by hand.
-//! See `docs/engineering/CLI.md` and `UPSTREAM.md`.
+//! See `docs/engineering/CLI.md` and `docs/engineering/UPSTREAM1.md`.
 //!
 //! Slice policy: only commands whose workstream has landed are real.
 //! Everything else fails loudly with its owning workstream (never a stub
@@ -48,7 +48,7 @@ enum Command {
     Demo,
     /// Acquire and materialize the locked baseline (fetch, checkout, verify).
     Bootstrap,
-    /// Pinned Firefox upstream operations (UPSTREAM.md).
+    /// Pinned Firefox upstream operations (docs/engineering/UPSTREAM1.md).
     Upstream {
         #[command(subcommand)]
         op: UpstreamOp,
