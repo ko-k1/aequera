@@ -97,6 +97,10 @@ struct AppliedState {
     applied: Vec<String>,
     #[serde(default)]
     overlays: Vec<String>,
+    /// The tree base + series produced, which the worktree's tracked files
+    /// were left at. Absent in states written before it was recorded.
+    #[serde(default)]
+    tree: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -376,68 +380,80 @@ pub fn apply(root: &Path, lock: &LockFile) -> Result<ApplyReport, String> {
         validate_overlay(root, &wt, overlay)?;
     }
 
-    // Idempotency: identical patches + proof that the worktree's tracked
-    // files equal base + the whole ordered series means no patch re-apply
-    // is needed. Overlays are part of the state: a changed overlay list
-    // re-syncs overlays and reports already_applied:false without
-    // re-running `git apply` (which would fail on an already-patched tree).
-    if let Ok(state) = read_state(&wt)
-        && state.base_sha == lock.upstream.revision.git
-        && state.manifest_version == manifest.manifest_version
-        && state.applied == want
-    {
-        if !worktree_matches_series(root, &wt, &manifest)? {
-            return Err("state claims the series is applied but tracked worktree files differ from base + series; worktree needs rebuild".into());
+    // The tree base + series produces, built in a scratch index: a series
+    // that does not apply fails here with the worktree untouched, and each
+    // patch file is read once (no check-then-apply window).
+    let tree = series_tree(root, &wt, &manifest)?;
+
+    // Where the last apply left the worktree's tracked files. A state of
+    // another base is not this worktree's; with none, the worktree is base.
+    let state = read_state(&wt)
+        .ok()
+        .filter(|s| s.base_sha == lock.upstream.revision.git);
+    let left = match &state {
+        None => "HEAD".to_string(),
+        // Nothing references the recorded tree, so `git gc` may prune it.
+        Some(AppliedState { tree: Some(t), .. })
+            if upstream::git(&wt, &["cat-file", "-e", &format!("{t}^{{tree}}")]).is_ok() =>
+        {
+            t.clone()
         }
-        let overlays_changed = state.overlays != overlay_ids(&manifest);
-        let overlay_files = sync_overlays(root, &wt, &manifest)?;
-        write_state(&wt, &state_for(lock, &manifest))?;
-        return Ok(ApplyReport {
-            base_sha: lock.upstream.revision.git.clone(),
-            worktree_dir: wt.display().to_string(),
-            entries_applied: want.len(),
-            already_applied: !overlays_changed,
-            overlays_synced: manifest.overlays.len(),
-            overlay_files,
-        });
+        // Recorded before the tree was (or pruned since): only the unchanged
+        // series is known.
+        Some(s) if s.manifest_version == manifest.manifest_version && s.applied == want => {
+            tree.clone()
+        }
+        Some(_) => {
+            return Err(format!(
+                "the series changed, but the worktree was applied by an aequera that did not record what it applied; delete {} to rebuild explicitly",
+                wt.display()
+            ));
+        }
+    };
+    // Anything else is an edit made in the worktree: never discarded.
+    if !worktree_matches_tree(&wt, &left)? {
+        return Err(format!(
+            "tracked worktree files differ from base + series as last applied (edited in the worktree?); promote the edits into a patch, or delete {} to rebuild explicitly",
+            wt.display()
+        ));
     }
 
-    let mut applied = Vec::new();
-    for entry in &manifest.patches {
-        for f in series_files(root, entry)? {
-            let rel = f.display().to_string();
-            // Single `git apply` (no separate `--check`): check-then-apply
-            // is a TOCTOU window where the patch file could change between
-            // the two invocations. Apply fails atomically with the same
-            // diagnostic either way. `--index`, as `patch rebase` applies:
-            // files the series adds are tracked, so drift checks see them.
-            git_apply(&wt, &["--index"], &rel, &[])
-                .map_err(|e| format!("series {:?}: apply failed on {rel}: {e}", entry.id))?;
+    // A changed series (ids, order, or patch contents) moves the worktree
+    // from the tree it was left at to the new one, rewriting only the files
+    // that differ (unchanged files keep their mtimes, so a build stays
+    // incremental). Its index follows: files the series adds are tracked.
+    let patched = left != tree;
+    if patched {
+        upstream::git(&wt, &["read-tree", "--reset", "-u", &tree])?;
+        if !worktree_matches_tree(&wt, &tree)? {
+            return Err(format!(
+                "worktree did not reach base + series after re-applying; delete {} to rebuild explicitly",
+                wt.display()
+            ));
         }
-        applied.push(entry.id.clone());
     }
+    // Overlays are part of the state: a changed overlay list re-syncs them
+    // and reports already_applied:false.
+    let already_applied = !patched
+        && state
+            .as_ref()
+            .is_some_and(|s| s.overlays == overlay_ids(&manifest));
     let overlay_files = sync_overlays(root, &wt, &manifest)?;
-    write_state(&wt, &state_for(lock, &manifest))?;
+    write_state(&wt, &state_for(lock, &manifest, tree))?;
     Ok(ApplyReport {
         base_sha: lock.upstream.revision.git.clone(),
         worktree_dir: wt.display().to_string(),
         entries_applied: want.len(),
-        already_applied: false,
+        already_applied,
         overlays_synced: manifest.overlays.len(),
         overlay_files,
     })
 }
 
-/// Whether the worktree's tracked files equal base + series: the tree the
-/// series should produce, built in a scratch index (so a dependent series is
-/// applied cumulatively, as `apply` does). Untracked output (overlays,
-/// objdir) is out of scope. `Ok(false)` is drift; `Err` means the check
-/// itself failed.
-pub(crate) fn worktree_matches_series(
-    root: &Path,
-    wt: &Path,
-    manifest: &PatchManifest,
-) -> Result<bool, String> {
+/// The tree base + the whole ordered series produces, built in a scratch
+/// index seeded from the worktree's HEAD (the base), so a dependent series
+/// is applied cumulatively. Returns its id.
+fn series_tree(root: &Path, wt: &Path, manifest: &PatchManifest) -> Result<String, String> {
     let index = ScratchIndex::seeded(wt, "HEAD")?;
     for entry in &manifest.patches {
         for f in series_files(root, entry)? {
@@ -450,13 +466,25 @@ pub(crate) fn worktree_matches_series(
             })?;
         }
     }
-    let expected = index.write_tree(wt)?;
-    track_series_additions(wt, &expected)?;
+    index.write_tree(wt)
+}
+
+/// Whether the worktree's tracked files equal base + series. Untracked
+/// output (overlays, objdir) is out of scope. `Ok(false)` is drift; `Err`
+/// means the check itself failed.
+pub(crate) fn worktree_matches_series(
+    root: &Path,
+    wt: &Path,
+    manifest: &PatchManifest,
+) -> Result<bool, String> {
+    worktree_matches_tree(wt, &series_tree(root, wt, manifest)?)
+}
+
+/// Whether the worktree's tracked files equal `expected` (a tree-ish).
+fn worktree_matches_tree(wt: &Path, expected: &str) -> Result<bool, String> {
+    track_series_additions(wt, expected)?;
     // `--name-only`, not `--quiet`: a failing git stays an error, not drift.
-    let diff = upstream::git(
-        wt,
-        &["diff", "--name-only", "--no-renames", &expected, "--"],
-    )?;
+    let diff = upstream::git(wt, &["diff", "--name-only", "--no-renames", expected, "--"])?;
     Ok(diff.is_empty())
 }
 
@@ -504,12 +532,13 @@ fn overlay_ids(manifest: &PatchManifest) -> Vec<String> {
     manifest.overlays.iter().map(|o| o.id.clone()).collect()
 }
 
-fn state_for(lock: &LockFile, manifest: &PatchManifest) -> AppliedState {
+fn state_for(lock: &LockFile, manifest: &PatchManifest, tree: String) -> AppliedState {
     AppliedState {
         base_sha: lock.upstream.revision.git.clone(),
         manifest_version: manifest.manifest_version,
         applied: patch_ids(manifest),
         overlays: overlay_ids(manifest),
+        tree: Some(tree),
     }
 }
 
@@ -1436,7 +1465,7 @@ mod tests {
         let wt_file = root.join(WORKTREE_RELATIVE).join("base.txt");
         std::fs::write(&wt_file, "base\none\ntwo\nhand edit\n").unwrap();
         let err = apply(&root, &lock).expect_err("drifted worktree must be refused");
-        assert!(err.contains("worktree needs rebuild"), "got: {err}");
+        assert!(err.contains("differ from base + series"), "got: {err}");
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -1789,6 +1818,156 @@ mod tests {
         candidate.upstream.revision.git = "1".repeat(40);
         let err = check_candidate(&root, &lock, &candidate).expect_err("missing object");
         assert!(err.contains("upstream update --to"), "got: {err}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Writes `patches/browser/<name>/0001-<name>.patch`: base with `files`
+    /// written (new files added).
+    fn write_series(root: &Path, name: &str, files: &[(&str, &str)]) {
+        let origin = root.join("origin");
+        for (path, text) in files {
+            std::fs::write(origin.join(path), text).unwrap();
+        }
+        git(&origin, &["add", "-A"]);
+        let diff = git(&origin, &["diff", "--cached"]);
+        git(&origin, &["reset", "--hard", "HEAD"]);
+        let series = root.join("patches/browser").join(name);
+        std::fs::create_dir_all(&series).unwrap();
+        std::fs::write(
+            series.join(format!("0001-{name}.patch")),
+            format!("{diff}\n"),
+        )
+        .unwrap();
+    }
+
+    fn read_wt(root: &Path, path: &str) -> Option<String> {
+        std::fs::read_to_string(root.join(WORKTREE_RELATIVE).join(path))
+            .ok()
+            .map(|text| text.replace("\r\n", "\n"))
+    }
+
+    #[test]
+    fn changed_series_reapplies_from_base() {
+        let (root, lock, sha) = baseline("series-change");
+        write_series(&root, "one", &[("base.txt", "base\none\n")]);
+        write_series(&root, "two", &[("added.txt", "two\n")]);
+        let one = "  - id: one\n    series: browser/one\n";
+        let two = "  - id: two\n    series: browser/two\n";
+        write_manifest(&root, &sha, one);
+        apply(&root, &lock).expect("first apply");
+
+        // A series added to an applied worktree.
+        write_manifest(&root, &sha, &format!("{one}{two}"));
+        let report = apply(&root, &lock).expect("apply after adding a series");
+        assert!(!report.already_applied);
+        assert_eq!(report.entries_applied, 2);
+        assert_eq!(read_wt(&root, "base.txt").as_deref(), Some("base\none\n"));
+        assert_eq!(read_wt(&root, "added.txt").as_deref(), Some("two\n"));
+        assert!(apply(&root, &lock).expect("re-apply").already_applied);
+
+        // A patch edited in place (same id): the new content replaces it.
+        write_series(&root, "one", &[("base.txt", "base\none, edited\n")]);
+        assert!(
+            !apply(&root, &lock)
+                .expect("apply edited patch")
+                .already_applied
+        );
+        assert_eq!(
+            read_wt(&root, "base.txt").as_deref(),
+            Some("base\none, edited\n")
+        );
+
+        // A series removed: what it changed returns to base, what it added
+        // is gone.
+        write_manifest(&root, &sha, one);
+        apply(&root, &lock).expect("apply after removing a series");
+        assert_eq!(read_wt(&root, "added.txt"), None);
+        assert!(apply(&root, &lock).expect("re-apply").already_applied);
+
+        // Back to no series at all: the worktree is base again.
+        write_manifest(&root, &sha, "");
+        apply(&root, &lock).expect("apply after removing every series");
+        assert_eq!(read_wt(&root, "base.txt").as_deref(), Some("base\n"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn changed_series_never_discards_worktree_edits() {
+        let (root, lock, sha) = baseline("series-change-edit");
+        write_series(&root, "one", &[("base.txt", "base\none\n")]);
+        write_series(&root, "two", &[("added.txt", "two\n")]);
+        let one = "  - id: one\n    series: browser/one\n";
+        write_manifest(&root, &sha, one);
+        apply(&root, &lock).expect("first apply");
+
+        std::fs::write(root.join(WORKTREE_RELATIVE).join("base.txt"), "by hand\n").unwrap();
+        write_manifest(
+            &root,
+            &sha,
+            &format!("{one}  - id: two\n    series: browser/two\n"),
+        );
+        let err = apply(&root, &lock).expect_err("edited worktree");
+        assert!(err.contains("differ from base + series"), "got: {err}");
+        assert_eq!(read_wt(&root, "base.txt").as_deref(), Some("by hand\n"));
+        assert_eq!(read_wt(&root, "added.txt"), None);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn changed_series_that_does_not_apply_leaves_worktree_untouched() {
+        let (root, lock, sha) = baseline("series-change-broken");
+        write_series(&root, "one", &[("base.txt", "base\none\n")]);
+        write_manifest(&root, &sha, "  - id: one\n    series: browser/one\n");
+        apply(&root, &lock).expect("first apply");
+
+        let patch = root.join("patches/browser/one/0001-one.patch");
+        std::fs::write(&patch, "not a patch\n").unwrap();
+        let err = apply(&root, &lock).expect_err("broken series");
+        assert!(err.contains("no longer applies to base"), "got: {err}");
+        assert_eq!(read_wt(&root, "base.txt").as_deref(), Some("base\none\n"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn state_without_tree_reapplies_only_an_unchanged_series() {
+        let (root, lock, sha) = baseline("series-change-legacy");
+        write_series(&root, "one", &[("base.txt", "base\none\n")]);
+        write_series(&root, "two", &[("added.txt", "two\n")]);
+        let one = "  - id: one\n    series: browser/one\n";
+        write_manifest(&root, &sha, one);
+        apply(&root, &lock).expect("first apply");
+        let wt = root.join(WORKTREE_RELATIVE);
+        // Recorded before the tree was; a pruned tree reads the same.
+        let mut state = read_state(&wt).unwrap();
+        state.tree = Some("0".repeat(40));
+        write_state(&wt, &state).unwrap();
+
+        // The series changed and the old state cannot say what was applied.
+        write_manifest(
+            &root,
+            &sha,
+            &format!("{one}  - id: two\n    series: browser/two\n"),
+        );
+        let err = apply(&root, &lock).expect_err("legacy state, changed series");
+        assert!(err.contains("did not record"), "got: {err}");
+        assert_eq!(read_wt(&root, "added.txt"), None);
+
+        // Unchanged, it verifies as before and records the tree, after which
+        // a changed series re-applies.
+        write_manifest(&root, &sha, one);
+        assert!(
+            apply(&root, &lock)
+                .expect("unchanged series")
+                .already_applied
+        );
+        assert!(read_state(&wt).unwrap().tree.is_some());
+        write_manifest(
+            &root,
+            &sha,
+            &format!("{one}  - id: two\n    series: browser/two\n"),
+        );
+        apply(&root, &lock).expect("changed series after the tree is recorded");
+        assert_eq!(read_wt(&root, "added.txt").as_deref(), Some("two\n"));
         std::fs::remove_dir_all(&root).ok();
     }
 }
