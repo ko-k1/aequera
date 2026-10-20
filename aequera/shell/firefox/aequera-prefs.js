@@ -154,6 +154,25 @@ pref("extensions.pocket.enabled", false);
 pref("browser.crashReports.unsubmittedCheck.autoSubmit", false);
 pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
 
+// Background connections without a user-visible or platform-required reason
+// (docs/RESTRICTIONS.md), measured and listed with the ones that stay in
+// docs/engineering/NETWORK.md; `aequera config validate` checks these values.
+// No region lookup from the user's IP (location.services.mozilla.com): the
+// locale picks region defaults instead.
+pref("browser.region.update.enabled", false);
+pref("browser.region.network.url", "");
+// No background metadata fetch for installed add-ons, which sends their IDs
+// to addons.mozilla.org; add-on updates stay on (security).
+pref("extensions.getAddons.cache.enabled", false);
+// No add-on and feature recommendations (promotion, not a user task): the
+// Add-ons Manager's recommendations pane, personalized discovery, and the
+// in-product "recommended extension/feature" suggestions.
+pref("extensions.getAddons.showPane", false);
+pref("extensions.htmlaboutaddons.recommendations.enabled", false);
+pref("browser.discovery.enabled", false);
+pref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons", false);
+pref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features", false);
+
 // Privacy protections: LibreWolf's direction (block tracking by default),
 // softened where its hardening costs everyday use. All are Firefox features
 // with a Settings control, so every one stays a user choice.

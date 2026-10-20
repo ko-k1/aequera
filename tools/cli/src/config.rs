@@ -433,6 +433,29 @@ const PRIVACY_PREFS: &[(&str, &[&str])] = &[
     ),
 ];
 
+/// Background connections docs/engineering/NETWORK.md turns off (no
+/// user-visible or platform-required reason, docs/RESTRICTIONS.md), and the
+/// value each pref must ship with, as written in aequera-prefs.js.
+const NETWORK_PREFS: &[(&str, &str)] = &[
+    ("browser.region.update.enabled", "false"),
+    ("browser.region.network.url", "\"\""),
+    ("extensions.getAddons.cache.enabled", "false"),
+    ("extensions.getAddons.showPane", "false"),
+    (
+        "extensions.htmlaboutaddons.recommendations.enabled",
+        "false",
+    ),
+    ("browser.discovery.enabled", "false"),
+    (
+        "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons",
+        "false",
+    ),
+    (
+        "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
+        "false",
+    ),
+];
+
 /// The value of the last `pref("name", value);` line for `name` (a later
 /// default overrides an earlier one, as in Firefox).
 pub(crate) fn shipped_pref<'a>(prefs_js: &'a str, name: &str) -> Option<&'a str> {
@@ -460,6 +483,17 @@ fn shipped_prefs_errors(prefs_js: &str) -> Vec<String> {
                     "missing: {pref} (privacy.toml {key}) is not set; Firefox's default would apply"
                 )),
             }
+        }
+    }
+    for (pref, want) in NETWORK_PREFS {
+        match shipped_pref(prefs_js, pref) {
+            Some(value) if value == *want => {}
+            Some(value) => errors.push(format!(
+                "policy violation: {pref} ships {value}, docs/engineering/NETWORK.md requires {want}"
+            )),
+            None => errors.push(format!(
+                "missing: {pref} (docs/engineering/NETWORK.md) is not set; Firefox's default would apply"
+            )),
         }
     }
     errors
@@ -594,6 +628,14 @@ pref("browser.newtabpage.activity-stream.showSponsored", false);
 pref("extensions.pocket.enabled", false);
 pref("browser.crashReports.unsubmittedCheck.autoSubmit", false);
 pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
+pref("browser.region.update.enabled", false);
+pref("browser.region.network.url", "");
+pref("extensions.getAddons.cache.enabled", false);
+pref("extensions.getAddons.showPane", false);
+pref("extensions.htmlaboutaddons.recommendations.enabled", false);
+pref("browser.discovery.enabled", false);
+pref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons", false);
+pref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features", false);
 "#;
 
     #[test]
@@ -607,6 +649,27 @@ pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
         let errors = shipped_prefs_errors(&prefs);
         assert!(
             errors.len() == 1 && errors[0].contains("missing: app.normandy.enabled"),
+            "got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn network_pref_turned_back_on_rejected() {
+        let prefs = SHIPPED_PREFS.replace(
+            "pref(\"browser.region.network.url\", \"\");",
+            "pref(\"browser.region.network.url\", \"https://example.test/\");",
+        );
+        let errors = shipped_prefs_errors(&prefs);
+        assert!(
+            errors.len() == 1
+                && errors[0].contains("browser.region.network.url ships")
+                && errors[0].contains("NETWORK.md"),
+            "got: {errors:?}"
+        );
+        let prefs = SHIPPED_PREFS.replace("pref(\"browser.discovery.enabled\", false);\n", "");
+        let errors = shipped_prefs_errors(&prefs);
+        assert!(
+            errors.len() == 1 && errors[0].contains("missing: browser.discovery.enabled"),
             "got: {errors:?}"
         );
     }
