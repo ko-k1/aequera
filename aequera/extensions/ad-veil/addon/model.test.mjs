@@ -27,6 +27,19 @@ test("a site in a set covers its subdomains, not its parents or lookalikes", () 
   assert.ok(!covers(off, null));
 });
 
+test("a single label covers only itself, never every name under it", () => {
+  const off = new Set(["com", "localhost"]);
+  assert.ok(!covers(off, "example.com"));
+  assert.ok(!covers(off, "news.example.com"));
+  assert.ok(covers(off, "com"));
+  assert.ok(covers(off, "localhost"));
+  assert.equal(siteMode({ off, veil: new Set() }, "example.com"), "block");
+  const privateModes = new Map([["com", "off"]]);
+  assert.equal(resolveMode({ off: new Set(), veil: new Set(), privateModes }, "example.com", true), "block");
+  // Two labels and more still cover their subdomains.
+  assert.ok(covers(new Set(["co.uk"]), "example.co.uk"));
+});
+
 test("siteMode: block by default, veil where veiled, off wins", () => {
   const lists = { off: new Set(["off.test"]), veil: new Set(["veil.test", "both.test"]) };
   assert.equal(siteMode(lists, "news.test"), "block");

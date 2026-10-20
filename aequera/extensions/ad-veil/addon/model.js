@@ -49,6 +49,15 @@ var VeilModel = (() => {
     return parse(url)?.hostname || null;
   }
 
+  // The parent domain that can cover `host`, or null. Only names of two
+  // labels or more cover others: a single label ("com", "localhost") covers
+  // itself alone, so a top-level domain typed as a site never turns
+  // blocking off for every name under it.
+  function parentOf(host) {
+    const parent = host.slice(host.indexOf(".") + 1);
+    return parent != host && parent.includes(".") ? parent : null;
+  }
+
   // A site in a set also covers its subdomains (news.example.com when
   // example.com is in it), as a person expects of "this site".
   function covers(sites, site) {
@@ -59,11 +68,10 @@ var VeilModel = (() => {
       if (sites.has(host)) {
         return true;
       }
-      const dot = host.indexOf(".");
-      if (dot < 0) {
+      host = parentOf(host);
+      if (!host) {
         return false;
       }
-      host = host.slice(dot + 1);
     }
   }
 
@@ -85,11 +93,10 @@ var VeilModel = (() => {
       if (map.has(host)) {
         return map.get(host);
       }
-      const dot = host.indexOf(".");
-      if (dot < 0) {
+      host = parentOf(host);
+      if (!host) {
         return undefined;
       }
-      host = host.slice(dot + 1);
     }
   }
 
