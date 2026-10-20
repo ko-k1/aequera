@@ -37,9 +37,29 @@ file to commit after an engine change. Bump the pin together with a rebuilt
 
 Deliberately excluded from PR CI: `fetch`, `checkout`, `bootstrap`, `apply`
 against the real Firefox remote (gigabytes of objects, tens of minutes).
-Those belong to the nightly full-build pipeline, which does not exist yet —
-defining it is W6-follow-up work once a first real baseline has been fetched
-and timed, not speculative YAML written blind.
+Those belong to the nightly pipeline below.
+
+## Nightly
+
+`./.github/workflows/nightly.yml` runs daily (03:17 UTC) and on demand
+(`gh workflow run nightly.yml --ref <branch>`, any branch that has the
+file), on Linux x86_64:
+
+1. `aequera bootstrap`: the lock's Firefox tag from the pinned remote,
+   checked against the locked commit;
+2. `aequera patch check`, then `aequera patch apply`: every series against
+   the real base, overlays synced;
+3. `mach bootstrap` (artifact mode) and `./mach build`: the artifact build
+   (`tools/build/mozconfig.artifact`);
+4. `tools/tor/fetch-bundle.sh`: the pinned tor, for the Tor windows' tests;
+5. `tools/build/test-shell.sh aequera`, then `upstream`: Aequera's browser
+   tests, then Firefox's own tests of the patched areas with Firefox's
+   defaults. A PulseAudio null sink gives the runner an audio device (tab
+   audio tests wait for sound otherwise).
+
+Measured on its first runs (2026-10-20): 20 to 23 minutes end to end.
+Dispatch it on a branch to prove a patch or shell change against real
+Firefox before merging; it is not a PR gate.
 
 ## Test layers (docs/engineering/TESTING.md mapping)
 
@@ -47,7 +67,7 @@ and timed, not speculative YAML written blind.
 |---|---|
 | unit | `cargo test` (Rust workspace); `node --test` (JS models in `aequera/`); `unittest` (`tests/unit/build`) |
 | integration | binary surface checks in `smoke.*` |
-| UI / accessibility | future (needs a built browser) |
+| UI / accessibility | browser tests in the nightly (`test-shell.sh`) |
 | extension compatibility | future (needs a built browser) |
 | security | config-policy tests + recovery tests (partial) |
 | performance | `aequera bench` (W7) |
