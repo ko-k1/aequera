@@ -1,0 +1,82 @@
+name: nightly
+
+# What PR CI cannot prove without gigabytes of Firefox history
+# (tools/ci/README.md, "Nightly"): the patch series applies to the locked
+# Firefox, the artifact build builds, and the shell's browser tests pass.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  # Proving the workflow on its own branch before it lands (removed then).
+  push:
+    branches: [ci/nightly]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firefox:
+    name: patches, artifact build, shell tests (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      MOZCONFIG: ${{ github.workspace }}/tools/build/mozconfig.artifact
+      MOZBUILD_STATE_PATH: ${{ github.workspace }}/.mozbuild
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Firefox history, worktree, objdir, and mach's toolchains need more
+      # than the runner's free space; drop preinstalled SDKs this job never uses.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h "$GITHUB_WORKSPACE"
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+
+      - name: Build the CLI
+        run: cargo build --locked -p aequera
+
+      # Fetches the lock's tag from the pinned remote and checks it resolves
+      # to the locked commit (docs/engineering/UPSTREAM1.md).
+      - name: Bootstrap the locked Firefox
+        run: ./target/debug/aequera bootstrap
+
+      - name: Patch check (each series against the base)
+        run: ./target/debug/aequera patch check
+
+      - name: Patch apply (series + overlays into worktree/firefox)
+        run: ./target/debug/aequera patch apply
+
+      - name: Mach bootstrap (artifact mode)
+        working-directory: worktree/firefox
+        run: ./mach --no-interactive bootstrap --application-choice browser_artifact_mode
+
+      - name: Artifact build
+        working-directory: worktree/firefox
+        run: ./mach build
+
+      # The Tor windows' tests need the pinned tor (signature-checked).
+      - name: Tor bundle
+        working-directory: worktree/firefox
+        run: bash ../../tools/tor/fetch-bundle.sh
+
+      - name: Shell tests (Aequera-owned browser tests)
+        working-directory: worktree/firefox
+        run: bash ../../tools/build/test-shell.sh aequera
+
+      - name: Upstream tests (Firefox's own, patched areas, Firefox defaults)
+        if: ${{ !cancelled() }}
+        working-directory: worktree/firefox
+        run: bash ../../tools/build/test-shell.sh upstream
+
+      - name: Disk use
+        if: always()
+        run: df -h "$GITHUB_WORKSPACE"
