@@ -7,7 +7,8 @@
 // The Aequera window scripts, in load order (each defines one global the later
 // ones may use). Loaded uncached by the aequera-shell.js bootstrap, and loads
 // these uncached too: add new scripts here (and to jar.mn), never to the
-// bootstrap.
+// bootstrap. Caching them was measured and does not pay: startup unchanged,
+// shutdown slower (docs/engineering/PERFORMANCE.md, Measured decisions).
 for (const name of [
   // What differs per OS (platform/<os>/, one per build, jar.mn); defines
   // AequeraPlatform and nothing else, so it runs before every feature.
