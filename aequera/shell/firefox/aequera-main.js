@@ -30,6 +30,8 @@ for (const name of [
   "workspaces/aequera-workspaces.js",
   "command/command-model.js",
   "command/aequera-command.js",
+  "newtab/newtab-model.js",
+  "newtab/aequera-newtab-window.js",
   "bookmarks/aequera-bookmarks.js",
   "layout/aequera-layout.js",
   "narrow/aequera-narrow.js",

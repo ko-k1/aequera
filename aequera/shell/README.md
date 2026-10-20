@@ -23,7 +23,7 @@ pref-gated browser patches. No telemetry, no network.
 | `rail/` | The tab rail |
 | `workspaces/` | Workspaces + dock, sort tabs by site |
 | `command/` | Command surface: Aequera rows in the address bar |
-| `newtab/` | New tab page (about:newtab, about:home): shortcuts grid, custom wallpaper |
+| `newtab/` | New tab page (about:newtab, about:home): shortcuts grid, custom wallpaper; one new tab page per window |
 | `privatebrowsing/` | about:privatebrowsing in the new tab page design (stylesheet) |
 | `incontent/` | Firefox's in-content pages (Settings, Add-ons, error pages...) in the Aequera palette (token stylesheet), Aequera illustrations in place of Firefox's mascot art |
 | `privacy/` | Privacy model: applies Strict tracking protection once per profile |
@@ -549,6 +549,23 @@ runs it in the privileged about process. The pref is a boolean, never a URL:
 the page holds the about:newtab message port, so it must be this packaged
 file. Off restores Firefox's page.
 
+One new tab page per window (`newtab-model.js`, `aequera-newtab-window.js`):
+New Tab (Ctrl+T, the tab strip's and the rail's +, the command surface's
+"New tab") goes to an untouched new tab page already open in the current
+workspace, and focuses the address bar as a new tab does, instead of opening
+a second copy. The page was rendered once and is shown as it is: no load,
+no state request, no repaint of the grid. Untouched means the new tab address
+with no history behind or ahead of it, nothing typed for it in the address
+bar, not loading, not pinned, not in another workspace, and not waiting for
+session restore; the selected tab wins, else the last one. Everything else
+opens as Firefox opens it: an explicit address, a background tab or a new
+window (modifier clicks), middle-click paste. All those entry points call
+`BrowserCommands.openTab()`, which the window script wraps; a failure in the
+check falls back to opening a tab. With a page open, Firefox's preloaded page
+stays unspent, so the window holds at most that one page plus the preloaded
+one, however often New Tab is pressed. `aequera.newtab.single` (default
+true) off restores Firefox's behavior: a tab per New Tab.
+
 Data and changes go through the port Firefox's own page uses
 (`ActivityStream:MainToContent` / `ContentToMain`): the page asks for the
 state, reads only `TopSites.rows` and the two prefs that size it
@@ -657,7 +674,10 @@ memory predate the Customize panel, which added 12 KB of script and style:
 
 Tests: `tests/browser/browser_aequera_newtab.js` (served at both addresses,
 preloaded with the address bar focused, shortcuts, empty state,
-pin/unpin/dismiss by keyboard, Escape, pref off, startup prefs) and
+pin/unpin/dismiss by keyboard, Escape, pref off, startup prefs; New Tab goes
+to the open page without loading it again, a used page is left alone,
+`aequera.newtab.single` off), `newtab/newtab-model.test.mjs` (which tab is
+reused) and
 `tests/browser/browser_aequera_newtab_wallpaper.js` (add by keyboard through
 the file picker, saved file and prefs, the image decodes under the page's
 CSP, white text below L* 50 and black text above it, the deepened mark and
