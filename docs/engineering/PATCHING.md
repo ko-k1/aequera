@@ -120,6 +120,18 @@ generate worktree
 validate source state
 ```
 
+`aequera patch apply` is safe to re-run after any change to the series:
+added, removed, or reordered entries, or an edited patch file. It builds the
+tree base + series produces in a scratch index first (a series that no
+longer applies fails with the worktree untouched), then moves the worktree
+from the tree the last apply recorded (`.aequera-applied.json`) to the new
+one, rewriting only the files that differ so the build stays incremental.
+Tracked files that differ from what the last apply left are edits made in
+the worktree: apply refuses them rather than discard them. Promote them into
+a patch, or delete `worktree/firefox` to rebuild explicitly. A worktree
+whose state predates the recorded tree re-verifies an unchanged series as
+before (and records it); a changed series there needs one explicit rebuild.
+
 ## Rebase Flow
 
 ```text
