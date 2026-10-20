@@ -632,6 +632,9 @@ def main():
     warm = Browser(args, template, proxy, env)
     warm_startup = warm.startup()
     time.sleep(args.warmup_seconds)
+    # A new profile's first launch is when Firefox fetches the most
+    # (Remote Settings sync, region, add-on metadata): recorded, not timed.
+    warm_network = summarize_network(proxy.log.between(warm.launched, time.time()), warm.launched)
     warm.quit()
     for leftover in ("lock", ".parentlock"):
         (template / leftover).unlink(missing_ok=True)
@@ -658,7 +661,7 @@ def main():
             "runs": args.runs, "settle_s": args.settle, "idle_s": args.idle, "tabs": args.tabs,
             "tab_rounds": args.tab_rounds, "prefs": args.prefs, "purgecaches": args.purgecaches,
         },
-        "first_launch": {"startup": warm_startup},
+        "first_launch": {"startup": warm_startup, "network": warm_network},
         "summary": summarize(good) if good else None,
         "runs": runs,
     }
