@@ -789,8 +789,16 @@ fn design_tokens(json: bool, check: bool) -> ExitCode {
             for t in &report.targets {
                 human.push_str(&format!("\n  [{}] {}", t.state, t.path));
             }
-            if !report.up_to_date {
+            for p in &report.prefs {
+                human.push_str(&format!("\n  [differs] {p}"));
+            }
+            if report.targets.iter().any(|t| t.state == "stale") {
                 human.push_str("\n\nStale: run `aequera design tokens` and commit the result.");
+            }
+            if !report.prefs.is_empty() {
+                human.push_str(
+                    "\n\nMirrored prefs differ: edit aequera-prefs.js to match tokens.toml.",
+                );
             }
             output::emit(json, &human, &report);
             if report.up_to_date {
