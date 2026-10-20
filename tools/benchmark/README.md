@@ -43,7 +43,7 @@ stdlib, Linux), which drives a real launch over Marionette
 | idle CPU | `idle.cpu_percent_of_one_core`, per process type (procfs ticks over the idle window) |
 | memory (idle / representative load) | `memory_idle`, `memory_tabs` (PSS and RSS per process type, smaps_rollup) |
 | tab/workspace switch feedback | `tab_switch.*_presented_ms` (select to content shown, as Talos tabswitch), `*_chrome_ms` (select to the next chrome paint) |
-| hidden network calls | `network.*`: every host the browser connected to, at startup and while idle, through a local proxy that tunnels and logs host names only |
+| hidden network calls | `network.*`: every host the browser connected to, at startup and while idle, through a local proxy that tunnels and logs host names only; `first_launch.network`: the same for the new profile's first (unmeasured) launch, over `--warmup-seconds` |
 
 Each run starts from a copy of a warm profile (one unmeasured first launch),
 so first-run work is not counted, and closes any first-run modal it finds
