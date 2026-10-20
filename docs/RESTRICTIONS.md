@@ -7,7 +7,7 @@
 - No automatic upload of diagnostics.
 - No mandatory account for normal browsing.
 - No silent remote configuration.
-- Network activity must have a user-visible or platform-required reason.
+- Network activity must have a user-visible or platform-required reason (the list: `docs/engineering/NETWORK.md`).
 
 ## Security
 
