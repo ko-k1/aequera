@@ -50,7 +50,7 @@ layer is built:
 
 | Layer | Today |
 |---|---|
-| `core` | Rust domain model (tabs, workspaces, sessions, commands). Driven by `aequera demo`, the prototype, and the shell-chrome extension's mapping. The browser shell does not use it: its models are JS (`aequera/shell/firefox/workspaces/workspace-model.js`, `command/command-model.js`, `rail/*-model.js`), unit-tested with node. |
+| `core` | Rust domain model (tabs, workspaces, sessions, commands). Driven by `aequera demo`, the prototype, and the shell-chrome extension's mapping. The browser shell does not use it: its models are JS (`aequera/shell/firefox/workspaces/workspace-model.js`, `command/command-model.js`, `rail/*-model.js`), unit-tested with node. ADR 0005 (proposed): those JS models are the runtime core; the Rust crate is a frozen reference. |
 | `ui` | Empty. Shared styling lives in the shell (`aequera-in-content.css`) and consumes `aequera/design` tokens. |
 | `customization` | Empty. Token profiles sit in `aequera/design/tokens.toml` (default profile emitted only); config validation is `aequera config validate` (`tools/cli/src/config.rs`). |
 | `services`, `integrations` | Empty. Shell modules call Firefox (`gBrowser`, SessionStore, prefs) directly from `aequera/shell/firefox`. |
