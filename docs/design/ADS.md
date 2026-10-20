@@ -221,7 +221,9 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   dashboard. Choosing a mode reloads the page, since blocking and hiding
   apply from a page's start.
 - A mode set for a site covers its subdomains (`example.com` covers
-  `news.example.com`); the site is the host without a leading `www.`. Off
+  `news.example.com`); the site is the host without a leading `www.`. A
+  single label (`com`, `localhost`) covers only itself, so a top-level
+  domain entered as a site never turns blocking off under it. Off
   wins over veil. Off means no blocking, no hiding, no recording, and the
   content script stops.
 
