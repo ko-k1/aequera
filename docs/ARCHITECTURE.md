@@ -60,6 +60,10 @@ customization
 
 Core should not be a UI toolkit.
 
+In the shipped browser, core is the shell's pure JS models
+(`aequera/shell/firefox/*/*-model.js`); the Rust crate in `aequera/core` is a
+frozen reference model (ADR 0005, proposed).
+
 ## Shell
 
 `aequera/shell/` owns browser chrome and composition:
