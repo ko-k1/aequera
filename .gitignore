@@ -20,6 +20,10 @@ upstream/firefox/
 # Local agent-tool state (Serena MCP)
 .serena/
 
+# Local coding agent-tool
+.claude/
+.codex/
+
 # Local test/profile state
 .tmp/
 
