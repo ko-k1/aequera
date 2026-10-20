@@ -392,8 +392,8 @@
   }
 
   // Text, wordmark, and icons follow the wallpaper: on a dark image (below
-  // the threshold) text is white and the mark keeps its colors; on a light
-  // one text is black and the mark is darkened (aequera-newtab.css).
+  // the threshold) text is white, on a light one black; the mark keeps its
+  // deepened colors on both (aequera-newtab.css).
   function renderWallpaper() {
     const wallpaper = appliedWallpaper();
     const root = document.documentElement;

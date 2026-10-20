@@ -31,7 +31,6 @@
   --ae-shadow: light-dark(rgb(255 255 255 / 0.55), rgb(0 0 0 / 0.45));
   --ae-halo: 0 1px 5px var(--ae-shadow);
   --ae-drop: drop-shadow(0 1px 5px var(--ae-shadow));
-  --ae-mark-filter: brightness(1);
 }
 
 /* Stronger on a plain background, where nothing busy competes with it; a
@@ -51,10 +50,9 @@
 
 /* A custom wallpaper decides text and icon colors over the browser theme:
  * its lightness is measured once when it is added (aequera-newtab.js). Below
- * 50 (L*) text and wordmark are white and the mark keeps its own colors; from
- * 50 up they are black and the mark is darkened, since its pale cyan would
- * vanish into a light image. The text and icon shadow follows the scheme
- * set here. */
+ * 50 (L*) text and wordmark are white; from 50 up they are black. The mark
+ * keeps the same deepened colors on both. The text and icon shadow follows
+ * the scheme set here. */
 :root[data-wallpaper="dark"] {
   color-scheme: dark;
   --ae-text: #fbfbfe;
@@ -65,7 +63,6 @@
   color-scheme: light;
   --ae-text: #15141a;
   --ae-surface: rgb(0 0 0 / 0.12);
-  --ae-mark-filter: brightness(0.55);
 }
 
 #wallpaper {
@@ -128,7 +125,9 @@ main {
   width: 48px;
   height: 48px;
   background: url("chrome://branding/content/about-logo.svg") center / contain no-repeat;
-  filter: var(--ae-mark-filter) var(--ae-drop);
+  /* The logo's pale cyan, deepened (#4ED5FF to #09A0CF, #4EFFFF to #00C2C2)
+   * so the mark has weight on every background and wallpaper. */
+  filter: brightness(0.7) saturate(1.6) var(--ae-drop);
 }
 
 /* The wordmark SVG is 310x96, its text stretched to that width whatever the
@@ -201,6 +200,13 @@ main {
   background-color: var(--ae-surface);
   box-shadow: var(--ae-halo);
   overflow: hidden;
+}
+
+/* Over a wallpaper the translucent tile frosts the image behind it, so the
+ * icon reads against a calm patch instead of the image's detail. Only there:
+ * the plain page has nothing behind a tile to blur. */
+:root[data-wallpaper] .tile-icon {
+  backdrop-filter: blur(8px);
 }
 
 /* A site's own large icon fills the tile on its brand color. */

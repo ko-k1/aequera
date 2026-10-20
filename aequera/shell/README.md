@@ -604,9 +604,11 @@ measured once, when it is added: CIE L* of its mean relative luminance, from
 a copy at most 256px on a side (a few ms, off the input path), stored as
 `dark` or `light` in the saved file name. Below L* 50 (mid grey, and where
 white and black text have equal contrast against the mean) the text and
-wordmark are white and the mark keeps its colors; from 50 up they are black,
-the icon surfaces darker, and the mark is darkened (`brightness(0.55)`), since
-its pale cyan disappears into a light image. Forced colors hide the
+wordmark are white; from 50 up they are black and the icon surfaces darker.
+Icon tiles frost the image behind them (`backdrop-filter: blur(8px)`, only
+over a wallpaper). The mark is deepened on every background
+(`brightness(0.7) saturate(1.6)`: the logo's #4ED5FF and #4EFFFF read as
+#09A0CF and #00C2C2). Forced colors hide the
 wallpaper (the system colors stand). A
 wallpaper Firefox's page saved uses Firefox's own threshold (WCAG luminance
 0.179, L* 49.5), close enough to read the same.
@@ -658,8 +660,8 @@ preloaded with the address bar focused, shortcuts, empty state,
 pin/unpin/dismiss by keyboard, Escape, pref off, startup prefs) and
 `tests/browser/browser_aequera_newtab_wallpaper.js` (add by keyboard through
 the file picker, saved file and prefs, the image decodes under the page's
-CSP, white text below L* 50 and black text with a darkened mark above it,
-about:home shows the same image, remove, Escape, a file that is not an
+CSP, white text below L* 50 and black text above it, the deepened mark and
+frosted tiles on both, about:home shows the same image, remove, Escape, a file that is not an
 image). The upstream gate runs Firefox's about:home cache tests with the
 pref off.
 

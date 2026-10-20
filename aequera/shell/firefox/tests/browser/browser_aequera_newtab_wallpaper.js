@@ -28,6 +28,8 @@ const WALLPAPER_PREFS = [
 
 const WHITE_TEXT = "rgb(251, 251, 254)";
 const BLACK_TEXT = "rgb(21, 20, 26)";
+// The mark's deepened colors (aequera-newtab.css), the same on every background.
+const MARK_DEEP = "brightness(0.7) saturate(1.6)";
 
 /** A PNG of one gray level, written to a temporary file. */
 async function grayImage(level, name) {
@@ -71,6 +73,15 @@ function readPage(browser) {
       text: style("main").color,
       wordmarkFill: style(".brand-wordmark").fill,
       markFilter: style(".brand-mark").filter,
+      // A probe tile: the page may have no shortcuts to read one from.
+      tileBackdrop: (() => {
+        const probe = document.createElement("div");
+        probe.className = "tile-icon";
+        document.getElementById("shortcuts").append(probe);
+        const value = content.getComputedStyle(probe).backdropFilter;
+        probe.remove();
+        return value;
+      })(),
       wordmarkFilter: style(".brand-wordmark").filter,
       textShadow: style("#shortcuts-empty").textShadow,
       removable: !document.getElementById("wallpaper-remove").hidden,
@@ -160,7 +171,8 @@ add_task(async function test_no_wallpaper_by_default() {
   const page = await readPage(tab.linkedBrowser);
   ok(!page.shown, "no wallpaper on a fresh profile");
   is(page.theme, null, "text follows the browser theme");
-  ok(!page.markFilter.includes("brightness(0.55)"), "the mark keeps its colors");
+  ok(page.markFilter.startsWith(MARK_DEEP), "the mark is deepened");
+  is(page.tileBackdrop, "none", "tiles do not blur the plain page");
   checkShadow(page, page.text == WHITE_TEXT ? "black" : "white", "of the theme");
   ok(!page.removable, "nothing to remove");
   BrowserTestUtils.removeTab(tab);
@@ -191,7 +203,8 @@ add_task(async function test_dark_wallpaper_white_text() {
   is(page.image, `url("moz-newtab-wallpaper://${saved}/")`, "the page shows that file");
   is(page.text, WHITE_TEXT, "white text");
   is(page.wordmarkFill, WHITE_TEXT, "white wordmark");
-  ok(!page.markFilter.includes("brightness(0.55)"), "the mark keeps its default colors");
+  ok(page.markFilter.startsWith(MARK_DEEP), "the mark is deepened");
+  is(page.tileBackdrop, "blur(8px)", "tiles frost the image");
   checkShadow(page, "black", "on a dark image");
   ok(page.removable, "Remove is offered");
 
@@ -212,7 +225,7 @@ add_task(async function test_dark_wallpaper_white_text() {
   BrowserTestUtils.removeTab(tab);
 });
 
-add_task(async function test_light_wallpaper_black_text_dark_mark() {
+add_task(async function test_light_wallpaper_black_text() {
   // L* 53: just above the threshold.
   const file = await grayImage(126, "light");
   const replaced = Services.prefs.getStringPref(
@@ -224,7 +237,8 @@ add_task(async function test_light_wallpaper_black_text_dark_mark() {
   const page = await waitForTheme(browser, "light");
   is(page.text, BLACK_TEXT, "black text");
   is(page.wordmarkFill, BLACK_TEXT, "black wordmark");
-  ok(page.markFilter.startsWith("brightness(0.55)"), "the mark is darkened");
+  ok(page.markFilter.startsWith(MARK_DEEP), "the mark is deepened the same way");
+  is(page.tileBackdrop, "blur(8px)", "tiles frost the image");
   checkShadow(page, "white", "on a light image");
   const saved = Services.prefs.getStringPref(
     "browser.newtabpage.activity-stream.newtabWallpapers.customWallpaper.uuid"
@@ -260,7 +274,8 @@ add_task(async function test_remove_and_escape() {
   await TestUtils.waitForCondition(async () => !(await readPage(browser)).shown, "wallpaper gone");
   const page = await readPage(browser);
   is(page.theme, null, "text follows the browser theme again");
-  ok(!page.markFilter.includes("brightness(0.55)"), "the mark has its colors back");
+  ok(page.markFilter.startsWith(MARK_DEEP), "the mark stays deepened");
+  is(page.tileBackdrop, "none", "tiles stop blurring");
   ok(!page.removable, "Remove hidden");
   await TestUtils.waitForCondition(
     () => !Services.prefs.getStringPref("browser.newtabpage.activity-stream.newtabWallpapers.wallpaper", ""),
