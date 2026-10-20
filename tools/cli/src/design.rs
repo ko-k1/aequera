@@ -94,6 +94,7 @@ struct Palette {
     accent_hover: Pair,
     accent_active: Pair,
     on_accent: Pair,
+    private: Pair,
 }
 
 #[derive(Deserialize)]
@@ -158,6 +159,8 @@ fn check_palette(p: &Palette) -> Result<(), String> {
         ("text", &p.text, "surface", &p.surface),
         ("text_dim", &p.text_dim, "canvas", &p.canvas),
         ("text_dim", &p.text_dim, "surface", &p.surface),
+        ("private", &p.private, "canvas", &p.canvas),
+        ("private", &p.private, "surface", &p.surface),
     ];
     for (fg_name, fg, bg_name, bg) in pairs {
         for (scheme, f, b) in [("light", fg.light, bg.light), ("dark", fg.dark, bg.dark)] {
@@ -273,6 +276,7 @@ pub fn render(text: &str) -> Result<String, String> {
         ("accent-hover", &p.accent_hover),
         ("accent-active", &p.accent_active),
         ("on-accent", &p.on_accent),
+        ("private", &p.private),
     ] {
         let [lr, lg, lb] = pair.light;
         let [dr, dg, db] = pair.dark;

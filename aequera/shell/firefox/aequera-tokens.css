@@ -34,4 +34,5 @@
   --ae-accent-hover: light-dark(rgb(7 89 133), rgb(127 224 255));
   --ae-accent-active: light-dark(rgb(12 74 110), rgb(168 235 255));
   --ae-on-accent: light-dark(rgb(255 255 255), rgb(11 26 34));
+  --ae-private: light-dark(rgb(110 63 209), rgb(181 156 255));
 }

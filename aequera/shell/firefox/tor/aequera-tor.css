@@ -4,13 +4,13 @@
 
 /* Tor windows (tor/aequera-tor.js): the Tor button at the start of the
  * toolbar, the only element that tells a Tor window from a private one, and
- * its panel. The violet accent is the private browsing page's
- * (privatebrowsing/aequera-private.css). The progress bar and the label are
+ * its panel. The violet accent is the private browsing page's (the
+ * private token, aequera-tokens.css). The progress bar and the label are
  * the bootstrap state; nothing animates beyond Firefox's own button
  * feedback. Sizes are Firefox's design tokens. */
 
 :root[aequera-tor] {
-  --aequera-tor-accent: light-dark(#6e3fd1, #b59cff);
+  --aequera-tor-accent: var(--ae-private);
 }
 
 #aequera-tor-button {

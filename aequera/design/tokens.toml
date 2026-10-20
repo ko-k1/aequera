@@ -57,9 +57,9 @@ wash_selected = 0.22
 # rejects any text pair below WCAG AA 4.5:1 in either scheme (design.rs
 # check_palette); today: on_accent on accent 5.9 light / 10.4 dark; accent
 # on canvas 5.5 / 10.4; text_dim on canvas 5.4 / 6.8; text_dim on surface
-# 5.8 / 6.1. Violet stays
-# the private-window cue (privatebrowsing/aequera-private.css), never the
-# accent here.
+# 5.8 / 6.1; private on canvas 5.9 / 7.7. Violet (private) is the private
+# and Tor window cue only (privatebrowsing/aequera-private.css,
+# tor/aequera-tor.css), never the accent.
 [palette]
 canvas = { light = [246, 247, 249], dark = [22, 24, 28] }
 surface = { light = [255, 255, 255], dark = [31, 34, 40] }
@@ -69,6 +69,7 @@ accent = { light = [3, 105, 161], dark = [78, 213, 255] }
 accent_hover = { light = [7, 89, 133], dark = [127, 224, 255] }
 accent_active = { light = [12, 74, 110], dark = [168, 235, 255] }
 on_accent = { light = [255, 255, 255], dark = [11, 26, 34] }
+private = { light = [110, 63, 209], dark = [181, 156, 255] }
 
 [traffic]
 tl = 12
