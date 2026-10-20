@@ -42,6 +42,25 @@ Boundaries to Firefox, WebExtensions, OS, and IPC.
 
 Aequera-owned first-party browser extensions.
 
+### Current state
+
+The list above is the ownership target. Not every layer has code yet, and
+work that will belong to an empty layer lives in its nearest owner until the
+layer is built:
+
+| Layer | Today |
+|---|---|
+| `core` | Rust domain model (tabs, workspaces, sessions, commands). Driven by `aequera demo`, the prototype, and the shell-chrome extension's mapping. The browser shell does not use it: its models are JS (`aequera/shell/firefox/workspaces/workspace-model.js`, `command/command-model.js`, `rail/*-model.js`), unit-tested with node. |
+| `ui` | Empty. Shared styling lives in the shell (`aequera-in-content.css`) and consumes `aequera/design` tokens. |
+| `customization` | Empty. Token profiles sit in `aequera/design/tokens.toml` (default profile emitted only); config validation is `aequera config validate` (`tools/cli/src/config.rs`). |
+| `services`, `integrations` | Empty. Shell modules call Firefox (`gBrowser`, SessionStore, prefs) directly from `aequera/shell/firefox`. |
+
+`configs/profiles/` and `configs/schemas/` are empty too: the schemas are
+Rust types in `tools/cli/src/config.rs`.
+
+Moving code into one of these layers is a refactor with its own task, not a
+side effect of feature work.
+
 ## Patch Source
 
 ```text

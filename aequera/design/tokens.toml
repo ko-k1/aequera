@@ -4,8 +4,10 @@
 # Top 42, rail 42, panel 220, ctl 30, rpy/rpx 7/7, gap 6, rad 9,
 # blur 24, sat 1.5, fs 14, tl 12, dur 250ms, easing swift.
 # Profiles (minus/default/plus) mirror the prototype tune deltas; resolution
-# order (defaults < profile < user < theme) lives in aequera/customization.
-# No Firefox source change; consumed by aequera/shell + aequera/ui.
+# order (defaults < profile < user < theme) belongs to aequera/customization,
+# which is not built yet: `aequera design tokens` emits the default profile
+# only. No Firefox source change; consumed by aequera/shell (chrome and
+# in-content pages) and Ad Veil's pages.
 
 [meta]
 schema_version = 1
@@ -47,8 +49,9 @@ wash_hover = 0.12
 wash_control = 0.18
 wash_selected = 0.22
 
-# Page palette: Firefox's in-content pages (Settings, Add-ons, error pages)
-# and the new tab page. Each token is a light and a dark sRGB triplet; the
+# Page palette: Firefox's in-content pages (Settings, Add-ons, error pages).
+# Not the new tab page, which follows the browser theme (--newtab-*,
+# newtab/aequera-newtab.css). Each token is a light and a dark sRGB triplet; the
 # generator writes light-dark(rgb(...), rgb(...)). The accent is the logo's
 # cyan (#4ED5FF) in dark, deepened to #0369A1 in light. The generator
 # rejects any text pair below WCAG AA 4.5:1 in either scheme (design.rs
