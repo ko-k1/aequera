@@ -29,6 +29,9 @@
   // When to look again at a slot whose ad has not been drawn yet (ms); it is
   // also looked at whenever the page changes, until the last of these.
   const RETRIES = [1000, 3000, 8000, 15000, 30000, 60000];
+  // How long an ad waits for an image still loading before it is recorded
+  // without one (ms).
+  const IMAGE_WAIT_MS = 15000;
   // A hostile page can mint class names, ids, and ad descriptions without
   // limit. These bound what the script remembers for the document's life
   // (names are only ever sent once; the background reads at most MAX_NAMES
@@ -168,6 +171,10 @@
   function describe(root) {
     const scopes = [root, ...adDocuments(root)];
     let best = null;
+    // A web image still loading in a hidden slot has no size yet: it may
+    // be the ad's creative or a pixel, so the ad is described again once
+    // it has loaded (`send`).
+    let pending = null;
     for (const scope of scopes) {
       for (const img of imagesIn(scope)) {
         const src = img.currentSrc || img.src;
@@ -176,15 +183,18 @@
         const area = (img.width || img.naturalWidth) * (img.height || img.naturalHeight);
         if (isWeb(src) && area >= MIN_IMAGE_AREA && (!best || area > best.area)) {
           best = { img, src, area };
+        } else if (isWeb(src) && !area && !img.complete) {
+          pending ||= img;
         }
       }
     }
+    pending = best ? null : pending;
     const anchor =
       best?.img.closest("a[href]") ||
       (root.closest ? root.closest("a[href]") : null) ||
       scopes.map(scope => [...scope.querySelectorAll("a[href]")].find(a => isWeb(a.href))).find(Boolean);
     const link = isWeb(anchor?.href) ? anchor.href : null;
-    if (!best && !link) {
+    if (!best && !link && !pending) {
       return null;
     }
     const text = scopes
@@ -198,14 +208,38 @@
       loaded: !!best && best.img.complete && best.img.naturalWidth > 0,
       text,
       image: best?.img || null,
+      pending,
+      root,
     };
+  }
+
+  // Describes the ad in `root` again once `image` has loaded or failed (or
+  // after IMAGE_WAIT_MS), then sends it, whatever image it then has.
+  function sendWhenLoaded(root, image) {
+    let settled = false;
+    const settle = () => {
+      if (!settled) {
+        settled = true;
+        const ad = describe(root);
+        if (ad) {
+          send(0, [{ ...ad, pending: null }]);
+        }
+      }
+    };
+    image.addEventListener("load", settle, { once: true });
+    image.addEventListener("error", settle, { once: true });
+    setTimeout(settle, IMAGE_WAIT_MS);
   }
 
   // Sends new ads; an ad whose image is still loading is sent again, as
   // loaded, when it is (the vault saves only images the page loaded).
   function send(count, ads) {
     const fresh = [];
-    for (const { image, ...ad } of ads) {
+    for (const { image, pending, root, ...ad } of ads) {
+      if (pending) {
+        sendWhenLoaded(root, pending);
+        continue;
+      }
       const key = `${ad.link}|${ad.creative}|${ad.loaded}`;
       if (reported.has(key) || reported.size >= MAX_REPORTED) {
         continue;
