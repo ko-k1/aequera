@@ -210,8 +210,13 @@ a still accent line marks the landing gap.
 ### Essentials
 
 `rail/aequera-essentials.css` (Arc favorites / Zen Essentials): pinned tabs
-are uniform pill tiles in a grid at the top of the rail, one column while
-collapsed. Geometry and colors are Zen's essentials, taken from its source
+are uniform pill tiles in a grid at the top of the rail. Collapsed, they are
+one card (the rest paint, as wide as a tab row) with the favicons spread
+evenly down it; only hover and the selected favicon get a wash of their own.
+Both states take the same height, max(grid rows, count x 20px), and the grid
+is centered in any spare height, so the tab list below never moves when the
+rail widens or narrows (1-9 essentials; past 9 each state takes its natural
+height). Geometry and colors are Zen's essentials, taken from its source
 (`zen-browser/desktop`): 46px tiles, 4px grid gaps plus Firefox's pinned-tab
 inline margin per tile, icons
 centered on both axes, 5px insets (6px on macOS), `--border-radius-medium`, Zen's rest/hover/selected
