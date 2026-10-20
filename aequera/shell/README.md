@@ -775,7 +775,7 @@ control, so each stays a user choice; nothing changes the web platform.
 
 | | Aequera | Why |
 |---|---|---|
-| Data collection | off (telemetry, studies, sponsored UI, Pocket, crash upload) | `configs/defaults/privacy.toml`, enforced by `aequera config validate` |
+| Data collection | off (telemetry, studies, sponsored UI, Pocket, crash upload) | `configs/defaults/privacy.toml`; `aequera config validate` checks the file and that each mapped pref ships false in `aequera-prefs.js` |
 | Tracking protection | Enhanced Tracking Protection **Strict** + Firefox's "convenience" exceptions | blocks cross-site tracking content, fingerprinters, cryptominers, social trackers, tracking query parameters, bounce trackers, and turns on fingerprinting protection in every window; the exceptions keep logins, embeds, and video working |
 | Global Privacy Control | on | tells sites not to sell or share the user's data |
 | User agent | Firefox's own (`UAName=Firefox`, see `tools/build/common/aequera_app_ini.py`) | "Aequera/157" is an unknown browser to sites (captchas) and a rare fingerprint |

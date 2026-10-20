@@ -391,7 +391,97 @@ fn privacy_policy(file: PrivacyFile) -> Vec<String> {
     errors
 }
 
-/// Validate every `*.toml` in the committed defaults directory.
+/// Where the privacy defaults actually reach the browser: Firefox default
+/// prefs, loaded from `browser/defaults/preferences`.
+pub const SHIPPED_PREFS_RELATIVE: &str = "aequera/shell/firefox/aequera-prefs.js";
+
+/// Each privacy.toml key with a `pref:` mapping, and the prefs it maps to.
+/// `privacy_policy` holds every key false, so every pref must ship false.
+/// [update] has no mapping by design (privacy.toml header).
+const PRIVACY_PREFS: &[(&str, &[&str])] = &[
+    ("telemetry.enabled", &["toolkit.telemetry.enabled"]),
+    ("telemetry.unified", &["toolkit.telemetry.unified"]),
+    ("telemetry.archive", &["toolkit.telemetry.archive.enabled"]),
+    (
+        "telemetry.data_submission",
+        &["datareporting.policy.dataSubmissionEnabled"],
+    ),
+    (
+        "telemetry.healthreport_upload",
+        &["datareporting.healthreport.uploadEnabled"],
+    ),
+    (
+        "studies.optout_studies",
+        &["app.shield.optoutstudies.enabled"],
+    ),
+    ("studies.normandy", &["app.normandy.enabled"]),
+    (
+        "newtab.sponsored_topsites",
+        &["browser.newtabpage.activity-stream.showSponsoredTopSites"],
+    ),
+    (
+        "newtab.sponsored_stories",
+        &["browser.newtabpage.activity-stream.showSponsored"],
+    ),
+    ("vendor_services.pocket", &["extensions.pocket.enabled"]),
+    (
+        "crash.auto_submit",
+        &[
+            "browser.crashReports.unsubmittedCheck.autoSubmit",
+            "browser.crashReports.unsubmittedCheck.autoSubmit2",
+        ],
+    ),
+];
+
+/// The value of the last `pref("name", value);` line for `name` (a later
+/// default overrides an earlier one, as in Firefox).
+fn shipped_pref<'a>(prefs_js: &'a str, name: &str) -> Option<&'a str> {
+    prefs_js.lines().rev().find_map(|line| {
+        let rest = line.trim().strip_prefix("pref(\"")?;
+        let (key, rest) = rest.split_once('"')?;
+        let value = rest.trim_start().strip_prefix(',')?.trim();
+        let value = value.strip_suffix(';')?.trim_end().strip_suffix(')')?;
+        (key == name).then(|| value.trim())
+    })
+}
+
+/// Every pref privacy.toml maps to ships `false` in `prefs_js`: the TOML
+/// file alone proves nothing about the browser.
+fn shipped_prefs_errors(prefs_js: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+    for (key, prefs) in PRIVACY_PREFS {
+        for pref in *prefs {
+            match shipped_pref(prefs_js, pref) {
+                Some("false") => {}
+                Some(value) => errors.push(format!(
+                    "policy violation: {pref} ships {value}, privacy.toml {key} requires false"
+                )),
+                None => errors.push(format!(
+                    "missing: {pref} (privacy.toml {key}) is not set; Firefox's default would apply"
+                )),
+            }
+        }
+    }
+    errors
+}
+
+/// The shipped prefs file checked against the privacy mapping.
+fn validate_shipped_prefs(root: &Path) -> FileResult {
+    let path = root.join(SHIPPED_PREFS_RELATIVE);
+    let errors = match std::fs::read_to_string(&path) {
+        Ok(text) => shipped_prefs_errors(&text),
+        Err(e) => vec![format!("unreadable: {e}")],
+    };
+    FileResult {
+        file: path.display().to_string(),
+        ok: errors.is_empty(),
+        schema_version: None,
+        errors,
+    }
+}
+
+/// Validate every `*.toml` in the committed defaults directory, then the
+/// shipped prefs that carry configs/defaults/privacy.toml into the browser.
 pub fn validate_defaults(root: &Path) -> Result<ValidateReport, String> {
     let dir = root.join("configs/defaults");
     let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
@@ -404,7 +494,8 @@ pub fn validate_defaults(root: &Path) -> Result<ValidateReport, String> {
     if paths.is_empty() {
         return Err(format!("no .toml defaults in {}", dir.display()));
     }
-    let results: Vec<FileResult> = paths.iter().map(|p| validate_file(p)).collect();
+    let mut results: Vec<FileResult> = paths.iter().map(|p| validate_file(p)).collect();
+    results.push(validate_shipped_prefs(root));
     Ok(ValidateReport {
         files_checked: results.len(),
         valid: results.iter().all(|r| r.ok),
@@ -485,8 +576,63 @@ background = false
     fn shipped_defaults_validate() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let report = validate_defaults(&dir).expect("defaults dir must read");
-        assert_eq!(report.files_checked, 2, "got: {report:?}");
+        // branding.toml, privacy.toml, and the shipped aequera-prefs.js.
+        assert_eq!(report.files_checked, 3, "got: {report:?}");
         assert!(report.valid, "got: {report:?}");
+    }
+
+    const SHIPPED_PREFS: &str = r#"
+pref("toolkit.telemetry.enabled", false);
+pref("toolkit.telemetry.unified", false);
+pref("toolkit.telemetry.archive.enabled", false);
+pref("datareporting.policy.dataSubmissionEnabled", false);
+pref("datareporting.healthreport.uploadEnabled", false);
+pref("app.shield.optoutstudies.enabled", false);
+pref("app.normandy.enabled", false);
+pref("browser.newtabpage.activity-stream.showSponsoredTopSites", false);
+pref("browser.newtabpage.activity-stream.showSponsored", false);
+pref("extensions.pocket.enabled", false);
+pref("browser.crashReports.unsubmittedCheck.autoSubmit", false);
+pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
+"#;
+
+    #[test]
+    fn shipped_prefs_match_privacy_mapping() {
+        assert_eq!(shipped_prefs_errors(SHIPPED_PREFS), Vec::<String>::new());
+    }
+
+    #[test]
+    fn shipped_pref_missing_rejected() {
+        let prefs = SHIPPED_PREFS.replace("pref(\"app.normandy.enabled\", false);\n", "");
+        let errors = shipped_prefs_errors(&prefs);
+        assert!(
+            errors.len() == 1 && errors[0].contains("missing: app.normandy.enabled"),
+            "got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn shipped_pref_enabled_rejected() {
+        let prefs = SHIPPED_PREFS.replace(
+            "pref(\"extensions.pocket.enabled\", false);",
+            "pref(\"extensions.pocket.enabled\", true);",
+        );
+        let errors = shipped_prefs_errors(&prefs);
+        assert!(
+            errors.len() == 1 && errors[0].contains("extensions.pocket.enabled ships true"),
+            "got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn shipped_pref_later_override_wins() {
+        // A later default overrides an earlier one, as in Firefox.
+        let prefs = format!("{SHIPPED_PREFS}pref(\"toolkit.telemetry.enabled\", true);\n");
+        let errors = shipped_prefs_errors(&prefs);
+        assert!(
+            errors.len() == 1 && errors[0].contains("toolkit.telemetry.enabled ships true"),
+            "got: {errors:?}"
+        );
     }
 
     #[test]

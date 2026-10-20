@@ -4,7 +4,9 @@
 # sponsored UI, silent remote configuration, or unnecessary vendor services.
 # Every section except [update] maps to managed Firefox preferences (`pref:`
 # comments) applied as defaults in aequera/shell/firefox/aequera-prefs.js —
-# never as web-platform changes. [update] has no pref mapping by design:
+# never as web-platform changes; `aequera config validate` checks that each
+# mapped pref ships false there (tools/cli/src/config.rs PRIVACY_PREFS, which
+# a new `pref:` mapping must join). [update] has no pref mapping by design:
 # update behavior is intentionally untouched (see aequera-prefs.js and
 # docs/engineering/RELEASE.md) pending a separate ADR.
 # Security protections (site isolation, sandboxing, certificate validation,

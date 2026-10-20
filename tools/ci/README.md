@@ -23,7 +23,8 @@
    - `aequera doctor` (no `fail` entries)
    - `aequera upstream status` (lock readable)
    - `aequera patch status` (manifest valid, base matches lock)
-   - `aequera config validate` (defaults green)
+   - `aequera config validate` (defaults green, and every pref
+     `privacy.toml` maps to ships false in `aequera-prefs.js`)
 
 A second job, `engine`, rebuilds `aequera/extensions/ad-veil/addon/engine.wasm`
 on x86_64 Linux with the toolchain that produced it (rustup's Rust 1.98.1 and
