@@ -65,6 +65,9 @@ FIREFOX_DEFAULTS=(
   # Ad Veil: Firefox has no built-in content blocker; its tests must not
   # run behind EasyList.
   --setpref aequera.adveil.enabled=false
+  # New Tab opens a tab every time in Firefox; Aequera reuses an untouched
+  # new tab page (newtab/aequera-newtab-window.js).
+  --setpref aequera.newtab.single=false
   # AI features: Firefox 157's defaults (Aequera blocks them by default);
   # the sidebar tests list the chatbot, the tabs pane shows smart tab groups.
   --setpref browser.ai.control.default=available

@@ -6,7 +6,8 @@
 // Aequera new tab page (aequera/shell/firefox/newtab, patches/browser/newtab):
 // served at about:newtab and about:home, still preloaded, shortcuts from
 // Firefox's top sites backend, pin / unpin / dismiss by keyboard, and the
-// pref restores Firefox's page.
+// pref restores Firefox's page; New Tab goes to an untouched open page
+// instead of loading another (aequera.newtab.single).
 
 ChromeUtils.defineESModuleGetters(this, {
   AboutNewTab: "resource:///modules/AboutNewTab.sys.mjs",
@@ -215,6 +216,80 @@ add_task(async function test_preloaded_and_address_bar_focused() {
   await TestUtils.waitForCondition(() => gURLBar.focused, "the address bar is focused");
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
   NewTabPagePreloading.removePreloadedBrowser(window);
+  await SpecialPowers.popPrefEnv();
+});
+
+/** New Tab (BrowserCommands.openTab) that must open, and load, a new page. */
+async function openTabCommand(options) {
+  const opened = BrowserTestUtils.waitForNewTab(gBrowser, "about:newtab", true);
+  BrowserCommands.openTab(options);
+  const tab = await opened;
+  await shortcuts(tab.linkedBrowser);
+  return tab;
+}
+
+add_task(async function test_new_tab_goes_to_the_open_page() {
+  is(Services.prefs.getDefaultBranch("").getBoolPref("aequera.newtab.single"), true, "on by default");
+  const first = await openTabCommand();
+  // A mark on the rendered page: gone if the page loads again.
+  await SpecialPowers.spawn(first.linkedBrowser, [], () => {
+    content.wrappedJSObject.aequeraRendered = true;
+  });
+  const isSamePage = () =>
+    SpecialPowers.spawn(first.linkedBrowser, [], () => content.wrappedJSObject.aequeraRendered === true);
+  const count = gBrowser.tabs.length;
+
+  // From another tab: back to the open page, rendered once.
+  gBrowser.selectedTab = gBrowser.tabs[0];
+  BrowserCommands.openTab();
+  is(gBrowser.selectedTab, first, "New Tab goes to the untouched new tab page");
+  is(gBrowser.tabs.length, count, "and opens no tab");
+  ok(await isSamePage(), "the page is not loaded again");
+  await TestUtils.waitForCondition(() => gURLBar.focused, "the address bar is focused, as for a new tab");
+
+  // From the page itself (Ctrl+T on it): it stays.
+  EventUtils.synthesizeKey("t", { accelKey: true });
+  is(gBrowser.selectedTab, first, "Ctrl+T on the page stays on it");
+  is(gBrowser.tabs.length, count, "no tab opened");
+
+  // Anything else opens as in Firefox: an explicit address.
+  const withURL = await openTabCommand({ url: "about:newtab" });
+  isnot(withURL, first, "an explicit address opens a tab");
+  BrowserTestUtils.removeTab(withURL);
+
+  BrowserTestUtils.removeTab(first);
+});
+
+add_task(async function test_used_page_is_not_reused() {
+  const typed = await openTabCommand();
+  // Something typed in the address bar for it: it is in use.
+  typed.linkedBrowser.userTypedValue = "exam";
+  gBrowser.selectedTab = gBrowser.tabs[0];
+  const second = await openTabCommand();
+  isnot(second, typed, "a page with typed text is left alone");
+  BrowserTestUtils.removeTab(typed);
+
+  // Navigated away and back: it has history behind it.
+  const loaded = BrowserTestUtils.browserLoaded(second.linkedBrowser);
+  BrowserTestUtils.startLoadingURIString(second.linkedBrowser, "data:text/html,away");
+  await loaded;
+  const back = BrowserTestUtils.waitForLocationChange(gBrowser, "about:newtab");
+  second.linkedBrowser.goBack();
+  await back;
+  const third = await openTabCommand();
+  isnot(third, second, "a page with history is left alone");
+  BrowserTestUtils.removeTab(second);
+  BrowserTestUtils.removeTab(third);
+});
+
+add_task(async function test_single_off_opens_every_time() {
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.newtab.single", false]] });
+  const first = await openTabCommand();
+  gBrowser.selectedTab = gBrowser.tabs[0];
+  const second = await openTabCommand();
+  isnot(second, first, "off: New Tab opens a tab, as in Firefox");
+  BrowserTestUtils.removeTab(first);
+  BrowserTestUtils.removeTab(second);
   await SpecialPowers.popPrefEnv();
 });
 

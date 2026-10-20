@@ -69,6 +69,10 @@ pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", 
 pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
 pref("browser.newtabpage.activity-stream.showWeather", false);
 pref("browser.startup.homepage.abouthome_cache.enabled", false);
+// One new tab page per window (newtab/aequera-newtab-window.js): New Tab goes
+// to an untouched new tab page already open in the workspace instead of
+// loading another. Off: every New Tab opens a tab, as in Firefox.
+pref("aequera.newtab.single", true);
 // The page's custom wallpaper is saved by Firefox's wallpaper feed. The page
 // keeps one image and has no "Your images" library to remove old ones from,
 // so the feed deletes the image a new one replaces instead of piling them up

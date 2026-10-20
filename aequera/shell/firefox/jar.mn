@@ -51,6 +51,8 @@ browser.jar:
     content/browser/aequera/newtab/aequera-newtab.html         (newtab/aequera-newtab.html)
     content/browser/aequera/newtab/aequera-newtab.css          (newtab/aequera-newtab.css)
     content/browser/aequera/newtab/aequera-newtab.js           (newtab/aequera-newtab.js)
+    content/browser/aequera/newtab/newtab-model.js             (newtab/newtab-model.js)
+    content/browser/aequera/newtab/aequera-newtab-window.js    (newtab/aequera-newtab-window.js)
     content/browser/aequera/privatebrowsing/aequera-private.css (privatebrowsing/aequera-private.css)
     content/browser/aequera/incontent/aequera-in-content.css   (incontent/aequera-in-content.css)
 # patches/toolkit/in-content has toolkit's common-shared.css import this

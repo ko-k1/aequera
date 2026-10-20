@@ -450,6 +450,14 @@ add_task(async function test_new_tab_row() {
   const created = gBrowser.selectedTab;
   opened.push(created);
   ok(listedTabs().includes(created), "which gets a row");
+  // One new tab page per window (newtab/aequera-newtab-window.js): with that
+  // page still untouched, New Tab goes back to it.
+  gBrowser.selectedTab = gBrowser.tabs[0];
+  row.click();
+  is(gBrowser.selectedTab, created, "again: the open new tab page");
+  is(gBrowser.tabs.length, count + 1, "and no second one");
+  // Later tasks open their own.
+  gBrowser.removeTab(created, { animate: false });
 });
 
 add_task(async function test_new_tab_stays_in_reach_when_rows_overflow() {
