@@ -2,7 +2,7 @@
 //!
 //! `fetch` downloads Git objects for the lock's provenance ref and proves
 //! they resolve to the locked SHA. It never moves the baseline, never edits
-//! the lock, never checks anything out. See UPSTREAM.md ("Fetch vs Update").
+//! the lock, never checks anything out. See docs/engineering/UPSTREAM1.md ("Fetch vs Update").
 
 use crate::lock::{self, LockFile};
 use serde::Serialize;
