@@ -25,10 +25,12 @@
   --ae-feedback: 120ms;
   /* A shadow in the opposite of the text color under text and icons: white
    * under dark text, black under white text. It follows the color scheme,
-   * which the theme (lwt-newtab-brighttext) or the wallpaper sets. */
-  --ae-shadow: light-dark(rgb(255 255 255 / 0.7), rgb(0 0 0 / 0.6));
-  --ae-halo: 0 1px 3px var(--ae-shadow);
-  --ae-drop: drop-shadow(0 1px 3px var(--ae-shadow));
+   * which the theme (lwt-newtab-brighttext) or the wallpaper sets. These
+   * are the wallpaper's: soft and diffuse, so it lifts text off the image
+   * without a visible smudge. */
+  --ae-shadow: light-dark(rgb(255 255 255 / 0.55), rgb(0 0 0 / 0.45));
+  --ae-halo: 0 1px 5px var(--ae-shadow);
+  --ae-drop: drop-shadow(0 1px 5px var(--ae-shadow));
   --ae-mark-filter: brightness(1);
 }
 
