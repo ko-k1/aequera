@@ -3,7 +3,7 @@ name: macos
 # Build and package the browser on both macOS architectures. This is the
 # hosted-runner-sized path: an artifact build (Mozilla's prebuilt C++/Rust
 # parts plus the local front end), not the multi-hour compiled build. The
-# output is an unsigned Aequera.app, a drag-to-Applications DMG, and a zip.
+# output is an ad-hoc-signed Aequera.app, a drag-to-Applications DMG, and a zip.
 #
 # Manual: gh workflow run macos.yml --ref <branch>
 # Weekly: keeps the macOS patch series and packaging path honest between
@@ -12,10 +12,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "43 4 * * 1"
-  # Temporary proving trigger for the first run of this workflow.
-  push:
-    branches:
-      - ci/macos-package-run
 
 # Least privilege: the job reads the tree and uploads workflow artifacts.
 permissions:
