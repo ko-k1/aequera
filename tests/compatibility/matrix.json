@@ -75,9 +75,9 @@
         "macOS CI artifact build + package + CLI smoke on both architectures (run 39768190809, 2026-10-22)"
       ],
       "known_deviations": [
-        "the macOS CI artifact package completed on both architectures (run 39768190809); no interactive browser or mochitest run has happened yet",
-        "Assets.car is compiled with actool before patch apply; the dual-architecture artifact package completed",
-        "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); Developer ID signing, notarization, and DMG art wait for release work"
+        "no interactive macOS browser or mochitest run has happened yet; CI only packages an artifact build and smoke-tests --version",
+        "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); Developer ID signing, notarization, and DMG art wait for release work",
+        "the packaged launcher is a shell script; a native Mach-O launcher is release work"
       ],
       "workarounds": [
         "keep to the native /opt/homebrew prefix; never mix x86_64 formulae into an Apple Silicon build environment"
@@ -96,9 +96,9 @@
         "macOS CI artifact build + package + CLI smoke on both architectures (run 39768190809, 2026-10-22)"
       ],
       "known_deviations": [
-        "the macOS CI artifact package completed on both architectures (run 39768190809); no interactive browser or mochitest run has happened yet",
-        "Assets.car is compiled with actool before patch apply; the dual-architecture artifact package completed",
+        "no interactive macOS browser or mochitest run has happened yet; CI only packages an artifact build and smoke-tests --version",
         "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); Developer ID signing, notarization, and DMG art wait for release work",
+        "the packaged launcher is a shell script; a native Mach-O launcher is release work",
         "Intel CI runs mach bootstrap with --no-system-changes: Homebrew no longer builds Intel bottles, and artifact mode needs none of those packages"
       ],
       "workarounds": []
