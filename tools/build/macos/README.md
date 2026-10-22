@@ -64,6 +64,11 @@ invalidates the signatures of nested bundles. The packager re-signs nested
 apps and frameworks (updater, crashreporter, plugin-container, ChannelPrefs,
 UpdateSettings) from the inside out before sealing the outer bundle.
 
+It also materializes symlinks that point back into the objdir (mach's
+default `NSDISTMODE=absolute_symlink`), leaving internal framework links
+alone. A distributed app must not depend on build-tree paths, and codesign
+rejects a framework whose main executable is a symlink.
+
 The DMG is a plain drag-to-Applications image. It is not Developer ID
 signed or notarized: Gatekeeper asks for a right-click Open on another Mac.
 Developer ID signing and notarization are release work, not part of the

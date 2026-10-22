@@ -12,11 +12,14 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "tools" / "build" / "macos" / "package.sh"
+DEREFERENCE = ROOT / "tools" / "build" / "macos" / "dereference_bundle.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "macos.yml"
 
 
@@ -81,12 +84,41 @@ class MacosPackage(unittest.TestCase):
         self.assertIn("macos-15", text)
         self.assertIn("macos-15-intel", text)
 
+    @unittest.skipIf(os.name == "nt", "creating symlinks needs extra privileges")
+    def test_dereference_materializes_only_escaping_links(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Aequera.app"
+            contents = root / "Contents"
+            contents.mkdir(parents=True)
+            (contents / "inside.txt").write_text("inside", encoding="utf-8")
+            external = Path(tmp) / "ChannelPrefs"
+            external.write_text("binary", encoding="utf-8")
+            os.symlink(external, contents / "outside")
+            os.symlink("inside.txt", contents / "inside")
+
+            result = subprocess.run(
+                [sys.executable, DEREFERENCE.as_posix(), root.as_posix()],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((contents / "outside").is_symlink())
+            self.assertEqual(
+                (contents / "outside").read_text(encoding="utf-8"), "binary"
+            )
+            self.assertTrue((contents / "inside").is_symlink())
+
     def test_packager_resigns_nested_bundles_from_the_inside_out(self):
         text = SCRIPT.read_text(encoding="utf-8")
         loop = text.index("while IFS= read -r -d '' nested; do")
         find = text.index('done < <(find "$STAGED/Contents" -depth')
+        dereference = text.index(
+            'python3 "$ROOT/tools/build/macos/dereference_bundle.py" "$STAGED"'
+        )
         outer = text.index('codesign --force --sign - "$STAGED"')
         launcher = text.index('codesign --force --sign - "$LAUNCHER"')
+        self.assertLess(dereference, outer)
         self.assertLess(loop, find)
         self.assertLess(find, outer)
         self.assertLess(launcher, outer)

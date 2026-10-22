@@ -78,8 +78,9 @@ Both matrix entries use macOS 15 so they share one SDK/Xcode:
 3. bootstraps the locked Firefox, checks and applies the patch series;
 4. runs `mach bootstrap` (artifact mode) and `./mach build`;
 5. runs `tools/build/macos/package.sh`, which wraps the bundle with Aequera's
-   `-app` launcher, ad-hoc signs it, smoke-tests `--version`, and writes a
-   DMG, a zip, and `SHA256SUMS`;
+   `-app` launcher, materializes build-tree symlinks, re-signs nested
+   apps/frameworks, ad-hoc signs the result, smoke-tests `--version`, and
+   writes a DMG, a zip, and `SHA256SUMS`;
 6. uploads `aequera-macos-aarch64` or `aequera-macos-x86_64` (90-day
    workflow artifact).
 

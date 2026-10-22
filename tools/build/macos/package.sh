@@ -167,6 +167,11 @@ PLIST="$STAGED/Contents/Info.plist"
 # codesign treats files directly in Contents as unsigned subcomponents.
 rm -f "$STAGED/Contents/moz.build"
 
+# mach's default NSDISTMODE=absolute_symlink leaves files in the bundle
+# pointing back into the objdir. Materialize those links so the app is
+# self-contained and codesign does not see a symlinked framework executable.
+python3 "$ROOT/tools/build/macos/dereference_bundle.py" "$STAGED"
+
 EXE="$(plutil -extract CFBundleExecutable raw -o - "$PLIST")" \
   || die "Info.plist has no CFBundleExecutable"
 [ -n "$EXE" ] || die "Info.plist has an empty CFBundleExecutable"
@@ -232,7 +237,7 @@ done < <(find "$STAGED/Contents" -depth -type d \
 # before the outer bundle seal so verification can see it.
 codesign --force --sign - "$LAUNCHER"
 codesign --force --sign - "$STAGED"
-codesign --verify --strict "$STAGED"
+codesign --verify --deep --strict "$STAGED"
 
 if [ "$CHECK" -eq 1 ]; then
   command -v perl >/dev/null 2>&1 || die "perl not found on PATH (or pass --no-check)"
