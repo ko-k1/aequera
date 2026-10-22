@@ -61,6 +61,38 @@ Measured on its first runs (2026-10-20): 20 to 23 minutes end to end.
 Dispatch it on a branch to prove a patch or shell change against real
 Firefox before merging; it is not a PR gate.
 
+## macOS packaging
+
+`./.github/workflows/macos.yml` builds and packages a runnable app on both
+macOS architectures. It runs weekly (Mondays 04:43 UTC) and on demand
+(`gh workflow run macos.yml --ref <branch>`). It is deliberately not a PR
+gate: every run fetches the pinned Firefox and performs an artifact build.
+
+Both matrix entries use macOS 15 so they share one SDK/Xcode:
+`macos-15` (arm64) and `macos-15-intel` (x86_64). Each job:
+
+1. removes simulator runtimes and unused Xcode copies so Firefox's history
+   and worktree fit the runner;
+2. builds the CLI, then compiles `Assets.car` with `actool` (the `.car` is
+   generated on Apple hosts and is not committed);
+3. bootstraps the locked Firefox, checks and applies the patch series;
+4. runs `mach bootstrap` (artifact mode) and `./mach build`;
+5. runs `tools/build/macos/package.sh`, which wraps the bundle with Aequera's
+   `-app` launcher, ad-hoc signs it, smoke-tests `--version`, and writes a
+   DMG, a zip, and `SHA256SUMS`;
+6. uploads `aequera-macos-aarch64` or `aequera-macos-x86_64` (90-day
+   workflow artifact).
+
+On Intel, bootstrap runs with `--no-system-changes`: Homebrew stopped
+building Intel bottles (Tier 3), and artifact mode needs none of the
+watchman/mercurial/terminal-notifier packages the full path installs.
+
+The artifacts are not Developer ID signed or notarized: they are build/test
+artifacts, not release installers. Developer ID signing, notarization, and
+attaching files to a GitHub release remain release-pipeline work. A compiled
+build can use the same packager but is expected to exceed a hosted macOS
+runner budget; the workflow therefore builds artifact mode only.
+
 ## Test layers (docs/engineering/TESTING.md mapping)
 
 | Layer | Current home |
