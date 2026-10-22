@@ -103,9 +103,13 @@ artifact build; `--no-check` skips only the launch smoke test.
 
 ## Known gaps
 
-- Not yet built or run on a Mac: the bundle layout in `platform.sh` and the
-  `macos-glass` patch are unverified. The macOS packaging workflow is new
-  and has not completed its first run yet.
+- CI builds, packages, and smoke-tests an artifact app on both architectures
+  (run 39768190809, 2026-10-22), but the shared dev-launcher bundle path in
+  `platform.sh`, the `macos-glass` patch, an interactive browser run, and a
+  mochitest gate remain unverified on a Mac.
+- The launcher is a signed shell script. It starts the browser and passes
+  `--version`, but a release should use a native Mach-O launcher so Launch
+  Services and TCC see a native main executable.
 - The DMG is unsigned and has no Finder background/window layout; Developer
   ID signing, notarization, and DMG polish beyond the committed
   `background.png`/`disk.icns` are release work.

@@ -71,11 +71,12 @@
       "launchers": ["tools/build/aequera.sh", "tools/build/aequera-run.sh"],
       "validated": [
         "cli-smoke (PR CI)",
-        "patch check: full series applies cleanly against the locked base"
+        "patch check: full series applies cleanly against the locked base",
+        "macOS CI artifact build + package + CLI smoke on both architectures (run 39768190809, 2026-10-22)"
       ],
       "known_deviations": [
-        "no macOS mach build + run has exercised the tree yet",
-        "the macOS CI workflow compiles Assets.car with actool before patch apply; it has not completed a run yet",
+        "the macOS CI artifact package completed on both architectures (run 39768190809); no interactive browser or mochitest run has happened yet",
+        "Assets.car is compiled with actool before patch apply; the dual-architecture artifact package completed",
         "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); Developer ID signing, notarization, and DMG art wait for release work"
       ],
       "workarounds": [
@@ -91,11 +92,12 @@
       "launchers": ["tools/build/aequera.sh", "tools/build/aequera-run.sh"],
       "validated": [
         "cli-smoke (PR CI)",
-        "patch check: full series applies cleanly against the locked base"
+        "patch check: full series applies cleanly against the locked base",
+        "macOS CI artifact build + package + CLI smoke on both architectures (run 39768190809, 2026-10-22)"
       ],
       "known_deviations": [
-        "no macOS mach build + run has exercised the tree yet",
-        "the macOS CI workflow compiles Assets.car with actool before patch apply; it has not completed a run yet",
+        "the macOS CI artifact package completed on both architectures (run 39768190809); no interactive browser or mochitest run has happened yet",
+        "Assets.car is compiled with actool before patch apply; the dual-architecture artifact package completed",
         "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); Developer ID signing, notarization, and DMG art wait for release work",
         "Intel CI runs mach bootstrap with --no-system-changes: Homebrew no longer builds Intel bottles, and artifact mode needs none of those packages"
       ],

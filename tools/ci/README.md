@@ -88,6 +88,13 @@ On Intel, bootstrap runs with `--no-system-changes`: Homebrew stopped
 building Intel bottles (Tier 3), and artifact mode needs none of the
 watchman/mercurial/terminal-notifier packages the full path installs.
 
+The first dual-architecture run (39768190809, 2026-10-22) completed both
+jobs. Each job built the artifact app, packaged it, passed
+`codesign --verify --deep --strict`, and reported `Aequera Aequera 158.0`
+from the launcher's `--version` smoke test. The downloaded x86_64 app and
+DMG were also checked against every `_CodeSignature/CodeResources` hash. No
+interactive browser or mochitest run is part of this workflow yet.
+
 The artifacts are not Developer ID signed or notarized: they are build/test
 artifacts, not release installers. Developer ID signing, notarization, and
 attaching files to a GitHub release remain release-pipeline work. A compiled
