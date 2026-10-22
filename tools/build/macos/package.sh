@@ -31,7 +31,7 @@ usage() {
   cat >&2 <<'EOF'
 usage: tools/build/macos/package.sh [options]
 
-Package a built Aequera.app as an unsigned DMG and ZIP.
+Package a built Aequera.app as an ad-hoc-signed DMG and ZIP.
 
 Options:
   --app <path>       app bundle (default: obj/firefox/{artifact,compiled}/dist/*.app)
@@ -216,11 +216,21 @@ plutil -replace CFBundleExecutable -string aequera-launch "$PLIST"
   || die "could not point CFBundleExecutable at the launcher"
 
 # Adding the launcher and rewriting the ini invalidates the outer signature.
-# Re-sign only the bundle, not its nested helpers: --deep would re-sign them
-# too and strip their entitlements (JIT/sandbox), while the helpers are
-# unchanged. Verify the seal; the nested code keeps the build's signatures.
+# The artifact build signs each Mach-O while extracting it, which also
+# invalidates the signature of every nested bundle that seals those binaries
+# (updater.app, crashreporter.app, plugin-container.app, ChannelPrefs.framework,
+# UpdateSettings.framework). Re-sign those bundles from the inside out. Avoid
+# --deep: it would re-sign helper executables too and drop their entitlements.
 find "$STAGED" -name .DS_Store -delete 2>/dev/null || true
 xattr -cr "$STAGED" 2>/dev/null || true
+while IFS= read -r -d '' nested; do
+  codesign --force --sign - "$nested"
+done < <(find "$STAGED/Contents" -depth -type d \
+  \( -name '*.app' -o -name '*.framework' -o -name '*.appex' -o -name '*.xpc' \) \
+  -print0)
+# A script's signature lives in an extended attribute; sign the launcher
+# before the outer bundle seal so verification can see it.
+codesign --force --sign - "$LAUNCHER"
 codesign --force --sign - "$STAGED"
 codesign --verify --strict "$STAGED"
 
