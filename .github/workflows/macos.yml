@@ -39,10 +39,6 @@ jobs:
     env:
       MOZCONFIG: ${{ github.workspace }}/tools/build/mozconfig.artifact
       MOZBUILD_STATE_PATH: ${{ github.workspace }}/.mozbuild
-      # mach bootstrap installs Mozilla's Homebrew dependencies; skip the
-      # network-heavy update/cleanup, which the runner image does not need.
-      HOMEBREW_NO_AUTO_UPDATE: "1"
-      HOMEBREW_NO_INSTALL_CLEANUP: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -106,7 +102,17 @@ jobs:
 
       - name: Mach bootstrap (artifact mode)
         working-directory: worktree/firefox
-        run: ./mach --no-interactive bootstrap --application-choice browser_artifact_mode
+        run: |
+          # Homebrew no longer builds Intel bottles (Tier 3), and the full
+          # bootstrap installs watchman/mercurial through it on x86_64. The
+          # artifact build needs none of those packages.
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            ./mach --no-interactive bootstrap \
+              --application-choice browser_artifact_mode --no-system-changes
+          else
+            ./mach --no-interactive bootstrap \
+              --application-choice browser_artifact_mode
+          fi
 
       - name: Artifact build
         working-directory: worktree/firefox

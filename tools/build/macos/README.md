@@ -17,6 +17,9 @@ it.
    ./mach bootstrap --application-choice browser_artifact_mode
    ```
 
+   On Intel Macs, add `--no-system-changes` if Homebrew no longer has bottles
+   for Mozilla's bootstrap packages; artifact mode does not need them.
+
 3. One-time per logo change, on the Mac: compile the asset catalog and
    commit the result. The bundle step requires it, and `actool` exists only
    on Apple hosts:

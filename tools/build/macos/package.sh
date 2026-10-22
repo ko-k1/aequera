@@ -162,6 +162,11 @@ MACOS="$STAGED/Contents/MacOS"
 RESOURCES="$STAGED/Contents/Resources"
 PLIST="$STAGED/Contents/Info.plist"
 
+# browser/app/macbuild/Contents/moz.build is build metadata that
+# assemble_macos_bundle copies into the app. It is not app content, and
+# codesign treats files directly in Contents as unsigned subcomponents.
+rm -f "$STAGED/Contents/moz.build"
+
 EXE="$(plutil -extract CFBundleExecutable raw -o - "$PLIST")" \
   || die "Info.plist has no CFBundleExecutable"
 [ -n "$EXE" ] || die "Info.plist has an empty CFBundleExecutable"

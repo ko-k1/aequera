@@ -83,6 +83,10 @@ Both matrix entries use macOS 15 so they share one SDK/Xcode:
 6. uploads `aequera-macos-aarch64` or `aequera-macos-x86_64` (90-day
    workflow artifact).
 
+On Intel, bootstrap runs with `--no-system-changes`: Homebrew stopped
+building Intel bottles (Tier 3), and artifact mode needs none of the
+watchman/mercurial/terminal-notifier packages the full path installs.
+
 The artifacts are not Developer ID signed or notarized: they are build/test
 artifacts, not release installers. Developer ID signing, notarization, and
 attaching files to a GitHub release remain release-pipeline work. A compiled
