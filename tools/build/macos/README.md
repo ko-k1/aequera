@@ -64,6 +64,11 @@ invalidates the signatures of nested bundles. The packager re-signs nested
 apps and frameworks (updater, crashreporter, plugin-container, ChannelPrefs,
 UpdateSettings) from the inside out before sealing the outer bundle.
 
+It also materializes symlinks that point back into the objdir (mach's
+default `NSDISTMODE=absolute_symlink`), leaving internal framework links
+alone. A distributed app must not depend on build-tree paths, and codesign
+rejects a framework whose main executable is a symlink.
+
 The DMG is a plain drag-to-Applications image. It is not Developer ID
 signed or notarized: Gatekeeper asks for a right-click Open on another Mac.
 Developer ID signing and notarization are release work, not part of the
@@ -98,9 +103,13 @@ artifact build; `--no-check` skips only the launch smoke test.
 
 ## Known gaps
 
-- Not yet built or run on a Mac: the bundle layout in `platform.sh` and the
-  `macos-glass` patch are unverified. The macOS packaging workflow is new
-  and has not completed its first run yet.
+- CI builds, packages, and smoke-tests an artifact app on both architectures
+  (run 39768190809, 2026-10-22), but the shared dev-launcher bundle path in
+  `platform.sh`, the `macos-glass` patch, an interactive browser run, and a
+  mochitest gate remain unverified on a Mac.
+- The launcher is a signed shell script. It starts the browser and passes
+  `--version`, but a release should use a native Mach-O launcher so Launch
+  Services and TCC see a native main executable.
 - The DMG is unsigned and has no Finder background/window layout; Developer
   ID signing, notarization, and DMG polish beyond the committed
   `background.png`/`disk.icns` are release work.
