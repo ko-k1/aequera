@@ -12,6 +12,10 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "43 4 * * 1"
+  # Temporary proving trigger for the first run of this workflow.
+  push:
+    branches:
+      - ci/macos-package-run
 
 # Least privilege: the job reads the tree and uploads workflow artifacts.
 permissions:
