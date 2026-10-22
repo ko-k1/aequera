@@ -81,12 +81,15 @@ dialog read Aequera and profiles live under the per-OS root above.
   on any platform).
 - `Assets.car` (macOS): the asset-catalog source ships
   (`macos/Assets.xcassets`, AppIcon set rendered from the mark), but the
-  compiled `.car` needs Xcode and is not yet built. On a Mac, from the
-  checkout root, run `bash tools/branding/build_assets_car.sh`
-  then verify `aequera/design/branding/Assets.car` exists for the next
+  compiled `.car` needs Xcode and is not committed. On a Mac, from the
+  checkout root, run `bash tools/branding/build_assets_car.sh` before
   `patch apply` (the overlay syncs it into `browser/branding/aequera`, where
-  `browser/app/moz.build` stages it into the .app). DMG art (`disk.icns`,
-  `background.png` committed, `dsstore`) likewise waits for the installer pipeline.
+  `browser/app/moz.build` stages it into the .app). The macOS CI workflow
+  runs the same script before applying patches.
+- Packaging is separate from branding: `tools/build/macos/package.sh` turns
+  the built bundle into an ad-hoc-signed DMG + zip. DMG art (`disk.icns`,
+  `background.png` committed, `dsstore`) is not applied yet; that and
+  notarization wait for the release pipeline.
 - Runtime validation on real Linux/macOS builds: the D-Bus names, desktop
   entry, bundle ID, and icons above are verified textually (`patch check`)
   and by construction against the pinned source, but no Linux/macOS

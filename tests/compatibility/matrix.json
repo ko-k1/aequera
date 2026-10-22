@@ -75,8 +75,8 @@
       ],
       "known_deviations": [
         "no macOS mach build + run has exercised the tree yet",
-        "Assets.car is not yet compiled (needs Xcode actool on a Mac; source ships in macos/Assets.xcassets, so packaging stays red until then)",
-        "DMG art (disk.icns, background.png, dsstore) waits for the installer pipeline, as on all platforms"
+        "the macOS CI workflow compiles Assets.car with actool before patch apply; it has not completed a run yet",
+        "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); Developer ID signing, notarization, and DMG art wait for release work"
       ],
       "workarounds": [
         "keep to the native /opt/homebrew prefix; never mix x86_64 formulae into an Apple Silicon build environment"
@@ -95,8 +95,8 @@
       ],
       "known_deviations": [
         "no macOS mach build + run has exercised the tree yet",
-        "Assets.car is not yet compiled (needs Xcode actool on a Mac; source ships in macos/Assets.xcassets, so packaging stays red until then)",
-        "DMG art (disk.icns, background.png, dsstore) waits for the installer pipeline, as on all platforms"
+        "the macOS CI workflow compiles Assets.car with actool before patch apply; it has not completed a run yet",
+        "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); Developer ID signing, notarization, and DMG art wait for release work"
       ],
       "workarounds": []
     }

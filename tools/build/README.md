@@ -209,5 +209,7 @@ install the host C++ toolchain (`tools/bootstrap/windows.md`,
 
 ## Known platform gaps
 
-- No installer is built yet on any platform. Per-OS gaps are listed in each
-  platform README.
+- macOS has an ad-hoc-signed artifact-build DMG + zip path
+  (`tools/build/macos/package.sh`, `.github/workflows/macos.yml`); Developer
+  ID signing and notarization are release work. No Windows or Linux installer
+  is built yet. Per-OS gaps are listed in each platform README.

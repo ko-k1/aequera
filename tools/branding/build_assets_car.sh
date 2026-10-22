@@ -18,6 +18,11 @@ fi
 
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
-xcrun actool --compile "$OUT" --platform macosx "$XCASSETS" >/dev/null
+# --app-icon names the set Info.plist's CFBundleIconName expects; without it
+# actool compiles the catalog but never registers the application icon.
+xcrun actool --compile "$OUT" --platform macosx \
+  --minimum-deployment-target 10.15 --target-device mac \
+  --product-type com.apple.product-type.application --app-icon AppIcon \
+  --output-partial-info-plist "$OUT/partial.plist" "$XCASSETS" >/dev/null
 cp "$OUT/Assets.car" "$BRANDING/Assets.car"
 echo "wrote $BRANDING/Assets.car"

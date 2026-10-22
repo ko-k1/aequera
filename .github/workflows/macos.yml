@@ -1,0 +1,129 @@
+name: macos
+
+# Build and package the browser on both macOS architectures. This is the
+# hosted-runner-sized path: an artifact build (Mozilla's prebuilt C++/Rust
+# parts plus the local front end), not the multi-hour compiled build. The
+# output is an unsigned Aequera.app, a drag-to-Applications DMG, and a zip.
+#
+# Manual: gh workflow run macos.yml --ref <branch>
+# Weekly: keeps the macOS patch series and packaging path honest between
+# upstream syncs without paying a Firefox build on every push.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "43 4 * * 1"
+
+# Least privilege: the job reads the tree and uploads workflow artifacts.
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: package (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Pin the OS instead of macos-latest: the two architectures then
+          # share one SDK and Xcode. macos-15 is arm64, macos-15-intel x86_64.
+          - runner: macos-15
+            arch: aarch64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    env:
+      MOZCONFIG: ${{ github.workspace }}/tools/build/mozconfig.artifact
+      MOZBUILD_STATE_PATH: ${{ github.workspace }}/.mozbuild
+      # mach bootstrap installs Mozilla's Homebrew dependencies; skip the
+      # network-heavy update/cleanup, which the runner image does not need.
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Firefox history, the generated worktree, and the objdir do not fit
+      # the runner's free space next to the image's simulator runtimes and
+      # unused Xcode copies. Remove what this build never touches.
+      #
+      # The macOS SDK selected by xcode-select stays: actool (Assets.car)
+      # and codesign come from it.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
+          sudo rm -rf /Library/Developer/CoreSimulator/Devices/*
+          rm -rf "$HOME/Library/Developer/CoreSimulator/Devices"/* 2>/dev/null || true
+          rm -rf "$HOME/Library/Developer/Xcode/DerivedData" \
+                 "$HOME/Library/Developer/Xcode/Archives" 2>/dev/null || true
+          selected="$(xcode-select -p 2>/dev/null || true)"
+          case "$selected" in
+            /Applications/*)
+              selected_app="${selected%%/Contents/Developer*}"
+              for app in /Applications/Xcode*.app; do
+                [ -d "$app" ] || continue
+                # -ef follows the Xcode.app symlink, so the selected install
+                # survives whether xcode-select names the symlink or target.
+                [ "$app" -ef "$selected_app" ] && continue
+                sudo rm -rf "$app"
+              done
+              ;;
+          esac
+          sudo rm -rf /usr/local/lib/android /usr/local/share/android-commandlinetools \
+                      /usr/local/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          rm -rf "$HOME/Library/Android" "$HOME/.android" 2>/dev/null || true
+          rm -rf "$HOME/Library/Caches/Homebrew" "$HOME/.cache" 2>/dev/null || true
+          df -h /
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+
+      - name: Build the CLI
+        run: cargo build --locked -p aequera
+
+      # Assets.car is generated on Apple hosts only (actool) and is not
+      # committed. Compile it before patch apply lays the branding overlay
+      # down, or browser/app/moz.build rejects the missing bundle resource.
+      - name: Compile the macOS asset catalog
+        run: bash tools/branding/build_assets_car.sh
+
+      # Fetches the lock's tag from the pinned remote and checks it resolves
+      # to the locked commit (docs/engineering/UPSTREAM1.md).
+      - name: Bootstrap the locked Firefox
+        run: ./target/debug/aequera bootstrap
+
+      - name: Patch check (each series against the base)
+        run: ./target/debug/aequera patch check
+
+      - name: Patch apply (series + overlays into worktree/firefox)
+        run: ./target/debug/aequera patch apply
+
+      - name: Mach bootstrap (artifact mode)
+        working-directory: worktree/firefox
+        run: ./mach --no-interactive bootstrap --application-choice browser_artifact_mode
+
+      - name: Artifact build
+        working-directory: worktree/firefox
+        run: ./mach build
+
+      # Locates dist/Aequera.app, adds the -app launcher, ad-hoc signs it,
+      # smoke-tests --version, and writes both formats plus SHA256SUMS.
+      - name: Package app, DMG, and zip
+        run: bash tools/build/macos/package.sh --out-dir obj/macos/package
+
+      - name: Upload the macOS artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: aequera-macos-${{ matrix.arch }}
+          path: obj/macos/package/*
+          if-no-files-found: error
+
+      - name: Disk use
+        if: always()
+        run: df -h /

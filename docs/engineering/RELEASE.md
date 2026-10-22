@@ -16,6 +16,14 @@ build metadata
 
 A release build should be reconstructible from recorded source and configuration inputs.
 
+## CI Build Artifacts
+
+`./.github/workflows/macos.yml` produces an ad-hoc-signed artifact-build
+`Aequera.app`, DMG, and zip for testing. These are build artifacts, not
+releases: they have no Developer ID signature, notarization, or update
+channel, and the artifact build runs Mozilla's prebuilt binary. A release
+installer must come from the compiled build and pass the release gates below.
+
 ## Release Preparation
 
 ```text
