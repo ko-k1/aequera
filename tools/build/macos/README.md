@@ -59,6 +59,11 @@ obj/macos/package/Aequera-<version>-macos-<arch>.zip
 obj/macos/package/SHA256SUMS
 ```
 
+The artifact build re-signs each Mach-O while extracting it, which
+invalidates the signatures of nested bundles. The packager re-signs nested
+apps and frameworks (updater, crashreporter, plugin-container, ChannelPrefs,
+UpdateSettings) from the inside out before sealing the outer bundle.
+
 The DMG is a plain drag-to-Applications image. It is not Developer ID
 signed or notarized: Gatekeeper asks for a right-click Open on another Mac.
 Developer ID signing and notarization are release work, not part of the

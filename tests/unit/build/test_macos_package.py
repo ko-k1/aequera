@@ -81,6 +81,18 @@ class MacosPackage(unittest.TestCase):
         self.assertIn("macos-15", text)
         self.assertIn("macos-15-intel", text)
 
+    def test_packager_resigns_nested_bundles_from_the_inside_out(self):
+        text = SCRIPT.read_text(encoding="utf-8")
+        loop = text.index("while IFS= read -r -d '' nested; do")
+        find = text.index('done < <(find "$STAGED/Contents" -depth')
+        outer = text.index('codesign --force --sign - "$STAGED"')
+        launcher = text.index('codesign --force --sign - "$LAUNCHER"')
+        self.assertLess(loop, find)
+        self.assertLess(find, outer)
+        self.assertLess(launcher, outer)
+        self.assertIn("-name '*.app'", text)
+        self.assertIn("-name '*.framework'", text)
+
 
 if __name__ == "__main__":
     unittest.main()
