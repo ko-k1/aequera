@@ -72,10 +72,10 @@
       "validated": [
         "cli-smoke (PR CI)",
         "patch check: full series applies cleanly against the locked base",
-        "macOS CI artifact build + package on both architectures (run 39768190809, 2026-10-22; pre-content-smoke)"
+        "macOS CI artifact build + package on both architectures (run 39892247953, 2026-10-23; packaged-app verifier and headless content-process smoke passed)"
       ],
       "known_deviations": [
-        "no interactive macOS browser or mochitest run has happened yet; CI packages a mach-packaged artifact build and the headless content-process smoke needs a green dual-architecture run",
+        "no interactive macOS browser or mochitest run has happened yet; CI packages and smoke-tests a mach-packaged artifact build",
         "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); it rejects mach's unpackaged dist/Aequera.app, which crashes on the first content-process launch because it has no omni.ja and keeps developer repo/obj paths",
         "Developer ID signing, notarization, and DMG art wait for release work",
         "the packaged launcher is a shell script; a native Mach-O launcher is release work"
@@ -94,10 +94,10 @@
       "validated": [
         "cli-smoke (PR CI)",
         "patch check: full series applies cleanly against the locked base",
-        "macOS CI artifact build + package on both architectures (run 39768190809, 2026-10-22; pre-content-smoke)"
+        "macOS CI artifact build + package on both architectures (run 39892247953, 2026-10-23; packaged-app verifier and headless content-process smoke passed)"
       ],
       "known_deviations": [
-        "no interactive macOS browser or mochitest run has happened yet; CI packages a mach-packaged artifact build and the headless content-process smoke needs a green dual-architecture run",
+        "no interactive macOS browser or mochitest run has happened yet; CI packages and smoke-tests a mach-packaged artifact build",
         "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); it rejects mach's unpackaged dist/Aequera.app, which crashes on the first content-process launch because it has no omni.ja and keeps developer repo/obj paths",
         "Developer ID signing, notarization, and DMG art wait for release work",
         "the packaged launcher is a shell script; a native Mach-O launcher is release work",

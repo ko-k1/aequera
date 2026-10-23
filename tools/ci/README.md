@@ -93,16 +93,19 @@ building Intel bottles (Tier 3), and artifact mode needs none of the
 watchman/mercurial/terminal-notifier packages the full path installs.
 
 The first dual-architecture run (39768190809, 2026-10-22) completed both
-jobs. Each job built and packaged the artifact app, passed
-`codesign --verify --deep --strict`, and reported `Aequera Aequera 158.0`
-from a `--version` smoke test. That test was insufficient: it never started
-a content process, so it did not catch that the distributed developer bundle
-lacked `omni.ja` and retained the runner's developer paths. The app then
-crashed on the first content-process launch with
-`MOZ_CRASH("Failed to get path to repo dir")` in
-`ContentParent::BeginSubprocessLaunch`. The workflow now runs `./mach package`
-and the packager starts a headless content process; a green dual-architecture
-run of that gate is still pending. No interactive browser or mochitest run is
+jobs, but its `--version` smoke never started a content process. That is why
+it did not catch that the distributed developer bundle lacked `omni.ja` and
+retained the runner's developer paths; the app then crashed on the first
+content-process launch with `MOZ_CRASH("Failed to get path to repo dir")` in
+`ContentParent::BeginSubprocessLaunch`.
+
+The first green content-process run (39892247953, 2026-10-23) packaged both
+architectures with `./mach package`, passed `codesign --verify --deep
+--strict`, and passed the headless screenshot that starts a content process.
+Each job uploaded a DMG, ZIP, and `SHA256SUMS`. An earlier attempt failed in
+mach's DMG path because Aequera's branding has no Mozilla-style `dsstore`;
+the macOS mozconfig now selects a ZIP for mach's package step, while
+`package.sh` still builds the DMG. No interactive browser or mochitest run is
 part of this workflow yet.
 
 The artifacts are not Developer ID signed or notarized: they are build/test
