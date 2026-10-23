@@ -76,11 +76,14 @@ Both matrix entries use macOS 15 so they share one SDK/Xcode:
 2. builds the CLI, then compiles `Assets.car` with `actool` (the `.car` is
    generated on Apple hosts and is not committed);
 3. bootstraps the locked Firefox, checks and applies the patch series;
-4. runs `mach bootstrap` (artifact mode) and `./mach build`;
-5. runs `tools/build/macos/package.sh`, which wraps the bundle with Aequera's
-   `-app` launcher, materializes build-tree symlinks, re-signs nested
-   apps/frameworks, ad-hoc signs the result, smoke-tests `--version`, and
-   writes a DMG, a zip, and `SHA256SUMS`;
+4. runs `mach bootstrap` (artifact mode), `./mach build`, and
+   `./mach package`;
+5. runs `tools/build/macos/package.sh`, which requires the packaged
+   `dist/firefox/Aequera.app` (omni.jars present, developer plist paths
+   absent), wraps it with Aequera's `-app` launcher, materializes build-tree
+   symlinks, re-signs nested apps/frameworks, ad-hoc signs the result,
+   smoke-tests a headless content-process screenshot, and writes a DMG, a
+   zip, and `SHA256SUMS`;
 6. uploads `aequera-macos-aarch64` or `aequera-macos-x86_64` (90-day
    workflow artifact).
 
@@ -89,11 +92,17 @@ building Intel bottles (Tier 3), and artifact mode needs none of the
 watchman/mercurial/terminal-notifier packages the full path installs.
 
 The first dual-architecture run (39768190809, 2026-10-22) completed both
-jobs. Each job built the artifact app, packaged it, passed
+jobs. Each job built and packaged the artifact app, passed
 `codesign --verify --deep --strict`, and reported `Aequera Aequera 158.0`
-from the launcher's `--version` smoke test. The downloaded x86_64 app and
-DMG were also checked against every `_CodeSignature/CodeResources` hash. No
-interactive browser or mochitest run is part of this workflow yet.
+from a `--version` smoke test. That test was insufficient: it never started
+a content process, so it did not catch that the distributed developer bundle
+lacked `omni.ja` and retained the runner's developer paths. The app then
+crashed on the first content-process launch with
+`MOZ_CRASH("Failed to get path to repo dir")` in
+`ContentParent::BeginSubprocessLaunch`. The workflow now runs `./mach package`
+and the packager starts a headless content process; a green dual-architecture
+run of that gate is still pending. No interactive browser or mochitest run is
+part of this workflow yet.
 
 The artifacts are not Developer ID signed or notarized: they are build/test
 artifacts, not release installers. Developer ID signing, notarization, and
