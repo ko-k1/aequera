@@ -5,5 +5,11 @@
 # Parallelism: mach's automatic default. If the gkrust LTO link OOMs,
 # export MOZ_MAKE_FLAGS="-j<N>" in the build shell and re-run mach configure.
 
+# Aequera's packager owns the DMG layout (tools/build/macos/package.sh).
+# Let mach package produce a ZIP instead: its DMG path requires Mozilla's
+# branding .DS_Store, while Aequera's branding supplies its own background
+# and volume icon.
+export MOZ_PKG_FORMAT=ZIP
+
 # Older Rust (see mozconfig.platform), e.g.
 # export RUSTC=.../toolchains/1.95.0-.../bin/rustc

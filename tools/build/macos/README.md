@@ -56,6 +56,11 @@ cd -
 bash tools/build/macos/package.sh
 ```
 
+`tools/build/macos/mozconfig` sets `MOZ_PKG_FORMAT=ZIP`, so mach's package
+step stages the app and a zip; Aequera's packager owns the DMG layout. This
+also keeps mach out of its DMG path, which expects Mozilla's branding
+`dsstore` and fails before `package.sh` can run.
+
 The packager uses the packaged app under `obj/firefox/*/dist/<package-dir>/`
 (`firefox` for the artifact build, `aequera` for a compiled build), adds a
 small launcher as `CFBundleExecutable`, writes Aequera's launch ini into the

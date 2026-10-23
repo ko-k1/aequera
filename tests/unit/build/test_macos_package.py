@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "tools" / "build" / "macos" / "package.sh"
 DEREFERENCE = ROOT / "tools" / "build" / "macos" / "dereference_bundle.py"
 VERIFY = ROOT / "tools" / "build" / "macos" / "verify_packaged_app.py"
+MOZCONFIG = ROOT / "tools" / "build" / "macos" / "mozconfig"
 WORKFLOW = ROOT / ".github" / "workflows" / "macos.yml"
 
 
@@ -89,6 +90,13 @@ class MacosPackage(unittest.TestCase):
         # developer plist paths and writes the omni.jars.
         self.assertIn("./mach package", text)
         self.assertIn("dist/firefox/Aequera.app", text)
+
+    def test_macos_mozconfig_skips_machs_dmg_layout(self):
+        text = MOZCONFIG.read_text(encoding="utf-8")
+        # mach's DMG path expects Mozilla's branding dsstore. Aequera's
+        # packager creates the DMG from its own layout, so mach must not fail
+        # on the missing file before package.sh can run.
+        self.assertIn("export MOZ_PKG_FORMAT=ZIP", text)
 
     def make_app(self, root, *, developer_paths=False, omni=True, browser_omni=True):
         app = Path(root) / "Aequera.app"

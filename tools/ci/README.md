@@ -77,7 +77,8 @@ Both matrix entries use macOS 15 so they share one SDK/Xcode:
    generated on Apple hosts and is not committed);
 3. bootstraps the locked Firefox, checks and applies the patch series;
 4. runs `mach bootstrap` (artifact mode), `./mach build`, and
-   `./mach package`;
+   `./mach package` (the macOS mozconfig selects a zip, keeping mach out of
+   its DMG path and its Mozilla-branding `dsstore` requirement);
 5. runs `tools/build/macos/package.sh`, which requires the packaged
    `dist/firefox/Aequera.app` (omni.jars present, developer plist paths
    absent), wraps it with Aequera's `-app` launcher, materializes build-tree

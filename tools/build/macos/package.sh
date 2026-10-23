@@ -12,8 +12,10 @@
 #   --no-check         skip the launch smoke test
 #   -h, --help         show this help
 #
-# Run ./mach package in worktree/firefox first. mach's build output,
-# dist/Aequera.app, is a developer bundle: it has no omni.ja and keeps the
+# Run ./mach package in worktree/firefox first. The macOS mozconfig selects
+# a zip for mach's package step, so mach does not need Mozilla's branding
+# dsstore; this script creates the DMG. mach's build output, dist/Aequera.app,
+# is a developer bundle: it has no omni.ja and keeps the
 # build machine's MozillaDeveloperRepoPath/MozillaDeveloperObjPath entries.
 # Firefox then treats it as unpackaged and crashes on the first content
 # process launch. ./mach package creates dist/firefox/Aequera.app with the
