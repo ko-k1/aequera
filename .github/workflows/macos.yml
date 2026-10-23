@@ -118,8 +118,18 @@ jobs:
         working-directory: worktree/firefox
         run: ./mach build
 
-      # Locates dist/Aequera.app, adds the -app launcher, ad-hoc signs it,
-      # smoke-tests --version, and writes both formats plus SHA256SUMS.
+      # mach build's dist/Aequera.app is a developer bundle: no omni.jars and
+      # MozillaDeveloperRepoPath/ObjPath still point into this runner. Running
+      # that app on another Mac crashes when the first content process starts.
+      # mach package creates the distributable dist/firefox/Aequera.app.
+      - name: Package the distributable app
+        working-directory: worktree/firefox
+        run: ./mach package
+
+      # Locates dist/firefox/Aequera.app, rejects any unpackaged developer
+      # bundle, adds the -app launcher, ad-hoc signs it, starts a headless
+      # content process for the smoke test, and writes both formats plus
+      # SHA256SUMS.
       - name: Package app, DMG, and zip
         run: bash tools/build/macos/package.sh --out-dir obj/macos/package
 

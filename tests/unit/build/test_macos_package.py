@@ -10,6 +10,7 @@ step is the integration proof.
 
 import os
 import platform
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "tools" / "build" / "macos" / "package.sh"
 DEREFERENCE = ROOT / "tools" / "build" / "macos" / "dereference_bundle.py"
+VERIFY = ROOT / "tools" / "build" / "macos" / "verify_packaged_app.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "macos.yml"
 
 
@@ -83,6 +85,73 @@ class MacosPackage(unittest.TestCase):
         self.assertIn("tools/build/macos/package.sh", text)
         self.assertIn("macos-15", text)
         self.assertIn("macos-15-intel", text)
+        # Building dist/Aequera.app is not enough: mach package strips the
+        # developer plist paths and writes the omni.jars.
+        self.assertIn("./mach package", text)
+        self.assertIn("dist/firefox/Aequera.app", text)
+
+    def make_app(self, root, *, developer_paths=False, omni=True, browser_omni=True):
+        app = Path(root) / "Aequera.app"
+        contents = app / "Contents"
+        resources = contents / "Resources"
+        (resources / "browser").mkdir(parents=True)
+        (contents / "MacOS").mkdir()
+        info = {
+            "CFBundleExecutable": "firefox",
+            "CFBundleIdentifier": "org.aequera.browser",
+        }
+        if developer_paths:
+            info["MozillaDeveloperRepoPath"] = "/build/repo"
+            info["MozillaDeveloperObjPath"] = "/build/obj"
+        with (contents / "Info.plist").open("wb") as stream:
+            plistlib.dump(info, stream)
+        if omni:
+            (resources / "omni.ja").write_bytes(b"gre")
+        if browser_omni:
+            (resources / "browser" / "omni.ja").write_bytes(b"browser")
+        return app
+
+    def run_verify(self, app):
+        return subprocess.run(
+            [sys.executable, VERIFY.as_posix(), app.as_posix()],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_verify_accepts_mach_packaged_app(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self.make_app(tmp)
+            result = self.run_verify(app)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_verify_rejects_unpackaged_developer_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self.make_app(
+                tmp, developer_paths=True, omni=False, browser_omni=False
+            )
+            result = self.run_verify(app)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("omni.ja", result.stderr)
+            self.assertIn("MozillaDeveloperRepoPath", result.stderr)
+            self.assertIn("./mach package", result.stderr)
+
+    def test_verify_rejects_missing_browser_omnijar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self.make_app(tmp, browser_omni=False)
+            result = self.run_verify(app)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("browser/omni.ja", result.stderr)
+
+    def test_packager_uses_mach_package_output_and_content_smoke(self):
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("verify_packaged_app.py", text)
+        self.assertIn("dist/firefox", text)
+        self.assertIn("--headless", text)
+        self.assertIn("--screenshot", text)
+        self.assertNotIn("smoke-testing the bundle (--version)", text)
+        # The old default was the developer bundle; never select it again.
+        self.assertNotIn('"$ROOT/obj/firefox/artifact/dist/Aequera.app"', text)
 
     @unittest.skipIf(os.name == "nt", "creating symlinks needs extra privileges")
     def test_dereference_materializes_only_escaping_links(self):

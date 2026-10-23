@@ -45,19 +45,36 @@ Parallelism stays on mach's default (`mozconfig` here); set
 
 ## Package (DMG)
 
+Build the app, then create the packaging stage from the same worktree:
+
 ```sh
+cd worktree/firefox
+export MOZCONFIG="$PWD/../../tools/build/mozconfig.artifact"
+./mach build
+./mach package
+cd -
 bash tools/build/macos/package.sh
 ```
 
-The packager finds the build's `dist/Aequera.app` under `obj/`, adds a small
-launcher as `CFBundleExecutable`, writes Aequera's launch ini into the
-bundle, ad-hoc signs it, smoke-tests `--version`, and writes:
+The packager uses the packaged app (`obj/firefox/*/dist/firefox/Aequera.app`
+by default), adds a small launcher as `CFBundleExecutable`, writes Aequera's
+launch ini into the bundle, ad-hoc signs it, runs a headless screenshot that
+must start a content process, and writes:
 
 ```text
 obj/macos/package/Aequera-<version>-macos-<arch>.dmg
 obj/macos/package/Aequera-<version>-macos-<arch>.zip
 obj/macos/package/SHA256SUMS
 ```
+
+**Do not distribute `obj/firefox/*/dist/Aequera.app`.** That is mach's
+developer bundle, not a package. It has no `omni.ja` files and retains
+`MozillaDeveloperRepoPath`/`MozillaDeveloperObjPath` entries pointing at the
+build machine. Firefox then treats it as an unpackaged build; on the first
+content-process launch it cannot find the repo/obj directories and crashes in
+`ContentParent::BeginSubprocessLaunch` (`MOZ_CRASH("Failed to get path to repo
+dir")`). `./mach package` writes the GRE and browser omni.jars and strips
+those plist keys; `package.sh` rejects a bundle that is missing either.
 
 The artifact build re-signs each Mach-O while extracting it, which
 invalidates the signatures of nested bundles. The packager re-signs nested
@@ -83,8 +100,9 @@ Aequera identity.
 
 [`.github/workflows/macos.yml`](../../../.github/workflows/macos.yml) runs
 this on both architectures (macos-15 arm64, macos-15-intel x86_64) after an
-artifact build; `--no-check` skips only the launch smoke test.
-`tools/ci/README.md` has the CI trigger and artifact details.
+artifact build and `./mach package`; `--no-check` skips only the headless
+content-process smoke test. `tools/ci/README.md` has the CI trigger and
+artifact details.
 
 ## Where macOS lives in the repo
 
@@ -103,13 +121,15 @@ artifact build; `--no-check` skips only the launch smoke test.
 
 ## Known gaps
 
-- CI builds, packages, and smoke-tests an artifact app on both architectures
-  (run 39768190809, 2026-10-22), but the shared dev-launcher bundle path in
-  `platform.sh`, the `macos-glass` patch, an interactive browser run, and a
-  mochitest gate remain unverified on a Mac.
-- The launcher is a signed shell script. It starts the browser and passes
-  `--version`, but a release should use a native Mach-O launcher so Launch
-  Services and TCC see a native main executable.
+- CI builds and packages an artifact app on both architectures. The
+  2026-10-22 run (39768190809) only proved the old `--version` path; the new
+  headless content-process smoke needs a green dual-architecture run. The
+  shared dev-launcher bundle path in `platform.sh`, the `macos-glass` patch,
+  an interactive browser run, and a mochitest gate remain unverified on a
+  Mac.
+- The launcher is a signed shell script. It starts the browser and runs the
+  headless smoke test, but a release should use a native Mach-O launcher so
+  Launch Services and TCC see a native main executable.
 - The DMG is unsigned and has no Finder background/window layout; Developer
   ID signing, notarization, and DMG polish beyond the committed
   `background.png`/`disk.icns` are release work.

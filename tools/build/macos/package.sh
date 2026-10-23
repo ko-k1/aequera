@@ -1,16 +1,23 @@
 #!/bin/bash
-# Package a built Aequera.app as a macOS disk image (DMG) and a zip of the
-# bundle. The app is ad-hoc signed, not Developer ID signed or notarized.
-# Runs on macOS only (hdiutil, codesign, plutil).
+# Package a mach-packaged Aequera.app as a macOS disk image (DMG) and a zip
+# of the bundle. The app is ad-hoc signed, not Developer ID signed or
+# notarized. Runs on macOS only (hdiutil, codesign, plutil).
 #
 #   bash tools/build/macos/package.sh [options]
 #
 # Options:
-#   --app <path>       app bundle (default: the build's dist/*.app in obj/)
+#   --app <path>       packaged app (default: a dist/firefox/*.app in obj/)
 #   --out-dir <dir>    output directory (default: obj/macos/package)
 #   --version <text>   artifact version (default: upstream/manifests/firefox.lock)
 #   --no-check         skip the launch smoke test
 #   -h, --help         show this help
+#
+# Run ./mach package in worktree/firefox first. mach's build output,
+# dist/Aequera.app, is a developer bundle: it has no omni.ja and keeps the
+# build machine's MozillaDeveloperRepoPath/MozillaDeveloperObjPath entries.
+# Firefox then treats it as unpackaged and crashes on the first content
+# process launch. ./mach package creates dist/firefox/Aequera.app with the
+# omni.jars and without those entries; this script refuses anything else.
 #
 # The artifact build runs Mozilla's prebuilt Firefox binary. It keeps
 # Firefox's compiled-in identity unless started with -app, which would make a
@@ -31,10 +38,13 @@ usage() {
   cat >&2 <<'EOF'
 usage: tools/build/macos/package.sh [options]
 
-Package a built Aequera.app as an ad-hoc-signed DMG and ZIP.
+Package a mach-packaged Aequera.app as an ad-hoc-signed DMG and ZIP.
+
+Run ./mach package in worktree/firefox first; the developer bundle in
+dist/Aequera.app is not distributable.
 
 Options:
-  --app <path>       app bundle (default: obj/firefox/{artifact,compiled}/dist/*.app)
+  --app <path>       packaged app (default: obj/firefox/{artifact,compiled}/dist/firefox/*.app)
   --out-dir <dir>    output directory (default: obj/macos/package)
   --version <text>   artifact version (default: upstream/manifests/firefox.lock)
   --no-check         skip the launch smoke test
@@ -93,31 +103,24 @@ done
 
 # Default to the artifact build, then a compiled build, then any bundle under
 # the generated objdirs (the bundle name follows MOZ_APP_DISPLAYNAME, so a
-# mismatch in branding can leave Firefox.app). The explicit patterns keep a
-# stale build of the other profile from winning over the profile that exists.
+# mismatch in branding can leave Firefox.app). Only the package staging
+# directory (dist/firefox) is considered: dist/*.app is mach's unpackaged
+# developer bundle. The explicit patterns keep a stale build of the other
+# profile from winning over the profile that exists.
 if [ -z "$APP" ]; then
-  for candidate in \
-    "$ROOT/obj/firefox/artifact/dist/Aequera.app" \
-    "$ROOT/obj/firefox/compiled/dist/Aequera.app" \
-    "$ROOT"/obj/*/*/dist/Aequera.app; do
-    if [ -d "$candidate" ]; then
-      APP="$candidate"
-      break
-    fi
+  for dist in \
+    "$ROOT/obj/firefox/artifact/dist" \
+    "$ROOT/obj/firefox/compiled/dist" \
+    "$ROOT"/obj/*/*/dist; do
+    for candidate in "$dist"/firefox/*.app; do
+      if [ -d "$candidate/Contents/MacOS" ]; then
+        APP="$candidate"
+        break 2
+      fi
+    done
   done
 fi
-if [ -z "$APP" ]; then
-  for candidate in \
-    "$ROOT"/obj/firefox/artifact/dist/*.app \
-    "$ROOT"/obj/firefox/compiled/dist/*.app \
-    "$ROOT"/obj/*/*/dist/*.app; do
-    if [ -d "$candidate/Contents/MacOS" ]; then
-      APP="$candidate"
-      break
-    fi
-  done
-fi
-[ -n "$APP" ] || die "no built app bundle found; build first (tools/build/README.md) or pass --app."
+[ -n "$APP" ] || die "no mach-packaged app found; run ./mach package in worktree/firefox, then retry or pass --app dist/firefox/Aequera.app."
 case "$APP" in
   /*) ;;
   *) APP="$PWD/$APP" ;;
@@ -172,11 +175,18 @@ rm -f "$STAGED/Contents/moz.build"
 # self-contained and codesign does not see a symlinked framework executable.
 python3 "$ROOT/tools/build/macos/dereference_bundle.py" "$STAGED"
 
+# dist/Aequera.app (mach build output) is not distributable: it lacks the
+# omni.jars and still points at the CI/local repo and objdirs. Running it on
+# another Mac crashes in ContentParent::BeginSubprocessLaunch when the first
+# content process asks for those paths. Only dist/firefox/Aequera.app, made by
+# ./mach package, is accepted.
+python3 "$ROOT/tools/build/macos/verify_packaged_app.py" "$STAGED"
+
 EXE="$(plutil -extract CFBundleExecutable raw -o - "$PLIST")" \
   || die "Info.plist has no CFBundleExecutable"
 [ -n "$EXE" ] || die "Info.plist has an empty CFBundleExecutable"
 [ "$EXE" != "aequera-launch" ] \
-  || die "$APP is already packaged (CFBundleExecutable=aequera-launch); pass the build output instead."
+  || die "$APP already has the packaging launcher (CFBundleExecutable=aequera-launch); pass the mach package output instead."
 [ -f "$MACOS/$EXE" ] || die "CFBundleExecutable '$EXE' is missing from Contents/MacOS"
 
 BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw -o - "$PLIST" 2>/dev/null || true)"
@@ -241,19 +251,35 @@ codesign --verify --deep --strict "$STAGED"
 
 if [ "$CHECK" -eq 1 ]; then
   command -v perl >/dev/null 2>&1 || die "perl not found on PATH (or pass --no-check)"
-  echo "package: smoke-testing the bundle (--version)"
+  command -v file >/dev/null 2>&1 || die "file not found on PATH (or pass --no-check)"
+  echo "package: smoke-testing the bundle (headless content process)"
+  # --version only exercises the parent process, which is why the old
+  # smoke test passed the broken developer bundle. A headless screenshot
+  # creates a remote browser, so it must launch a content process and flush
+  # its sandbox parameters before it can write the image.
+  #
   # macOS has no timeout(1); perl's alarm keeps a broken launch from hanging
-  # the CI job. A throwaway HOME keeps --version from touching a real profile
-  # if the binary decides to create one.
-  mkdir -p "$WORK/home"
-  version_output="$(
-    HOME="$WORK/home" perl -e 'alarm 120; exec @ARGV' "$LAUNCHER" --version 2>&1
-  )" || die "bundle did not start: $version_output"
-  case "$version_output" in
-    *Firefox*|*Aequera*) ;;
-    *) die "unexpected --version output: $version_output" ;;
-  esac
-  printf 'package: %s\n' "$version_output"
+  # the CI job. A throwaway HOME and profile keep the check away from a real
+  # browser session.
+  mkdir -p "$WORK/home" "$WORK/profile" "$WORK/smoke"
+  screenshot="$WORK/smoke/aequera-package.png"
+  if ! HOME="$WORK/home" perl -e 'alarm 240; exec @ARGV' \
+      "$LAUNCHER" --headless --profile "$WORK/profile" \
+      --screenshot "$screenshot" \
+      'data:text/html,<title>Aequera package smoke test</title><h1>ok</h1>' \
+      >"$WORK/smoke.log" 2>&1; then
+    sed -n '1,120p' "$WORK/smoke.log" >&2 || true
+    die "bundle did not complete a headless content-process launch"
+  fi
+  [ -s "$screenshot" ] || {
+    sed -n '1,120p' "$WORK/smoke.log" >&2 || true
+    die "headless screenshot was not written: $screenshot"
+  }
+  if ! file "$screenshot" | grep -q 'PNG image data'; then
+    sed -n '1,120p' "$WORK/smoke.log" >&2 || true
+    die "headless screenshot is not a PNG: $screenshot"
+  fi
+  echo "package: headless content-process smoke test passed"
 fi
 
 mkdir -p "$OUT_DIR"
