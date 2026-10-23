@@ -127,12 +127,12 @@ artifact details.
 
 ## Known gaps
 
-- CI builds and packages an artifact app on both architectures. The
-  2026-10-22 run (39768190809) only proved the old `--version` path; the new
-  headless content-process smoke needs a green dual-architecture run. The
-  shared dev-launcher bundle path in `platform.sh`, the `macos-glass` patch,
-  an interactive browser run, and a mochitest gate remain unverified on a
-  Mac.
+- CI builds, packages, and smoke-tests an artifact app on both architectures.
+  Run 39892247953 (2026-10-23) passed the headless content-process screenshot
+  on arm64 and x86_64 and uploaded a DMG, ZIP, and `SHA256SUMS` for each. The
+  shared dev-launcher bundle path in `platform.sh`, the `macos-glass` patch
+  (needs the macOS 26 SDK), an interactive browser run, and a mochitest gate
+  remain unverified on a Mac.
 - The launcher is a signed shell script. It starts the browser and runs the
   headless smoke test, but a release should use a native Mach-O launcher so
   Launch Services and TCC see a native main executable.

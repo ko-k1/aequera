@@ -24,7 +24,9 @@ releases: they have no Developer ID signature, notarization, or update
 channel, and the artifact build runs Mozilla's prebuilt binary. A release
 installer must come from the compiled build and pass the release gates below.
 The first dual-architecture package completed on 2026-10-22 (run 39768190809);
-it validates the artifact-only CI path, not a compiled release build.
+the first content-process-validated package completed on 2026-10-23 (run
+39892247953). Both validate the artifact-only CI path, not a compiled release
+build.
 
 ## Release Preparation
 
