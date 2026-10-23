@@ -56,10 +56,11 @@ cd -
 bash tools/build/macos/package.sh
 ```
 
-The packager uses the packaged app (`obj/firefox/*/dist/firefox/Aequera.app`
-by default), adds a small launcher as `CFBundleExecutable`, writes Aequera's
-launch ini into the bundle, ad-hoc signs it, runs a headless screenshot that
-must start a content process, and writes:
+The packager uses the packaged app under `obj/firefox/*/dist/<package-dir>/`
+(`firefox` for the artifact build, `aequera` for a compiled build), adds a
+small launcher as `CFBundleExecutable`, writes Aequera's launch ini into the
+bundle, ad-hoc signs it, runs a headless screenshot that must start a content
+process, and writes:
 
 ```text
 obj/macos/package/Aequera-<version>-macos-<arch>.dmg

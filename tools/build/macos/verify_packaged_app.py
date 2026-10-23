@@ -63,7 +63,7 @@ def verify(bundle):
     lines.append("")
     lines.append(
         "Run ./mach package in worktree/firefox and package "
-        "dist/firefox/Aequera.app; do not distribute dist/Aequera.app."
+        "dist/<package-dir>/Aequera.app; do not distribute dist/Aequera.app."
     )
     raise SystemExit("\n".join(lines))
 

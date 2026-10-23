@@ -147,6 +147,7 @@ class MacosPackage(unittest.TestCase):
         text = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("verify_packaged_app.py", text)
         self.assertIn("dist/firefox", text)
+        self.assertIn("dist/aequera", text)
         self.assertIn("--headless", text)
         self.assertIn("--screenshot", text)
         self.assertNotIn("smoke-testing the bundle (--version)", text)
