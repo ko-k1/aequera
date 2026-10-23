@@ -6,7 +6,7 @@
 #   bash tools/build/macos/package.sh [options]
 #
 # Options:
-#   --app <path>       packaged app (default: a dist/firefox/*.app in obj/)
+#   --app <path>       packaged app (default: a dist/<pkg>/*.app in obj/)
 #   --out-dir <dir>    output directory (default: obj/macos/package)
 #   --version <text>   artifact version (default: upstream/manifests/firefox.lock)
 #   --no-check         skip the launch smoke test
@@ -44,7 +44,7 @@ Run ./mach package in worktree/firefox first; the developer bundle in
 dist/Aequera.app is not distributable.
 
 Options:
-  --app <path>       packaged app (default: obj/firefox/{artifact,compiled}/dist/firefox/*.app)
+  --app <path>       packaged app (default: a packaged app under obj/.../dist/*/*.app)
   --out-dir <dir>    output directory (default: obj/macos/package)
   --version <text>   artifact version (default: upstream/manifests/firefox.lock)
   --no-check         skip the launch smoke test
@@ -102,25 +102,33 @@ for tool in hdiutil ditto codesign plutil shasum python3; do
 done
 
 # Default to the artifact build, then a compiled build, then any bundle under
-# the generated objdirs (the bundle name follows MOZ_APP_DISPLAYNAME, so a
-# mismatch in branding can leave Firefox.app). Only the package staging
-# directory (dist/firefox) is considered: dist/*.app is mach's unpackaged
-# developer bundle. The explicit patterns keep a stale build of the other
-# profile from winning over the profile that exists.
+# the generated objdirs. The package staging directory is named after
+# MOZ_APP_NAME: "firefox" for the artifact build (it runs Mozilla's prebuilt
+# binary), "aequera" for a compiled build. The app bundle name follows
+# MOZ_APP_DISPLAYNAME, so a branding mismatch can leave Firefox.app. Only
+# dist/<package-dir>/*.app is considered: dist/*.app itself is mach's
+# unpackaged developer bundle. The explicit profiles keep a stale build of
+# the other profile from winning over the profile that exists.
 if [ -z "$APP" ]; then
   for dist in \
     "$ROOT/obj/firefox/artifact/dist" \
     "$ROOT/obj/firefox/compiled/dist" \
     "$ROOT"/obj/*/*/dist; do
-    for candidate in "$dist"/firefox/*.app; do
-      if [ -d "$candidate/Contents/MacOS" ]; then
-        APP="$candidate"
-        break 2
-      fi
+    for package_dir in "$dist/firefox" "$dist/aequera" "$dist"/*; do
+      [ -d "$package_dir" ] || continue
+      case "$(basename "$package_dir")" in
+        *.app) continue ;;
+      esac
+      for candidate in "$package_dir"/*.app; do
+        if [ -d "$candidate/Contents/MacOS" ]; then
+          APP="$candidate"
+          break 3
+        fi
+      done
     done
   done
 fi
-[ -n "$APP" ] || die "no mach-packaged app found; run ./mach package in worktree/firefox, then retry or pass --app dist/firefox/Aequera.app."
+[ -n "$APP" ] || die "no mach-packaged app found; run ./mach package in worktree/firefox, then retry or pass --app dist/<package-dir>/Aequera.app."
 case "$APP" in
   /*) ;;
   *) APP="$PWD/$APP" ;;
