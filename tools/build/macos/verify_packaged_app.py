@@ -50,10 +50,11 @@ def verify(bundle):
 
     for name in OMNIJARS:
         path = resources / name
+        shown = (path.relative_to(root)).as_posix()
         if not path.is_file():
-            issues.append(f"missing {path.relative_to(root)}")
+            issues.append(f"missing {shown}")
         elif path.stat().st_size == 0:
-            issues.append(f"empty {path.relative_to(root)}")
+            issues.append(f"empty {shown}")
 
     if not issues:
         return
