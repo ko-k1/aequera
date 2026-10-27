@@ -57,6 +57,36 @@ Diagnostics should be local and privacy-safe. Suggested tooling:
 
 No remote telemetry should be introduced solely for project measurement.
 
+## Memory defaults
+
+Aequera changes Firefox's memory-pressure response and the Tor BFCache cap;
+it does not change steady-state content-process sizing:
+
+- `browser.tabs.unloadOnLowMemory` is enabled. Firefox defaults it to true on
+  macOS and Windows and false on Linux; on Linux this activates the PSI
+  watcher's tab unloader, which may discard an inactive tab under memory
+  pressure.
+- On macOS, `browser.lowMemoryResponseMask = 3` keeps both responses Firefox
+  uses on Nightly: tab unloading (`0x1`) and the internal `memory-pressure`
+  notification (`0x2`). The release default (`0`) responds to neither; `1`
+  would unload a tab but not notify Gecko. The tab unloader never discards
+  private tabs, so a private-only profile (Tor) gets the memory-pressure
+  response.
+- The regular profile leaves `browser.sessionhistory.max_total_viewers` at
+  Firefox's automatic value. That value is already capped at 8 viewers on
+  hosts with at least 1 GiB of RAM, so pinning 8 would not save memory (and
+  would raise it on smaller hosts). The Tor profile sets `4`, a real
+  reduction that may make older back/forward entries reload.
+- Firefox's content-process policy is left in place, including preallocated
+  processes. Lowering `dom.ipc.processCount` does not cap Fission's isolated
+  content processes; `dom.ipc.processCount.webIsolated` is only a per-origin
+  maximum for those, so neither is a general memory lever.
+
+These settings define memory-pressure behavior and a Tor BFCache cap; they do
+not establish a universal memory saving. Compare representative tab
+workloads with the local browser benchmark before making stronger
+performance claims.
+
 ## Measuring Against Firefox
 
 `tools/benchmark/browser_bench.py` (README there) measures startup, idle CPU,
@@ -73,9 +103,12 @@ save. Rules for a comparison:
   difference larger than any change under test;
 - a difference counts only where the min-max ranges over the runs do not
   overlap; otherwise it is noise and is reported as such;
-- compare memory by RSS between different builds: PSS divides shared pages
-  among every process mapping a file, so a build that another running
-  browser also maps reads lower;
+- compare memory by PSS: it divides shared pages among the processes that map
+  them, so it is not counted once per process. Run one configuration at a
+  time; an already-running instance of the same build sharing its `libxul.so`
+  lowers PSS. RSS is a secondary check, not the headline: summing per-process
+  RSS counts shared pages once per process and overstates a build with more
+  processes;
 - a profile shows where CPU goes, not what a change saves: profiler overhead
   inflates JavaScript, so a cost found with `profile_top.py` is confirmed by
   an interleaved A/B on wall-clock metrics before a patch is kept;

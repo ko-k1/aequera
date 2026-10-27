@@ -39,7 +39,7 @@ stdlib, Linux), which drives a real launch over Marionette
 
 | Registry metric | Recorded as |
 |---|---|
-| startup to first usable paint | `startup.process_to_firstPaint_ms`, `..._sessionRestored_ms` (nsIAppStartup.getStartupInfo), `launch_to_ready_ms` |
+| startup to first usable paint | `startup.process_to_firstPaint2_ms` (Firefox 158) or `..._firstPaint_ms` (older builds), `..._sessionRestored_ms` (nsIAppStartup.getStartupInfo), `launch_to_ready_ms` |
 | idle CPU | `idle.cpu_percent_of_one_core`, per process type (procfs ticks over the idle window) |
 | memory (idle / representative load) | `memory_idle`, `memory_tabs` (PSS and RSS per process type, smaps_rollup) |
 | tab/workspace switch feedback | `tab_switch.*_presented_ms` (select to content shown, as Talos tabswitch), `*_chrome_ms` (select to the next chrome paint) |
@@ -69,10 +69,12 @@ steam-run python3 tools/benchmark/compare.py .tmp/bench/firefox.json .tmp/bench/
 
 `--pref` writes user prefs for one configuration, so a candidate default is
 measured before it is made. Never run two benchmarks, a build, or a test
-gate at the same time: they measure each other. Compare memory between
-different builds by RSS: PSS splits shared pages with any other process
-mapping the same files (a running Aequera session maps the main build's
-`libxul.so`).
+gate at the same time: they measure each other. Compare total memory by PSS:
+it divides shared pages among the processes that map them, so it is not
+counted once per process. An already-running instance of the same build
+sharing its `libxul.so` lowers PSS, which is why one configuration runs at a
+time. RSS is a secondary check: summing per-process RSS counts those shared
+pages once per process and overstates a build with more processes.
 
 Where startup or idle CPU goes: a profiled run (`--runs 1 --env
 MOZ_PROFILER_STARTUP=1 --env MOZ_PROFILER_STARTUP_FEATURES=js,stackwalk,cpu

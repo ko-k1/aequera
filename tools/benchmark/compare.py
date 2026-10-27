@@ -18,8 +18,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from browser_bench import summarize  # noqa: E402  # pyright: ignore[reportMissingImports]
 
+# Firefox 158 exposes firstPaint2; older builds expose firstPaint. A row uses
+# one key across its columns because the two record different events.
+FIRST_PAINT = ("startup.process_to_firstPaint2_ms", "startup.process_to_firstPaint_ms")
+
 HEADLINE = [
-    ("startup.process_to_firstPaint_ms", "startup: first paint (ms)"),
+    (FIRST_PAINT, "startup: first paint (ms)"),
     ("startup.process_to_sessionRestored_ms", "startup: session restored (ms)"),
     ("startup.launch_to_ready_ms", "startup: launch to ready (ms)"),
     ("idle.cpu_percent_of_one_core", "idle CPU (% of one core)"),
@@ -36,6 +40,17 @@ HEADLINE = [
     ("network.idle_window.connections", "connections: idle window"),
     ("shutdown_ms", "shutdown (ms)"),
 ]
+
+
+def key_for(spec, summaries):
+    """The preferred key in spec that the reference summary (or the next
+    summaries) contains; older artifacts fall back to firstPaint."""
+    keys = (spec,) if isinstance(spec, str) else spec
+    for summary in summaries:
+        for key in keys:
+            if key in summary["metrics"]:
+                return key
+    return keys[0]
 
 
 def cell(summary, key, ref=None):
@@ -70,13 +85,14 @@ def main(argv):
     summaries = [r["summary"] for r in reports]
     keys = HEADLINE
     if show_all:
-        known = {k for k, _ in HEADLINE}
+        known = {key_for(spec, summaries) for spec, _ in HEADLINE}
         extra = sorted({k for s in summaries for k in s["metrics"]} - known)
         keys = HEADLINE + [(k, k) for k in extra]
     runs = [len([x for x in r["runs"] if "error" not in x]) for r in reports]
     print("| metric | " + " | ".join(f"{l} (n={n})" for l, n in zip(labels, runs)) + " |")
     print("|---|" + "---|" * len(reports))
-    for key, name in keys:
+    for spec, name in keys:
+        key = key_for(spec, summaries)
         cells = [cell(summaries[0], key)] + [cell(s, key, summaries[0]) for s in summaries[1:]]
         if all(c == "-" for c in cells):
             continue

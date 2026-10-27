@@ -89,7 +89,12 @@ var AequeraSiteSortModel = (() => {
     const bySite = new Map();
     for (const tab of sorted) {
       if (tab.site && !tab.sharing) {
-        bySite.set(tab.site, [...(bySite.get(tab.site) ?? []), tab]);
+        const siteTabs = bySite.get(tab.site);
+        if (siteTabs) {
+          siteTabs.push(tab);
+        } else {
+          bySite.set(tab.site, [tab]);
+        }
       }
     }
     const activeName = workspaces.find(w => w.id === active)?.name.toLowerCase();

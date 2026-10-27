@@ -90,7 +90,11 @@ def main(argv):
         window = (timeline["idle_start"] * 1000, timeline["idle_end"] * 1000)
     elif which == "prepaint":
         # Launch to first paint: the critical path of a visible startup.
-        paint = bench["runs"][0]["startup"]["process_to_firstPaint_ms"]
+        # Firefox 158 reports firstPaint2; older builds may report firstPaint.
+        startup = bench["runs"][0]["startup"]
+        paint = startup.get("process_to_firstPaint2_ms", startup.get("process_to_firstPaint_ms"))
+        if paint is None:
+            raise SystemExit(f"{args[1]}: no first-paint timing for the prepaint window")
         window = (timeline["launched"] * 1000, timeline["launched"] * 1000 + paint)
     else:
         window = (timeline["launched"] * 1000, timeline["ready"] * 1000)

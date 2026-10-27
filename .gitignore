@@ -23,9 +23,13 @@ upstream/firefox/
 # Local coding agent-tool
 .claude/
 .codex/
+.koteli/
 
 # Local test/profile state
 .tmp/
+
+# Crash dumps are local diagnostics, never source
+*.ips
 
 # Rust build artifacts
 target/

@@ -221,6 +221,16 @@ var AequeraTorModel = (() => {
     { name: "browser.urlbar.suggest.topsites", value: false, why: "no top sites in the address bar" },
     { name: "browser.urlbar.quicksuggest.enabled", value: false, why: "no Firefox Suggest" },
     { name: "browser.tabs.searchclipboardfor.middleclick", value: false, why: "middle-click on new tab never searches the clipboard" },
+
+    // Memory behavior for the short-lived Tor instance. Fission's isolated
+    // content processes are governed by dom.ipc.processCount.webIsolated, a
+    // per-origin maximum, not dom.ipc.processCount, so the latter is not a
+    // general process cap and is not set here. Bound the global BFCache pool
+    // and respond to memory pressure instead. Tab unloading is left at the
+    // app default: it cannot discard private Tor tabs, so the memory-pressure
+    // response is what acts here.
+    { name: "browser.sessionhistory.max_total_viewers", value: 4, why: "cap cached history viewers in the Tor profile" },
+    { name: "browser.lowMemoryResponseMask", value: 3, why: "on macOS, issue Gecko memory pressure (private tabs are never unloaded)" },
   ];
 
   // Security levels: Tor Browser's Standard, Safer, Safest

@@ -232,6 +232,21 @@ pref("pdfjs.enableAltTextModelDownload", false);
 pref("pdfjs.enableAltText", false);
 pref("extensions.ml.enabled", false);
 
+// Memory-pressure defaults. Firefox derives the automatic BFCache viewer cap
+// from the host's RAM and limits preallocated processes on low-memory
+// machines; leave that policy intact. In particular,
+// browser.sessionhistory.max_total_viewers is deliberately not set: its
+// default (-1) already resolves to the 8-viewer cap on hosts with at least
+// 1 GiB of RAM, and to fewer viewers on smaller hosts.
+// Allow inactive tabs to be unloaded when Firefox receives a supported
+// low-memory signal. Firefox defaults this to false on Linux; on macOS and
+// Windows it is already on.
+pref("browser.tabs.unloadOnLowMemory", true);
+// macOS only: bit 0 unloads an inactive tab, bit 1 issues the internal
+// "memory-pressure" notification. Release builds default to 0 (no response)
+// and Nightly to 3; 3 keeps both responses.
+pref("browser.lowMemoryResponseMask", 3);
+
 // Dark appearance by default: the system theme ("Auto" in Add-ons > Themes)
 // reports dark, so Firefox's default theme draws dark chrome and pages
 // follow it (prefers-color-scheme: dark; Settings > Website appearance).
