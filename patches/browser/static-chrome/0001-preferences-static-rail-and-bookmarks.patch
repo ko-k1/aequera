@@ -36,7 +36,7 @@ diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/c
 index c6e8323f14db..1e370738aac4 100644
 --- a/browser/components/preferences/config/tabs-browsing.mjs
 +++ b/browser/components/preferences/config/tabs-browsing.mjs
-@@ -103,6 +103,9 @@
+@@ -103,6 +103,9 @@ Preferences.addAll([
    { id: "sidebar.verticalTabs", type: "bool" },
    { id: "sidebar.position_start", type: "bool" },
    { id: "aequera.rail.magnify", type: "bool" },
@@ -46,7 +46,7 @@ index c6e8323f14db..1e370738aac4 100644
  ]);
  
  if (lazy.AppConstants.platform === "win") {
-@@ -591,6 +594,36 @@
+@@ -591,6 +594,36 @@ Preferences.addSetting({
      !Services.prefs.getBoolPref("sidebar.verticalTabs.requireRevamp", true),
  });
  
@@ -83,7 +83,7 @@ index c6e8323f14db..1e370738aac4 100644
  SettingGroupManager.registerGroups({
    browserLayout: {
      subcategory: "layout",
-@@ -645,6 +678,14 @@
+@@ -645,6 +678,14 @@ SettingGroupManager.registerGroups({
          id: "browserLayoutTabsMagnify",
          l10nId: "browser-layout-tabs-magnify",
        },
@@ -102,7 +102,7 @@ diff --git a/browser/locales/en-US/browser/preferences/preferences.ftl b/browser
 index 4d11e2396282..d657f56889b2 100644
 --- a/browser/locales/en-US/browser/preferences/preferences.ftl
 +++ b/browser/locales/en-US/browser/preferences/preferences.ftl
-@@ -378,6 +378,14 @@
+@@ -378,6 +378,14 @@ browser-layout-tabs-magnify =
      .label = Magnify tab icons under the pointer
      .description = The icons near the pointer grow so the one you are about to click is easy to spot. Tabs stay in place.
  

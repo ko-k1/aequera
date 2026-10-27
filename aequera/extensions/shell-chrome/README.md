@@ -38,13 +38,13 @@ the exact chord is a later shell-integration decision, not a silent override.
 
 ## Load against the real tree
 
-1. Build or run the pinned tree: `aequera patch apply && <firefox build/run from worktree/firefox @ 3c71aeac>`.
+1. Build or run the pinned tree: `aequera patch apply && <firefox build/run from worktree/firefox @ 9378fbc5>`.
 2. Open `about:debugging#/runtime/this-firefox` → Load Temporary Add-on → pick `manifest.json`.
 3. Exercise: create workspace, open/switch/close/restore/move/pin tabs, fire the command; confirm no errors and `worktree/firefox` shows no source diff.
 
 ## Live smoke (proven 2026-09-24, TEMP-only harness, repo untouched)
 
-Heads-up: the repo manifest pins `strict_min_version 158.0` (the lock).
+Heads-up: the repo manifest pins `strict_min_version 158.0.1` (the lock).
 The smoke runs a throwaway copy under `%TEMP%\aequera-smoke` with the min
 version lowered, plus a TEMP-only `smoke.html` runner — none of it is committed.
 
@@ -66,11 +66,11 @@ version lowered, plus a TEMP-only `smoke.html` runner — none of it is committe
 - `aequera upstream verify` → verified; `aequera patch status` → base match, applied state matches manifest.
 - `python3 -m unittest discover -s tests/unit/build` green
   (`test_shell_chrome_manifest.py` enforces the manifest bullets below in CI:
-  it parses; `strict_min_version` == lock version `158.0`; permissions ⊆
+  it parses; `strict_min_version` == lock version `158.0.1`; permissions ⊆
   {tabs, sessions, storage, history, bookmarks}; icons 16/32/48/128 resolve
   to real PNGs; background scripts exist; no network call sites).
 - Live Marionette smoke in real Firefox green (4/4 steps; see above).
-- Temporary load in the pinned 158.0 build remains the final gate (manual; full Firefox build is hours).
+- Temporary load in the pinned 158.0.1 build remains the final gate (manual; full Firefox build is hours).
 
 ## Explicit non-goals (v0 + palette)
 
@@ -79,7 +79,7 @@ Sidebar/panel UI bundling, workspace persistence beyond window values, exact
 
 ## Known residual: manifest_version 2
 
-`manifest.json` stays on `manifest_version: 2` pinned to the `158.0` lock.
+`manifest.json` stays on `manifest_version: 2` pinned to the `158.0.1` lock.
 A future MV3 migration is tracked work: it must not silently widen
 permissions (`history`, `bookmarks` stay read-only palette sources) and must
 re-prove the live Marionette smoke before the version pin moves.

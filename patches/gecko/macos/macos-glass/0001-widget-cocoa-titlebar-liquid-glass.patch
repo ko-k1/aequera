@@ -30,10 +30,10 @@ Upstream risk: low. One file plus a pref; if Mozilla adopts glass for
   titlebars itself, drop this patch.
 
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index 48c9b0c3d54c..b9d689bc41f3 100644
+index 19b4a888c9ad..2951c4ea548b 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
-@@ -20861,6 +20861,13 @@
+@@ -20878,6 +20878,13 @@
    value: false
    mirror: always
  

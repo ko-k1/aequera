@@ -6,8 +6,8 @@
   },
   "firefox": {
     "channel": "release",
-    "version": "158.0",
-    "revision": "3c71aeacdb296402e41fb2084b13e797d1770642"
+    "version": "158.0.1",
+    "revision": "9378fbc58660847fbc02c3486a0ecd6049978e25"
   },
   "platforms": [
     {
@@ -25,7 +25,7 @@
         "Tor windows: loopback TCP SOCKS port, bundled tor.exe 0.4.9.14, live check 24/24 (2026-10-16)"
       ],
       "known_deviations": [
-        "158.0 (adopted 2026-10-16): artifact build and the full shell gate re-run on 158.0; the compiled build was last built on 157.0.1"
+        "158.0.1 (adopted 2026-10-27 on Linux): not rebuilt or re-tested on Windows yet; the last Windows artifact build and full shell gate were on 158.0 (2026-10-16), and the compiled build was last built on 157.0.1"
       ],
       "workarounds": [
         "tools/build/windows/mozconfig serializes Windows builds to -j1 on loaded hosts; export AEQUERA_MAKE_FLAGS with a higher -j when the box is idle"
@@ -47,10 +47,11 @@
         "patch check: full series applies cleanly against the locked base",
         "artifact build + run (NixOS 26.05 and 26.11)",
         "shell mochitests (aequera + upstream suites): 868 passed, 0 failed (NixOS 26.05 and 26.11)",
+        "158.0.1: artifact build + full shell gate on Linux aarch64 (Arch Linux ARM): 13/13 suites, 2374 checks passed, 0 failed, 38 todo (2026-10-27)",
         "compiled build (NixOS 26.11, Mozilla bootstrap toolchains + linux64-rust-1.95 under steam-run): builds, runs on Wayland (KWin 6.7.5 and Hyprland 0.56.2, nested in headless sway), aequera mochitests 760/760 (2026-10-14)"
       ],
       "known_deviations": [
-        "158.0 (adopted 2026-10-16 on Windows): the validated entries above are for 157.0.1; nothing has been built or run on Linux at 158.0 yet, and gecko/linux/background-blur/0001 was rebased through a conflict (Bug 2070729) without being compiled",
+        "158.0.1 (adopted 2026-10-27): the gate above ran on aarch64; the x86_64/NixOS evidence is from earlier pins, and no compiled build (including the C++ gecko patches) was re-run on 158.0.1",
         "compiled build run only in nested test compositors so far, not as a daily browser",
         "D-Bus / portal / MPRIS / search-provider rename (patches/toolkit/linux/linux-desktop) is C++: now compiled, but the owned bus names have not been checked on a session bus yet",
         "desktop entry, hicolor icons, and search-provider files ship as source; no installer copies them yet"
@@ -75,6 +76,7 @@
         "macOS CI artifact build + package on both architectures (run 39892247953, 2026-10-23; packaged-app verifier and headless content-process smoke passed)"
       ],
       "known_deviations": [
+        "158.0.1 has not been packaged on macOS; the CI package run above was at 158.0",
         "no interactive macOS browser or mochitest run has happened yet; CI packages and smoke-tests a mach-packaged artifact build",
         "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); it rejects mach's unpackaged dist/Aequera.app, which crashes on the first content-process launch because it has no omni.ja and keeps developer repo/obj paths",
         "Developer ID signing, notarization, and DMG art wait for release work",
@@ -97,6 +99,7 @@
         "macOS CI artifact build + package on both architectures (run 39892247953, 2026-10-23; packaged-app verifier and headless content-process smoke passed)"
       ],
       "known_deviations": [
+        "158.0.1 has not been packaged on macOS; the CI package run above was at 158.0",
         "no interactive macOS browser or mochitest run has happened yet; CI packages and smoke-tests a mach-packaged artifact build",
         "an ad-hoc-signed artifact-build DMG + zip path exists (tools/build/macos/package.sh); it rejects mach's unpackaged dist/Aequera.app, which crashes on the first content-process launch because it has no omni.ja and keeps developer repo/obj paths",
         "Developer ID signing, notarization, and DMG art wait for release work",

@@ -56,10 +56,10 @@ Upstream risk: medium. Hooks nsWindow's opaque-region path, container
   itself, drop this patch in favor of upstream's.
 
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index 964f67c02018..48c9b0c3d54c 100644
+index ea124d888416..19b4a888c9ad 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
-@@ -21039,6 +21039,13 @@
+@@ -21056,6 +21056,13 @@
    value: true
    mirror: once
  

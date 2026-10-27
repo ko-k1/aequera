@@ -36,14 +36,10 @@ Upstream risk: low; one guard and an event emission in a small, stable
   API method.
 
 diff --git a/toolkit/components/extensions/parent/ext-theme.js b/toolkit/components/extensions/parent/ext-theme.js
+index f6ea1ff9521f..a9134d4ac686 100644
 --- a/toolkit/components/extensions/parent/ext-theme.js
 +++ b/toolkit/components/extensions/parent/ext-theme.js
-@@ -243,9 +243,31 @@ this.theme = class extends ExtensionAPIPersistent {
-         update: (windowId, details) => {
-           if (windowId) {
-             const browserWindow = windowTracker.getWindow(windowId, context);
-             if (!browserWindow) {
-               return Promise.reject(`Invalid window ID: ${windowId}`);
+@@ -248,6 +248,28 @@ this.theme = class extends ExtensionAPIPersistent {
              }
            }
  
@@ -70,3 +66,5 @@ diff --git a/toolkit/components/extensions/parent/ext-theme.js b/toolkit/compone
 +          }
 +
            new Theme({
+             extension,
+             details,
