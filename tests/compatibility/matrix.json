@@ -47,7 +47,7 @@
         "patch check: full series applies cleanly against the locked base",
         "artifact build + run (NixOS 26.05 and 26.11)",
         "shell mochitests (aequera + upstream suites): 868 passed, 0 failed (NixOS 26.05 and 26.11)",
-        "159.0.1: clean artifact build + full Aequera shell gate on Linux aarch64 (Arch Linux ARM): 1297 checks, 1267 passed, 0 failed, 3 todo (2026-11-04)",
+        "159.0.1: clean artifact build + full Aequera shell gate on Linux aarch64 (Arch Linux ARM): 1308 checks, 1278 passed, 0 failed, 3 todo (2026-11-05)",
         "159.0.1: upstream suite gate on Linux aarch64 (Arch Linux ARM): 12/12 suites, 1205 checks, 0 unexpected (2026-11-05)",
         "compiled build (NixOS 26.11, Mozilla bootstrap toolchains + linux64-rust-1.95 under steam-run): builds, runs on Wayland (KWin 6.7.5 and Hyprland 0.56.2, nested in headless sway), aequera mochitests 760/760 (2026-10-14)"
       ],

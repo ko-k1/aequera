@@ -90,7 +90,8 @@ Slice 1:
 - Engine cache (2026-11-04): the serialized engine is 6.3 MB (4.8 MB on
   disk), restore 31 ms vs compile 169 ms for the shipped lists in a Node/V8
   check; the ABI's serialize/deserialize round trip is covered by
-  `cargo test`.
+  `cargo test`, and `browser_aequera_adveil.js` checks the record the
+  background writes and that either list or engine.wasm changes the key.
 
 Slice 2:
 
