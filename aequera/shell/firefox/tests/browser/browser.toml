@@ -3,6 +3,9 @@ prefs = [
   "sidebar.revamp=false",
   "sidebar.verticalTabs=true",
   "sidebar.verticalTabs.requireRevamp=false",
+  # Aequera defaults would discard old tabs during a long test run; the
+  # memory-saver test enables it explicitly when it needs the timer.
+  "aequera.memory.unloadInactiveAfterMs=0",
 ]
 
 ["browser_aequera_rail.js"]
@@ -10,6 +13,8 @@ prefs = [
 ["browser_aequera_rail_side.js"]
 
 ["browser_aequera_workspaces.js"]
+
+["browser_aequera_memory.js"]
 
 ["browser_aequera_bookmarks_drawer.js"]
 

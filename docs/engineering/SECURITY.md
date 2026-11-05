@@ -14,6 +14,13 @@ Protect:
 - extension privilege boundaries;
 - secure update behavior.
 
+Aequera's content-process defaults change only how many processes one site may
+use and how many sit idle: `dom.ipc.processCount.webIsolated` consolidates
+tabs of the same site, and `dom.ipc.processPrelaunch.fission.number` reduces
+idle preallocation. Different sites still never share a content process;
+`fission.webContentIsolationStrategy` remains Firefox's isolate-everything
+default. Changing either boundary requires security review.
+
 ## Customization Security
 
 Presentation customization is not privileged browser scripting.

@@ -68,6 +68,13 @@ FIREFOX_DEFAULTS=(
   # New Tab opens a tab every time in Firefox; Aequera reuses an untouched
   # new tab page (newtab/aequera-newtab-window.js).
   --setpref aequera.newtab.single=false
+  # Aequera consolidates same-site content processes, preallocates fewer,
+  # and unloads inactive tabs on a timer; Firefox's tests expect Firefox's
+  # process policy and do not expect tabs to disappear mid-test. (The
+  # Aequera suite disables the timer in tests/browser/browser.toml.)
+  --setpref dom.ipc.processCount.webIsolated=4
+  --setpref dom.ipc.processPrelaunch.fission.number=3
+  --setpref aequera.memory.unloadInactiveAfterMs=0
   # AI features: Firefox 157's defaults (Aequera blocks them by default);
   # the sidebar tests list the chatbot, the tabs pane shows smart tab groups.
   --setpref browser.ai.control.default=available

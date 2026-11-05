@@ -28,6 +28,7 @@ for (const name of [
   "rail/aequera-tabs.js",
   "rail/aequera-tabs-drag.js",
   "workspaces/aequera-workspaces.js",
+  "memory/aequera-memory.js",
   "command/command-model.js",
   "command/aequera-command.js",
   "newtab/newtab-model.js",

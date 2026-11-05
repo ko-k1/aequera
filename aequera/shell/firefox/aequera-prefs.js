@@ -133,6 +133,23 @@ pref("aequera.workspaces.warnOnClose", true);
 // discarded.
 pref("aequera.workspaces.unloadAfterMs", 600000);
 
+// Inactive tabs outside a parked workspace are discarded after this long
+// without being selected (ms), so their content processes are released.
+// A check runs once a minute and discards at most one tab per window; 0
+// disables it. Site isolation stays on: this only unloads tabs, it never
+// puts different sites in one process. The selected tab, pinned and hidden
+// tabs, split-view panes, private tabs, and tabs playing media, sharing
+// camera/mic/screen, using Picture-in-Picture, asking before unload, or marked
+// undiscardable stay loaded. Switching back reloads from session state.
+pref("aequera.memory.unloadInactiveAfterMs", 600000);
+
+// Content-process policy. Site isolation stays on (different sites never
+// share a process), but tabs of the same site share one process instead of up
+// to four, and one process is preallocated instead of three. Both change
+// process counts, not which sites are isolated from each other.
+pref("dom.ipc.processCount.webIsolated", 1);
+pref("dom.ipc.processPrelaunch.fission.number", 1);
+
 // Sort Tabs by Site (Ctrl+Alt+S, the tab context menu, the command surface;
 // never automatic): a site with more than this many tabs in the workspace
 // moves to a workspace named after it. 0 sorts without moving; a negative

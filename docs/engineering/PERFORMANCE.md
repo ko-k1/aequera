@@ -59,8 +59,10 @@ No remote telemetry should be introduced solely for project measurement.
 
 ## Memory defaults
 
-Aequera changes Firefox's memory-pressure response, workspace parking, and
-the Tor BFCache cap; it does not change per-page content-process sizing:
+Aequera changes Firefox's memory-pressure response, workspace parking,
+inactive-tab unloading, content-process counts, and the Tor BFCache cap. It
+does not weaken site isolation: different sites never share a content
+process.
 
 - `browser.tabs.unloadOnLowMemory` is enabled. Firefox defaults it to true on
   macOS and Windows and false on Linux; on Linux this activates the PSI
@@ -77,10 +79,13 @@ the Tor BFCache cap; it does not change per-page content-process sizing:
   hosts with at least 1 GiB of RAM, so pinning 8 would not save memory (and
   would raise it on smaller hosts). The Tor profile sets `4`, a real
   reduction that may make older back/forward entries reload.
-- Firefox's content-process policy is left in place, including preallocated
-  processes. Lowering `dom.ipc.processCount` does not cap Fission's isolated
-  content processes; `dom.ipc.processCount.webIsolated` is only a per-origin
-  maximum for those, so neither is a general memory lever.
+- Fission and site isolation stay on: different sites never share a content
+  process. Two process-policy defaults only remove same-site and idle
+  overhead: `dom.ipc.processCount.webIsolated = 1` puts tabs of the same site
+  in one process instead of up to four, and
+  `dom.ipc.processPrelaunch.fission.number = 1` keeps one preallocated
+  process instead of three. `dom.ipc.processCount` remains Firefox's
+  shared-pool limit; it is not a general cap on Fission's site processes.
 - `aequera.workspaces.unloadAfterMs` (10 minutes, matching Firefox's own
   minimum inactive time before a memory-pressure unload) discards tabs hidden
   by an inactive workspace. The delay is per tab, measured from when it was
@@ -88,11 +93,19 @@ the Tor BFCache cap; it does not change per-page content-process sizing:
   is flushed first; switching back restores them. Tabs playing media or
   sharing camera/mic/screen, private tabs, pinned tabs, and tabs a page or
   extension marked `undiscardable` stay live. `0` turns the behavior off.
+- `aequera.memory.unloadInactiveAfterMs` (10 minutes) discards a tab that has
+  not been selected for that long, so its content process can be released
+  even when the machine is not under memory pressure. A check runs once a
+  minute and discards at most one tab per window. Site isolation is
+  unchanged: this releases processes by unloading tabs, it never puts
+  different sites in one process. Pinned and hidden tabs, split-view panes,
+  private tabs, media/WebRTC/Picture-in-Picture tabs, pages that ask before
+  unload, and tabs marked `undiscardable` stay live. `0` disables it.
 
-These settings define memory-pressure behavior, workspace parking, and a Tor
-BFCache cap; they do not establish a universal memory saving. Compare
-representative tab workloads with the local browser benchmark before making
-stronger performance claims.
+These settings define memory-pressure behavior, workspace parking,
+inactive-tab unloading, process counts, and a Tor BFCache cap; they do not
+establish a universal memory saving. Compare representative tab workloads
+with the local browser benchmark before making stronger performance claims.
 
 ## Measuring Against Firefox
 

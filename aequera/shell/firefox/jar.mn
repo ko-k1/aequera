@@ -37,6 +37,7 @@ browser.jar:
     content/browser/aequera/workspaces/site-sort-model.js      (workspaces/site-sort-model.js)
     content/browser/aequera/workspaces/aequera-workspaces.js   (workspaces/aequera-workspaces.js)
     content/browser/aequera/workspaces/aequera-workspaces.css  (workspaces/aequera-workspaces.css)
+    content/browser/aequera/memory/aequera-memory.js           (memory/aequera-memory.js)
     content/browser/aequera/command/command-model.js           (command/command-model.js)
     content/browser/aequera/command/aequera-command.js         (command/aequera-command.js)
     content/browser/aequera/command/aequera-urlbar.sys.mjs     (command/aequera-urlbar.sys.mjs)

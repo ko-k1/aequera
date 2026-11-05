@@ -448,6 +448,18 @@ sorts the active workspace's visible tabs.
 
 Tests: `tests/browser/browser_aequera_workspaces.js`.
 
+## Memory saver (`memory/`)
+
+`aequera-memory.js` discards tabs that have not been selected for 10 minutes
+(`aequera.memory.unloadInactiveAfterMs`; 0 disables it), so their content
+processes can be released even when the host is not under memory pressure.
+Site isolation is unchanged: this only unloads tabs, it never puts different
+sites in one process. A check runs once a minute and discards at most one tab
+per window. The selected tab, pinned and hidden tabs, split-view panes,
+private tabs, media/WebRTC/Picture-in-Picture tabs, pages that ask before
+unload, and tabs marked `undiscardable` stay loaded. Session state is flushed
+first; switching back reloads the page.
+
 ## Bookmarks drawer (`bookmarks/`)
 
 With `aequera.bookmarks.hoverPeek` on and Firefox's toolbar visibility
