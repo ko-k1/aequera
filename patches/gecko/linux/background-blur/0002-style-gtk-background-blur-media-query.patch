@@ -120,7 +120,7 @@ index 25411602badd..e39eb62d00f4 100644
      // need to re-layout.
      {"browser.theme.toolbar-theme"_ns, widget::ThemeChangeKind::AllBits},
 diff --git a/xpcom/ds/StaticAtoms.py b/xpcom/ds/StaticAtoms.py
-index 58e292aadf84..f4b02f13c538 100644
+index 47062562d22f..4093bb6c3825 100644
 --- a/xpcom/ds/StaticAtoms.py
 +++ b/xpcom/ds/StaticAtoms.py
 @@ -2342,6 +2342,7 @@ STATIC_ATOMS = [

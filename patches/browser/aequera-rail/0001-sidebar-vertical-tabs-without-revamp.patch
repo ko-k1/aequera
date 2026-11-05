@@ -66,10 +66,10 @@ index 76cab7f8e463..25f26c4f0e76 100644
              `{kPrefSidebarRevampEnabled} disabled, so also disabling ${kPrefSidebarVerticalTabsEnabled}`
            );
 diff --git a/browser/components/sidebar/SidebarManager.sys.mjs b/browser/components/sidebar/SidebarManager.sys.mjs
-index 864b77c37b02..cfcfbab43c9c 100644
+index 09dd32a61cc6..55e820fd142d 100644
 --- a/browser/components/sidebar/SidebarManager.sys.mjs
 +++ b/browser/components/sidebar/SidebarManager.sys.mjs
-@@ -38,6 +38,17 @@ ChromeUtils.defineESModuleGetters(lazy, {
+@@ -39,6 +39,17 @@ ChromeUtils.defineESModuleGetters(lazy, {
      "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
    SidebarState: "moz-src:///browser/components/sidebar/SidebarState.sys.mjs",
  });
@@ -87,7 +87,7 @@ index 864b77c37b02..cfcfbab43c9c 100644
  XPCOMUtils.defineLazyPreferenceGetter(lazy, "sidebarNimbus", "sidebar.nimbus");
  
  XPCOMUtils.defineLazyPreferenceGetter(
-@@ -65,8 +76,11 @@ XPCOMUtils.defineLazyPreferenceGetter(
+@@ -66,8 +77,11 @@ XPCOMUtils.defineLazyPreferenceGetter(
      sidebarManager.updateDefaultTools();
  
      if (!newVal) {
@@ -101,7 +101,7 @@ index 864b77c37b02..cfcfbab43c9c 100644
      }
    }
  );
-@@ -203,8 +217,12 @@ class SidebarManager extends EventTarget {
+@@ -204,8 +218,12 @@ class SidebarManager extends EventTarget {
        // know if we were _really_ removed or just moved elsewhere.
        await Promise.resolve();
        if (!lazy.CustomizableUI.getPlacementOfWidget(aWidgetId)) {

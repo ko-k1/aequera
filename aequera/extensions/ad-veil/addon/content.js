@@ -42,9 +42,23 @@
   const MAX_REPORTED = 5000;
 
   const sent = new Set();
+  // Elements whose class/id may have changed since the last name flush. A
+  // page can change thousands of attributes per frame; noting each one in
+  // the MutationObserver callback made the callback itself a hot path. The
+  // flush coalesces them (the same element once, however often it changed)
+  // on the first-batch / one-second cadence below.
+  const pendingNotes = new Set();
+  const pendingSubtrees = new Set();
+  const MAX_PENDING_NOTES = 5000;
+  // After the first batch, new names are collected for this long. The
+  // childList observer queues changes and the sweep catches class/id changes
+  // on existing elements; the page pays for scanning names a few times a
+  // second, not once per changed element.
+  const NAME_FLUSH_MS = 1000;
   let classes = [];
   let ids = [];
   let nameTimer = 0;
+  let lastFlush = 0;
 
   let active = true;
   // Scans wait for the first answer.
@@ -77,6 +91,21 @@
     return sent.size < MAX_SENT && classes.length + ids.length < MAX_NAMES;
   }
 
+  function queueNote(element) {
+    if (sent.size >= MAX_SENT) {
+      return;
+    }
+    if (element?.nodeType == Node.ELEMENT_NODE && pendingNotes.size < MAX_PENDING_NOTES) {
+      pendingNotes.add(element);
+    }
+  }
+
+  function queueSubtree(node) {
+    if (node?.nodeType == Node.ELEMENT_NODE && pendingSubtrees.size < MAX_PENDING_NOTES) {
+      pendingSubtrees.add(node);
+    }
+  }
+
   function applied(list) {
     if (active && Array.isArray(list) && list.length) {
       selectors.push(...list);
@@ -86,7 +115,26 @@
 
   function flushNames() {
     nameTimer = 0;
-    if (!active || (!classes.length && !ids.length)) {
+    if (!active || document.hidden) {
+      pendingNotes.clear();
+      pendingSubtrees.clear();
+      return;
+    }
+    for (const node of pendingSubtrees) {
+      if (!node.isConnected) {
+        continue;
+      }
+      queueNote(node);
+      for (const element of node.querySelectorAll("[class], [id]")) {
+        queueNote(element);
+      }
+    }
+    pendingSubtrees.clear();
+    for (const element of pendingNotes) {
+      note(element);
+    }
+    pendingNotes.clear();
+    if (!classes.length && !ids.length) {
       return;
     }
     browser.runtime
@@ -96,6 +144,89 @@
     classes = [];
     ids = [];
   }
+
+  function scheduleNames() {
+    if (nameTimer) {
+      return;
+    }
+    const delay = lastFlush ? Math.max(0, NAME_FLUSH_MS - (Date.now() - lastFlush)) : 0;
+    nameTimer = setTimeout(() => {
+      lastFlush = Date.now();
+      flushNames();
+    }, delay);
+  }
+
+  // Attribute changes are not observed: on a page that rewrites thousands of
+  // class/id values a second, Gecko's per-change mutation records cost more
+  // than the whole cosmetic scan (measured on a mutation-heavy fixture:
+  // ~14% of a core with Ad Veil off, ~33% with a class/id observer, under 1%
+  // of the content process in content.js itself). A bounded sweep catches
+  // names that appear on existing elements; childList mutations still queue
+  // their subtrees at once. The sweep walks up to MAX_SWEEP elements a
+  // second, so the delay is about a second up to that many elements; a
+  // larger document takes ceil(elements / MAX_SWEEP) seconds to cycle.
+  // Its element list is cached and rebuilt only after childList changes, so
+  // a page that is not changing structure does not pay for a full query
+  // every second.
+  const SWEEP_MS = 1000;
+  const MAX_SWEEP = 5000;
+  let sweepTimer = 0;
+  let sweepIndex = 0;
+  let sweepElements = null;
+  let sweepDirty = true;
+
+  function sweep() {
+    if (sweepTimer) {
+      clearTimeout(sweepTimer);
+      sweepTimer = 0;
+    }
+    if (!active || !started || document.hidden || sent.size >= MAX_SENT) {
+      return;
+    }
+    if (!sweepElements || sweepDirty) {
+      sweepElements = Array.from(document.getElementsByTagName("*"));
+      sweepDirty = false;
+      if (sweepIndex >= sweepElements.length) {
+        sweepIndex = 0;
+      }
+    }
+    const elements = sweepElements;
+    if (elements.length) {
+      const count = Math.min(MAX_SWEEP, elements.length);
+      let queued = false;
+      for (let i = 0; i < count; i++) {
+        const element = elements[(sweepIndex + i) % elements.length];
+        if (element.hasAttribute("class") || element.hasAttribute("id")) {
+          queueNote(element);
+          queued = true;
+        }
+      }
+      sweepIndex = (sweepIndex + count) % elements.length;
+      // New names schedule a flush; the background's selectors schedule the
+      // cosmetic scan when they arrive (applied()). Scheduling a scan here
+      // would run one on every page once a second even when nothing changed.
+      if (queued) {
+        scheduleNames();
+      }
+    }
+    sweepTimer = setTimeout(sweep, SWEEP_MS);
+  }
+
+  function startSweep() {
+    if (!sweepTimer && active && started && !document.hidden) {
+      sweepTimer = setTimeout(sweep, SWEEP_MS);
+    }
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && active && started) {
+      // Scans and element reports that arrived while this tab was hidden
+      // were dropped by schedule(); run the one now due as well as the
+      // periodic name sweep.
+      schedule();
+      sweep();
+    }
+  });
 
   const isWeb = url => /^https?:/i.test(url || "");
 
@@ -562,7 +693,13 @@
   }
 
   function schedule() {
-    if (active && started && (selectors.length || procedural.length || pendingUrls.size || waiting.size) && !idle) {
+    if (
+      !document.hidden &&
+      active &&
+      started &&
+      (selectors.length || procedural.length || pendingUrls.size || waiting.size) &&
+      !idle
+    ) {
       idle = requestIdleCallback(scan, { timeout: 1000 });
     }
   }
@@ -580,28 +717,25 @@
           continue;
         }
         changed = true;
-        note(record.target);
+        queueNote(record.target);
         continue;
       }
       changed = true;
+      if (record.type == "childList") {
+        sweepDirty = true;
+      }
       for (const node of record.addedNodes) {
-        if (node.nodeType != Node.ELEMENT_NODE) {
-          continue;
-        }
-        note(node);
-        for (const element of node.querySelectorAll("[class], [id]")) {
-          note(element);
-        }
+        queueSubtree(node);
       }
     }
     if (!changed) {
       return;
     }
     // The first batch of names goes out at once; later ones are coalesced.
-    nameTimer ||= setTimeout(flushNames, sent.size > classes.length + ids.length ? 100 : 0);
+    scheduleNames();
     schedule();
   });
-  observer.observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "id"] });
+  observer.observe(document, { childList: true, subtree: true });
 
   // Popups and redirects (docs/design/ADS.md): the last click in this frame
   // and what it was on, which the background asks for when the page opens a
@@ -741,10 +875,11 @@
       if (typeof reply.mark == "string" && /^v[0-9a-f]{12}$/.test(reply.mark)) {
         mark = reply.mark;
         procedural = Array.isArray(reply.procedural) ? reply.procedural : [];
-        observer.observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "id", mark] });
+        observer.observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: [mark] });
       }
       applied(reply.selectors);
       schedule();
+      startSweep();
       if (reply.adFrame) {
         describeOwnFrame();
       } else if (window != window.top) {

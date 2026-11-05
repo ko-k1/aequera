@@ -82,6 +82,113 @@ add_task(async function test_switch_hides_other_tabs_and_restores_selection() {
   await resetWorkspaces();
 });
 
+add_task(async function test_inactive_workspace_tabs_unload_and_restore() {
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.workspaces.unloadAfterMs", 0]] });
+  const home = ws().state.active;
+  ws().newWorkspace();
+  const work = ws().state.active;
+  const workTab = gBrowser.selectedTab;
+  BrowserTestUtils.startLoadingURIString(workTab.linkedBrowser, "data:text/html,<p>work page</p>");
+  await BrowserTestUtils.browserLoaded(workTab.linkedBrowser);
+
+  ws().switchTo(home);
+  ok(workTab.hidden, "the work tab is parked");
+  is(await ws().unloadInactiveWorkspaceTabs(), 1, "the parked tab is discarded");
+  ok(workTab.hasAttribute("pending"), "it is now a lazy tab");
+  ok(!workTab.linkedPanel, "its content browser is gone");
+
+  ws().switchTo(work);
+  is(gBrowser.selectedTab, workTab, "switching back selects the parked tab");
+  await TestUtils.waitForCondition(() => !workTab.hasAttribute("pending"), "switching back reloads it");
+  ok(workTab.linkedPanel, "with a live content browser");
+  await SpecialPowers.popPrefEnv();
+  await resetWorkspaces();
+});
+
+add_task(async function test_unload_runs_after_the_configured_delay() {
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.workspaces.unloadAfterMs", 50]] });
+  const home = ws().state.active;
+  ws().newWorkspace();
+  const work = ws().state.active;
+  const workTab = gBrowser.selectedTab;
+  BrowserTestUtils.startLoadingURIString(workTab.linkedBrowser, "data:text/html,<p>later</p>");
+  await BrowserTestUtils.browserLoaded(workTab.linkedBrowser);
+
+  ws().switchTo(home);
+  ok(!workTab.hasAttribute("pending"), "not discarded at once");
+  await TestUtils.waitForCondition(() => workTab.hasAttribute("pending"), "discarded after the delay");
+  ws().switchTo(work);
+  await TestUtils.waitForCondition(() => !workTab.hasAttribute("pending"), "and restored on return");
+  await SpecialPowers.popPrefEnv();
+  await resetWorkspaces();
+});
+
+add_task(async function test_unload_clock_is_per_tab_across_other_switches() {
+  const delay = 1000;
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.workspaces.unloadAfterMs", delay]] });
+  const home = ws().state.active;
+  ws().newWorkspace();
+  const work = ws().state.active;
+  const workTab = gBrowser.selectedTab;
+  BrowserTestUtils.startLoadingURIString(workTab.linkedBrowser, "data:text/html,<p>parked</p>");
+  await BrowserTestUtils.browserLoaded(workTab.linkedBrowser);
+
+  ws().newWorkspace();
+  // `workTab` is parked by this switch; its clock starts here, not before.
+  const parkedAt = Date.now();
+  const otherTab = gBrowser.selectedTab;
+  BrowserTestUtils.startLoadingURIString(otherTab.linkedBrowser, "data:text/html,<p>elsewhere</p>");
+  await BrowserTestUtils.browserLoaded(otherTab.linkedBrowser);
+
+  // Leave most of the delay, then switch again. That switch must not restart
+  // the parked tab's clock.
+  await new Promise(resolve => setTimeout(resolve, Math.round(delay * 0.75)));
+  ws().switchTo(home);
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, parkedAt + delay + 400 - Date.now())));
+  ok(workTab.hasAttribute("pending"), "the tab unloaded at its original deadline");
+
+  ws().switchTo(work);
+  await TestUtils.waitForCondition(() => !workTab.hasAttribute("pending"), "switching back reloads it");
+  await SpecialPowers.popPrefEnv();
+  await resetWorkspaces();
+});
+
+add_task(async function test_unload_protects_tabs_a_user_or_page_keeps() {
+  await SpecialPowers.pushPrefEnv({ set: [["aequera.workspaces.unloadAfterMs", 0]] });
+  const home = ws().state.active;
+  ws().newWorkspace();
+  const tabs = [];
+  for (const protect of ["soundplaying", "pictureinpicture", "undiscardable"]) {
+    const tab = await openTab("data:text/html,<p>protected</p>");
+    if (protect == "undiscardable") {
+      tab.undiscardable = true;
+    } else {
+      tab.toggleAttribute(protect, true);
+    }
+    tabs.push([tab, protect]);
+  }
+  const pinned = await openTab("data:text/html,<p>pinned</p>");
+  gBrowser.pinTab(pinned);
+
+  ws().switchTo(home);
+  is(await ws().unloadInactiveWorkspaceTabs(), 1, "only the workspace's unprotected tab is discarded");
+  for (const [tab, why] of tabs) {
+    ok(!tab.hasAttribute("pending"), `${why} tab stays loaded`);
+  }
+
+  for (const [tab, protect] of tabs) {
+    if (protect == "undiscardable") {
+      tab.undiscardable = false;
+    } else {
+      tab.toggleAttribute(protect, false);
+    }
+  }
+  is(await ws().unloadInactiveWorkspaceTabs(), 3, "they unload once the protection is gone");
+  ok(!pinned.hasAttribute("pending"), "pinned tabs are never discarded");
+  await SpecialPowers.popPrefEnv();
+  await resetWorkspaces();
+});
+
 add_task(async function test_extension_hidden_and_pinned_tabs_are_untouched() {
   const home = ws().state.active;
   const pinned = await openTab();

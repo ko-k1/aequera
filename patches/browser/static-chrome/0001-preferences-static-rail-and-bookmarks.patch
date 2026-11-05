@@ -33,10 +33,10 @@ Validation: aequera/shell/firefox/tests/browser/browser_aequera_rail_side.js
 Upstream risk: low-medium; same settings-redesign config as rail-position.
 
 diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
-index c6e8323f14db..1e370738aac4 100644
+index 9e2936755f88..8c57cdeb2258 100644
 --- a/browser/components/preferences/config/tabs-browsing.mjs
 +++ b/browser/components/preferences/config/tabs-browsing.mjs
-@@ -103,6 +103,9 @@ Preferences.addAll([
+@@ -109,6 +109,9 @@ Preferences.addAll([
    { id: "sidebar.verticalTabs", type: "bool" },
    { id: "sidebar.position_start", type: "bool" },
    { id: "aequera.rail.magnify", type: "bool" },
@@ -46,7 +46,7 @@ index c6e8323f14db..1e370738aac4 100644
  ]);
  
  if (lazy.AppConstants.platform === "win") {
-@@ -591,6 +594,36 @@ Preferences.addSetting({
+@@ -652,6 +655,36 @@ Preferences.addSetting({
      !Services.prefs.getBoolPref("sidebar.verticalTabs.requireRevamp", true),
  });
  
@@ -83,7 +83,7 @@ index c6e8323f14db..1e370738aac4 100644
  SettingGroupManager.registerGroups({
    browserLayout: {
      subcategory: "layout",
-@@ -645,6 +678,14 @@ SettingGroupManager.registerGroups({
+@@ -706,6 +739,14 @@ SettingGroupManager.registerGroups({
          id: "browserLayoutTabsMagnify",
          l10nId: "browser-layout-tabs-magnify",
        },
@@ -99,7 +99,7 @@ index c6e8323f14db..1e370738aac4 100644
    },
    tabs: {
 diff --git a/browser/locales/en-US/browser/preferences/preferences.ftl b/browser/locales/en-US/browser/preferences/preferences.ftl
-index 4d11e2396282..d657f56889b2 100644
+index b3df13e9b8e5..bc458ef7654a 100644
 --- a/browser/locales/en-US/browser/preferences/preferences.ftl
 +++ b/browser/locales/en-US/browser/preferences/preferences.ftl
 @@ -378,6 +378,14 @@ browser-layout-tabs-magnify =

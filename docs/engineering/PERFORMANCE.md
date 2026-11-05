@@ -59,8 +59,8 @@ No remote telemetry should be introduced solely for project measurement.
 
 ## Memory defaults
 
-Aequera changes Firefox's memory-pressure response and the Tor BFCache cap;
-it does not change steady-state content-process sizing:
+Aequera changes Firefox's memory-pressure response, workspace parking, and
+the Tor BFCache cap; it does not change per-page content-process sizing:
 
 - `browser.tabs.unloadOnLowMemory` is enabled. Firefox defaults it to true on
   macOS and Windows and false on Linux; on Linux this activates the PSI
@@ -81,11 +81,18 @@ it does not change steady-state content-process sizing:
   processes. Lowering `dom.ipc.processCount` does not cap Fission's isolated
   content processes; `dom.ipc.processCount.webIsolated` is only a per-origin
   maximum for those, so neither is a general memory lever.
+- `aequera.workspaces.unloadAfterMs` (10 minutes, matching Firefox's own
+  minimum inactive time before a memory-pressure unload) discards tabs hidden
+  by an inactive workspace. The delay is per tab, measured from when it was
+  parked; switching other workspaces does not restart it. Their session state
+  is flushed first; switching back restores them. Tabs playing media or
+  sharing camera/mic/screen, private tabs, pinned tabs, and tabs a page or
+  extension marked `undiscardable` stay live. `0` turns the behavior off.
 
-These settings define memory-pressure behavior and a Tor BFCache cap; they do
-not establish a universal memory saving. Compare representative tab
-workloads with the local browser benchmark before making stronger
-performance claims.
+These settings define memory-pressure behavior, workspace parking, and a Tor
+BFCache cap; they do not establish a universal memory saving. Compare
+representative tab workloads with the local browser benchmark before making
+stronger performance claims.
 
 ## Measuring Against Firefox
 
@@ -134,6 +141,45 @@ are not "optimized" back on intuition.
   154–234 vs 280–426 ms (cached is slower: Firefox writes the cache at
   exit). Caching would buy nothing measurable and cost shutdown, so the
   scripts stay uncached.
+- **Inactive workspace tabs are discarded** after
+  `aequera.workspaces.unloadAfterMs` (10 minutes). Before this, switching
+  workspaces only hid tabs: every parked page kept its content process for
+  the life of the window. Measured 2026-11-04 with the artifact build of
+  Firefox 158.0.1, Linux aarch64, using
+  `browser_bench.py --workspaces 2 --workspace-tabs 8` (two workspaces on
+  different sites, so process release is visible), one run with and one
+  without `--workspace-unload`: PSS 793 → 696 MiB, tab-process PSS
+  392 → 293 MiB, and 13 → 9 content processes across the discard pass; a
+  switch cost 19 ms before and 16 ms after (both around the 16 ms target,
+  on a loaded host). Repeats released 4–7 content processes; site process
+  sharing decides how much is released, so the guarantee is the tested
+  pending/restore behavior, not one number. The delay is per tab and is not
+  restarted by switching other workspaces; tabs sorted into another
+  workspace are armed the same way. These numbers predate the 159.0.1
+  update and were not re-measured on 159.0.1.
+  Tabs hidden by an extension, pinned tabs, private tabs, and
+  media/WebRTC/undiscardable tabs are not touched.
+- **Ad Veil does not observe class/id attributes.** A page that rewrote a
+  few hundred class/id values per frame made Gecko's per-change mutation
+  records the dominant cost: on a mutation-heavy fixture (2,000 elements,
+  500 rewrites every 16 ms), the content process used about 14.5% of a core
+  with Ad Veil off, 29–43% with a class/id MutationObserver, and 15.8% with
+  the bounded class/id sweep that replaced it. The sweep visits at most 5000
+  elements a second (its element list is rebuilt only after childList
+  changes), so a larger document cycles in chunks. A profiler run
+  attributed under 1% of the content process to `content.js` itself, so the
+  saving is native mutation-record work, not a smaller JavaScript loop. The
+  sweep still catches a class that appears on an existing element
+  (`test_generic_rule_matches_class_added_later`); childList mutations are
+  queued as before.
+- **Ad Veil caches its compiled engine.** The background page used to
+  compile both lists on every start (about 270 ms with instantiation). It
+  now serializes the engine once into IndexedDB, keyed by the SHA-256 of
+  both list files, engine.wasm, and the add-on version, and restores it on
+  later starts. A serialized engine is 6.3 MB (4.8 MB on disk); restoring it
+  took 31 ms vs 169 ms to compile in a Node/V8 check of the shipped lists. A
+  changed list or module recompiles; a record that no longer loads falls
+  back to compiling, so a cache problem cannot disable blocking.
 
 ## Lightness Definition
 

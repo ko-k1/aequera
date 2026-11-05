@@ -400,6 +400,68 @@ resolve({ first, warm, tabs: tabs.length });
 """
 
 
+WORKSPACES_SCRIPT = r"""
+const [count, tabsPer, rounds, unload, port] = [args[0], args[1], args[2], args[3], args[4]];
+const win = Services.wm.getMostRecentWindow("navigator:browser");
+const workspaces = win.AequeraWorkspaces;
+if (!workspaces) {
+  resolve({ skipped: true });
+  return;
+}
+await workspaces.ready;
+const gBrowser = win.gBrowser;
+const principal = Services.scriptSecurityManager.getSystemPrincipal();
+const timeout = (ms, value) => new Promise(r => win.setTimeout(() => r(value), ms));
+// A workspace on another site gets its own content process, so discarding it
+// can actually release one (tabs of the same site share a process).
+const hostFor = workspace => (workspace == 1 ? "localhost" : "127.0.0.1");
+const urlFor = (workspace, tab) => `http://${hostFor(workspace)}:${port}/page/${workspace * 100 + tab}`;
+const ids = [workspaces.state.active];
+const tabs = [];
+for (let i = 1; i < count; i++) {
+  workspaces.newWorkspace();
+  ids.push(workspaces.state.active);
+  const first = gBrowser.selectedTab;
+  gBrowser.fixupAndLoadURIString(urlFor(i, 0), { triggeringPrincipal: principal });
+  tabs.push(first);
+  for (let n = 1; n < tabsPer; n++) {
+    tabs.push(gBrowser.addTab(urlFor(i, n), { triggeringPrincipal: principal }));
+  }
+}
+const loaded = b => /^http:\/\/(127\.0\.0\.1|localhost):/.test(b.currentURI.spec) && !b.webProgress?.isLoadingDocument;
+for (let i = 0; i < 3000 && !tabs.every(t => loaded(t.linkedBrowser)); i++) {
+  await new Promise(r => setTimeout(r, 20));
+}
+const switchTo = async id => {
+  const t0 = ChromeUtils.now();
+  workspaces.switchTo(id);
+  const painted = new Promise(r => win.addEventListener("MozAfterPaint", () => r(ChromeUtils.now()), { once: true }));
+  const at = await Promise.race([painted, timeout(5000, null)]);
+  return at === null ? null : at - t0;
+};
+const switches = [];
+for (let round = 0; round < rounds; round++) {
+  for (const id of ids) {
+    switches.push(await switchTo(id));
+  }
+}
+workspaces.switchTo(ids[0]);
+const hidden = gBrowser.tabs.filter(t => t.hidden && !t.pinned).length;
+const pending = gBrowser.tabs.filter(t => t.hasAttribute("pending")).length;
+const unloaded = unload ? await workspaces.unloadInactiveWorkspaceTabs() : 0;
+resolve({
+  skipped: false,
+  workspaces: ids.length,
+  tabs: tabs.length,
+  hidden,
+  pending,
+  unloaded,
+  switches: switches.filter(value => value !== null),
+  timeouts: switches.filter(value => value === null).length,
+});
+"""
+
+
 def write_user_js(profile, marionette_port, proxy_port, prefs):
     base = {
         "marionette.port": marionette_port,
@@ -524,6 +586,20 @@ def one_run(args, template, workdir, proxy, fixtures, env, index):
             result["tab_switch"] = _round(switch)
             time.sleep(3)
             result["memory_tabs"] = tree_memory(browser.proc.pid)
+        if args.workspaces:
+            scenario = browser.m.execute(WORKSPACES_SCRIPT, [
+                args.workspaces,
+                args.workspace_tabs,
+                args.workspace_rounds,
+                args.workspace_unload,
+                fixtures.port,
+            ])
+            result["workspace"] = scenario
+            if not scenario.get("skipped"):
+                result["workspace"]["switch_ms"] = _stats(scenario["switches"])
+                # Discarding tears the content processes down asynchronously.
+                time.sleep(3)
+                result["memory_workspaces"] = tree_memory(browser.proc.pid)
     finally:
         result_shutdown = browser.quit()
     result["shutdown_ms"] = round(result_shutdown, 1) if result_shutdown else None
@@ -603,6 +679,10 @@ def main():
     p.add_argument("--warmup-seconds", type=float, default=45, help="first (unmeasured) launch")
     p.add_argument("--tabs", type=int, default=8, help="fixture tabs for the switch test (0 skips it)")
     p.add_argument("--tab-rounds", type=int, default=3)
+    p.add_argument("--workspaces", type=int, default=0, help="Aequera workspace scenario: workspace count (0 skips it)")
+    p.add_argument("--workspace-tabs", type=int, default=8, help="fixture tabs per added workspace")
+    p.add_argument("--workspace-rounds", type=int, default=2)
+    p.add_argument("--workspace-unload", action="store_true", help="discard the parked workspaces before measuring memory")
     p.add_argument("--pref", action="append", default=[], help="name=value, written to user.js")
     p.add_argument("--env", action="append", default=[], help="NAME=value for the browser")
     p.add_argument("--headless", action="store_true")
@@ -659,7 +739,10 @@ def main():
         },
         "settings": {
             "runs": args.runs, "settle_s": args.settle, "idle_s": args.idle, "tabs": args.tabs,
-            "tab_rounds": args.tab_rounds, "prefs": args.prefs, "purgecaches": args.purgecaches,
+            "tab_rounds": args.tab_rounds, "workspaces": args.workspaces,
+            "workspace_tabs": args.workspace_tabs, "workspace_rounds": args.workspace_rounds,
+            "workspace_unload": args.workspace_unload,
+            "prefs": args.prefs, "purgecaches": args.purgecaches,
         },
         "first_launch": {"startup": warm_startup, "network": warm_network},
         "summary": summarize(good) if good else None,

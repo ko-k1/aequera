@@ -35,6 +35,15 @@
   }
 }
 
+/* The Aequera list and its New Tab row are rail chrome. When the rail is
+ * inactive (Firefox's revamp launcher, or horizontal tabs), leave that
+ * sidebar's layout alone. The row can be a sibling of the list while the
+ * rows overflow (aequera-tabs.js placeNewTab). */
+:root:not([aequera-rail]) #aequera-tabs,
+:root:not([aequera-rail]) .aequera-newtab {
+  display: none;
+}
+
 #aequera-tabs {
   --aequera-row-inset: 6px;
   /* 16px icon centered on the collapsed rail's icon column. */

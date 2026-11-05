@@ -24,6 +24,69 @@
 const LISTS = { ads: "lists/easylist.txt", privacy: "lists/easyprivacy.txt" };
 const OWN = browser.runtime.getURL("");
 
+// A compiled engine is cached in IndexedDB between starts: instantiate plus
+// compile both lists costs about 270 ms per start, while loading the
+// serialized engine costs about 44 ms (docs/design/ADS.md). The key includes
+// both list digests, the add-on version, and engine.wasm's digest, so changed
+// lists or a rebuilt module recompile; a record that no longer loads (a
+// format change) falls back to compiling too.
+const ENGINE_CACHE_DB = "aequera-adveil-engine";
+const ENGINE_CACHE_STORE = "engines";
+const ENGINE_CACHE_VERSION = 1;
+const ENGINE_CACHE_MAX_BYTES = 128 * 1024 * 1024;
+let engineCacheDB = null;
+
+function openEngineCache() {
+  engineCacheDB ||= new Promise((resolve, reject) => {
+    const request = indexedDB.open(ENGINE_CACHE_DB, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(ENGINE_CACHE_STORE);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("engine cache blocked"));
+  }).catch(error => {
+    // A failed cache must not fail the engine.
+    engineCacheDB = null;
+    throw error;
+  });
+  return engineCacheDB;
+}
+
+async function readEngineCache(key) {
+  const db = await openEngineCache();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(ENGINE_CACHE_STORE).objectStore(ENGINE_CACHE_STORE).get(key);
+    request.onsuccess = () => resolve(request.result ?? null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function writeEngineCache(key, record) {
+  const db = await openEngineCache();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(ENGINE_CACHE_STORE, "readwrite");
+    const store = transaction.objectStore(ENGINE_CACHE_STORE);
+    // One engine: a record for older lists is never used again.
+    store.clear();
+    store.put(record, key);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error("engine cache write aborted"));
+  });
+}
+
+function hex(bytes) {
+  return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function engineCacheKey(ads, privacy, wasm) {
+  const [adsDigest, privacyDigest, wasmDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", ads),
+    crypto.subtle.digest("SHA-256", privacy),
+    crypto.subtle.digest("SHA-256", wasm),
+  ]);
+  return `${ENGINE_CACHE_VERSION}:${browser.runtime.getManifest().version}:${hex(adsDigest)}:${hex(privacyDigest)}:${hex(wasmDigest)}`;
+}
+
 // Request types veil mode still blocks: they never show an ad.
 const NON_VISUAL = new Set(["beacon", "ping", "csp_report"]);
 
@@ -157,22 +220,76 @@ const settingsReady = browser.storage.local
   .catch(error => console.error("Ad Veil: settings unreadable, using defaults", error));
 
 const ready = (async () => {
-  const [all, adsText, privacyText] = await Promise.all([
+  const [all, adsBytes, privacyBytes, wasmBytes] = await Promise.all([
     VeilEngine.load(),
-    fetch(browser.runtime.getURL(LISTS.ads)).then(response => response.text()),
-    fetch(browser.runtime.getURL(LISTS.privacy)).then(response => response.text()),
+    fetch(browser.runtime.getURL(LISTS.ads)).then(response => response.arrayBuffer()),
+    fetch(browser.runtime.getURL(LISTS.privacy)).then(response => response.arrayBuffer()),
+    VeilEngine.source(),
   ]);
-  if (!all.compile(`${adsText}\n${privacyText}`)) {
-    throw new Error("filter lists did not compile");
+
+  let cacheKey = null;
+  let cached = null;
+  try {
+    cacheKey = await engineCacheKey(adsBytes, privacyBytes, wasmBytes);
+    cached = await readEngineCache(cacheKey);
+  } catch (error) {
+    console.error("Ad Veil: engine cache unreadable, compiling", error);
   }
-  const adHosts = VeilModel.adHostsFrom(adsText);
-  adHostSet = new Set(adHosts);
-  browser.aequeraVeil.setAdHosts(adHosts).catch(error => console.error("Ad Veil: veil mode unavailable", error));
+
+  // A cached record carries the list metadata and ad hosts too, so a cache
+  // hit never decodes the lists into strings.
+  let restored = false;
+  if (
+    cached?.version == ENGINE_CACHE_VERSION &&
+    cached.bytes?.byteLength &&
+    Array.isArray(cached.lists) &&
+    Array.isArray(cached.adHosts)
+  ) {
+    try {
+      restored = all.restore(new Uint8Array(cached.bytes));
+    } catch (error) {
+      console.error("Ad Veil: cached engine did not load, compiling", error);
+    }
+  }
+  if (restored) {
+    listsInfo = cached.lists;
+    adHostSet = new Set(cached.adHosts);
+    browser.aequeraVeil.setAdHosts(cached.adHosts).catch(error => console.error("Ad Veil: veil mode unavailable", error));
+  } else {
+    const adsText = new TextDecoder().decode(adsBytes);
+    const privacyText = new TextDecoder().decode(privacyBytes);
+    if (!all.compile(`${adsText}\n${privacyText}`)) {
+      throw new Error("filter lists did not compile");
+    }
+    const adHosts = VeilModel.adHostsFrom(adsText);
+    adHostSet = new Set(adHosts);
+    browser.aequeraVeil.setAdHosts(adHosts).catch(error => console.error("Ad Veil: veil mode unavailable", error));
+    listsInfo = [
+      { name: "EasyList", ...VeilModel.listInfo(adsText) },
+      { name: "EasyPrivacy", ...VeilModel.listInfo(privacyText) },
+    ];
+    if (cacheKey) {
+      const record = { version: ENGINE_CACHE_VERSION, bytes: null, lists: listsInfo, adHosts };
+      // Serialize off the startup path: requests are served as soon as
+      // `engines` is set below, and a browser that closes first just
+      // compiles again next time.
+      setTimeout(() => {
+        try {
+          const bytes = all.serialize();
+          if (!bytes?.byteLength || bytes.byteLength > ENGINE_CACHE_MAX_BYTES) {
+            return;
+          }
+          record.bytes = bytes;
+          writeEngineCache(cacheKey, record).catch(error =>
+            console.error("Ad Veil: engine cache write failed", error)
+          );
+        } catch (error) {
+          console.error("Ad Veil: engine serialization failed", error);
+        }
+      }, 1000);
+    }
+  }
   await settingsReady;
-  listsInfo = [
-    { name: "EasyList", ...VeilModel.listInfo(adsText) },
-    { name: "EasyPrivacy", ...VeilModel.listInfo(privacyText) },
-  ];
   engines = { all };
 })();
 ready.catch(error => console.error("Ad Veil: engine unavailable, nothing is blocked", error));

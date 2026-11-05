@@ -42,8 +42,9 @@ stdlib, Linux), which drives a real launch over Marionette
 | startup to first usable paint | `startup.process_to_firstPaint2_ms` (Firefox 158) or `..._firstPaint_ms` (older builds), `..._sessionRestored_ms` (nsIAppStartup.getStartupInfo), `launch_to_ready_ms` |
 | idle CPU | `idle.cpu_percent_of_one_core`, per process type (procfs ticks over the idle window) |
 | memory (idle / representative load) | `memory_idle`, `memory_tabs` (PSS and RSS per process type, smaps_rollup) |
-| tab/workspace switch feedback | `tab_switch.*_presented_ms` (select to content shown, as Talos tabswitch), `*_chrome_ms` (select to the next chrome paint) |
+| tab/workspace switch feedback | `tab_switch.*_presented_ms` (select to content shown, as Talos tabswitch), `*_chrome_ms` (select to the next chrome paint); Aequera only: `workspace.switch_ms` (`switchTo` to the next `MozAfterPaint`) |
 | hidden network calls | `network.*`: every host the browser connected to, at startup and while idle, through a local proxy that tunnels and logs host names only; `first_launch.network`: the same for the new profile's first (unmeasured) launch, over `--warmup-seconds` |
+| workspace memory | Aequera only: `memory_workspaces`, after `--workspaces` builds parked workspaces and switches back to the first |
 
 Each run starts from a copy of a warm profile (one unmeasured first launch),
 so first-run work is not counted, and closes any first-run modal it finds
@@ -61,11 +62,22 @@ steam-run:
 nix shell nixpkgs#sway -c bash tools/benchmark/browser-bench-nixos.sh \
   --aequera --label aequera --runs 5 --out .tmp/bench/aequera.json
 nix shell nixpkgs#sway -c bash tools/benchmark/browser-bench-nixos.sh \
-  --exe <firefox-158.0.1>/firefox --label firefox --runs 5 --out .tmp/bench/firefox.json
+  --exe <firefox-159.0.1>/firefox --label firefox --runs 5 --out .tmp/bench/firefox.json
 nix shell nixpkgs#sway -c bash tools/benchmark/browser-bench-nixos.sh \
   --aequera --label candidate --pref name=value ... --out .tmp/bench/candidate.json
 steam-run python3 tools/benchmark/compare.py .tmp/bench/firefox.json .tmp/bench/aequera.json
 ```
+
+`--workspaces 2 --workspace-tabs 8` adds an Aequera-only workspace
+scenario: it fills the current workspace, creates the requested number of
+workspaces, switches through them (recording `workspace.switch_ms`), and
+measures `memory_workspaces` after returning to the first. The first added
+workspace uses `localhost` instead of `127.0.0.1` so its content process is
+not shared with the first workspace; further ones use `127.0.0.1`.
+`--workspace-unload` runs the same discard pass the pref's timer runs
+before that memory sample, so a pair of runs with and without the flag
+measures what parking costs. Firefox has no workspaces and records
+`workspace.skipped`.
 
 `--pref` writes user prefs for one configuration, so a candidate default is
 measured before it is made. Never run two benchmarks, a build, or a test

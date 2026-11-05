@@ -511,6 +511,16 @@ add_task(async function test_new_tab_stays_in_reach_when_rows_overflow() {
   );
   is(Math.round(row.getBoundingClientRect().width), expandedWidth - 12, "widened: still the full-width row");
   ok(hittable(), "widened: New Tab is under the pointer, not covered");
+
+  // The overflowed New Tab row is rail chrome too: an inactive rail must
+  // not leave it taking space in sidebar-main.
+  ROOT.removeAttribute("aequera-rail");
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  is(getComputedStyle(row).display, "none", "inactive rail hides the overflowed New Tab row");
+  ROOT.toggleAttribute("aequera-rail", true);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  isnot(getComputedStyle(row).display, "none", "active rail shows New Tab again");
+
   const count = gBrowser.tabs.length;
   row.click();
   await TestUtils.waitForCondition(() => gBrowser.tabs.length == count + 1, "it opens a new tab");

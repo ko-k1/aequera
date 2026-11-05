@@ -24,7 +24,7 @@ Upstream risk: low. Conflicts only if these exact lines move (DIRS list,
   package manifest).
 
 diff --git a/browser/base/content/browser.xhtml b/browser/base/content/browser.xhtml
-index cb8fc3105f09..099e1ef32624 100644
+index 0f62dce976f4..79c81413832c 100644
 --- a/browser/base/content/browser.xhtml
 +++ b/browser/base/content/browser.xhtml
 @@ -57,6 +57,7 @@
@@ -44,7 +44,7 @@ index cb8fc3105f09..099e1ef32624 100644
  <html:body xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
  # All sets except for popupsets (commands, keys, and stringbundles)
 diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
-index ae503c243ce9..53fdb144b803 100644
+index 04bd23515eb4..e47d4b378de1 100644
 --- a/browser/installer/package-manifest.in
 +++ b/browser/installer/package-manifest.in
 @@ -268,6 +268,7 @@
@@ -56,7 +56,7 @@ index ae503c243ce9..53fdb144b803 100644
  @RESPATH@/defaults/autoconfig/prefcalls.js
  @RESPATH@/browser/defaults/permissions
 diff --git a/browser/moz.build b/browser/moz.build
-index 5a03cfc6d3f8..373fc5228cd7 100644
+index c4cf3ae52e2a..71e463d20724 100644
 --- a/browser/moz.build
 +++ b/browser/moz.build
 @@ -21,6 +21,7 @@ DIRS += [

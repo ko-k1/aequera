@@ -69,7 +69,7 @@ scan, 30,000-rule guarantee).
 build time                                    runtime (built-in add-on, extension process)
 ------------------------------------------    -------------------------------------------------
 lists/ snapshots (EasyList, EasyPrivacy)      background
-engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each start, update)
+engine/ crate --cargo--> engine.wasm            engine.wasm: restore cached engine (else compile)
                                                 webRequest.onBeforeRequest (blocking) -> check
                                                 cosmetic lookup per frame -> insertCSS (user)
                                                   selectors + the frame's mark rule
@@ -106,9 +106,14 @@ engine/ crate --cargo--> engine.wasm            engine.wasm: compile lists (each
   `addon/lists/` with their license and version header (the uBlock Origin
   and AdNauseam repositories do the same). They are refreshed per release
   and are the known-good fallback for updates.
-- The engine compiles them at every start (slice 1; about 270 ms with
-  instantiation). Caching the serialized engine (44 ms load in the spike)
-  is the planned startup improvement, with the snapshots as fallback.
+- The engine serializes itself after the first compile and restores that
+  engine from IndexedDB on later starts (2026-11-04). The cache key contains
+  the SHA-256 of both list files, engine.wasm, and the add-on version, so
+  changed lists or a rebuilt module recompile; a record that no longer loads
+  (a format change) also falls back to compiling. Startup cost is then a load
+  (44 ms in the spike, 31 ms for the shipped lists in a Node check) instead
+  of a compile (about 270 ms with instantiation); the snapshots remain the
+  fallback.
 - Until the engine is ready, `onBeforeRequest` waits for it (as uBlock
   Origin does on Firefox) instead of letting requests through.
 - adblock-rust is built with `css-validation`, so procedural operators
@@ -469,8 +474,12 @@ configuration failures recover to a known-good state).
 - Chrome: no new parent-process work per request beyond webRequest's
   channel suspend; rail, address bar, and command surface latency unchanged.
 - Startup: first window not delayed; first-run compile happens in the
-  extension process.
+  extension process, later starts restore the cached engine.
 - Per request: p99 under 100 µs in SpiderMonkey.
+- Cosmetic content script: no class/id MutationObserver (per-change records
+  dominated a mutation-heavy page); a bounded sweep (5000 elements a second,
+  cached element list) plus childList delivery, as measured in
+  `docs/engineering/PERFORMANCE.md`.
 - Memory: add-on process share under 60 MiB with both lists loaded.
 
 Missing the budget points to the Gecko-level alternative in ADR 0003.

@@ -15,6 +15,12 @@
  * width transition, aequera-rail.js), then they fade out.
  * Semantic Firefox tokens only, so themes and high contrast carry through. */
 
+/* The dock belongs to the rail. When the rail is inactive (Firefox's revamp
+ * launcher, or horizontal tabs), it must not add a row to that sidebar. */
+:root:not([aequera-rail]) #aequera-workspace-dock {
+  display: none;
+}
+
 #aequera-workspace-dock {
   --aequera-dock-inset: 6px;
   /* Dot (10px) centered on the collapsed rail's icon column. */

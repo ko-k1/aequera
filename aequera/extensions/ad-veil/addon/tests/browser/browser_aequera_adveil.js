@@ -19,6 +19,9 @@ const { AppUiTestDelegate } = ChromeUtils.importESModule("resource://testing-com
 const ID = "adveil@aequera";
 const PREF = "aequera.adveil.enabled";
 const PAGE = "https://example.com/browser/browser/aequera-adveil/tests/browser/adveil_page.html";
+// A page with no ad class at load: a class the sweep finds later must insert
+// the generic rule itself.
+const LATE_PAGE = "https://example.com/browser/browser/aequera-adveil/tests/browser/adveil_late.html";
 // The fixtures' ad image, and a page whose ad a script draws into an iframe
 // without a src after the slot exists (how real ad slots work).
 const AD_IMAGE = "https://example.com/browser/browser/aequera-adveil/tests/browser/adveil_ad.svg";
@@ -260,6 +263,84 @@ async function clearVault(tab) {
   });
 }
 
+// The compiled engine is cached in the add-on's IndexedDB for later starts
+// (background.js). Read it from the background page itself: the record must
+// carry the metadata a cache hit restores without decoding the lists again.
+function backgroundBrowser() {
+  return WebExtensionPolicy.getByID(ID).extension.backgroundContext?.xulBrowser;
+}
+
+function readEngineCache() {
+  const browser = backgroundBrowser();
+  if (!browser) {
+    return Promise.resolve(null);
+  }
+  return SpecialPowers.spawn(browser, [], async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = content.indexedDB.open("aequera-adveil-engine", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const request = db.transaction("engines").objectStore("engines").getAll();
+    const records = await new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return records.length
+      ? records.map(record => ({
+          version: record.version,
+          bytes: record.bytes?.byteLength ?? 0,
+          lists: record.lists,
+          adHosts: record.adHosts?.length ?? 0,
+        }))
+      : null;
+  });
+}
+
+add_task(async function test_engine_cache_is_written() {
+  await waitForActive(true);
+  const records = await TestUtils.waitForCondition(readEngineCache, "engine cache record", 200, 50);
+  is(records.length, 1, "one engine is cached");
+  const [record] = records;
+  is(record.version, 1, "the cache record has the current version");
+  ok(record.bytes > 0, "the serialized engine is stored");
+  Assert.deepEqual(
+    record.lists.map(list => list.name),
+    ["EasyList", "EasyPrivacy"],
+    "the record carries both lists' metadata"
+  );
+  ok(record.adHosts > 0, "and the ad hosts veil mode needs");
+});
+
+add_task(async function test_engine_cache_key_tracks_lists_and_module() {
+  const browser = backgroundBrowser();
+  ok(browser, "background page is running");
+  const keys = await SpecialPowers.spawn(browser, [], () => {
+    const background = content.wrappedJSObject;
+    const engineCacheKey = background.engineCacheKey;
+    // The bytes must come from the background's realm for crypto.subtle.
+    const bytes = text => {
+      const array = new background.Uint8Array(text.length);
+      for (let i = 0; i < text.length; i++) {
+        array[i] = text.charCodeAt(i);
+      }
+      return array;
+    };
+    const ads = bytes("ads");
+    const privacy = bytes("privacy");
+    const wasm = bytes("wasm");
+    return Promise.all([
+      engineCacheKey(ads, privacy, wasm),
+      engineCacheKey(bytes("other ads"), privacy, wasm),
+      engineCacheKey(ads, bytes("other privacy"), wasm),
+      engineCacheKey(ads, privacy, bytes("other wasm")),
+    ]);
+  });
+  isnot(keys[1], keys[0], "a changed ads list changes the key");
+  isnot(keys[2], keys[0], "a changed privacy list changes the key");
+  isnot(keys[3], keys[0], "a rebuilt engine module changes the key");
+});
+
 add_task(async function test_installed_as_builtin() {
   const addon = await AddonManager.getAddonByID(ID);
   ok(addon, "Ad Veil is installed");
@@ -325,6 +406,51 @@ add_task(async function test_blocks_and_hides() {
   isnot(result.story, "none", "the box around it, with content of its own, stays");
   isnot(result.storyText, "none", "with its content");
   isnot(result.article, "none", "other elements are untouched");
+});
+
+// A class that appears on an existing element after load (no childList
+// mutation): the periodic name sweep must find it and insert the generic
+// rule. The page has no ad class at load, so the existing fixture's rule
+// cannot hide the element by itself.
+add_task(async function test_generic_rule_matches_class_added_later() {
+  await waitForActive(true);
+  await BrowserTestUtils.withNewTab(LATE_PAGE, browser =>
+    SpecialPowers.spawn(browser, [], async () => {
+      const doc = content.document;
+      const late = doc.createElement("div");
+      late.id = "late-ad";
+      late.className = "not-an-ad";
+      late.textContent = "late ad";
+      doc.body.append(late);
+      Assert.notEqual(
+        content.getComputedStyle(late).display,
+        "none",
+        "the element is visible before it gains an ad class"
+      );
+      await new Promise(resolve => content.setTimeout(resolve, 1200));
+      late.className = "ad_banner";
+      await ContentTaskUtils.waitForCondition(
+        () => content.getComputedStyle(late).display == "none",
+        "a class added later is hidden"
+      );
+    })
+  );
+});
+
+// A page that loads in a background tab receives its selectors while hidden;
+// the deferred cosmetic scan must run once the tab is selected.
+add_task(async function test_background_tab_gets_cosmetic_scan_when_selected() {
+  await waitForActive(true);
+  const tab = BrowserTestUtils.addTab(gBrowser, PAGE, { inBackground: true });
+  try {
+    await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+    // Let the content script receive the selectors while the tab is hidden.
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await select(tab);
+    await waitForHidden(tab.linkedBrowser);
+  } finally {
+    BrowserTestUtils.removeTab(tab);
+  }
 });
 
 // Procedural filters (procedural.js, the add-on's own file, run in a real

@@ -74,7 +74,7 @@
     --border-radius-large: calc(var(--ae-rad) + 3px);
     --border-radius-xlarge: calc(var(--ae-rad) * 2);
     --button-border-radius: var(--ae-rad);
-    --input-text-border-radius: var(--ae-rad);
+    --input-border-radius: var(--ae-rad);
     --input-search-border-radius: var(--ae-rad);
     --card-border-radius: calc(var(--ae-rad) + 3px);
 
@@ -188,8 +188,8 @@
   /* Search fields: one bottom line, no box. The accent line, twice as
    * thick, is the focus indicator. */
   moz-input-search {
-    --input-text-border: none;
-    --input-text-background-color: transparent;
+    --input-border: none;
+    --input-background-color: transparent;
     --input-search-border-radius: 0;
     /* The inner field's focus ring is the platform's outline: auto, drawn
      * outside the field (a two-tone ring no color token removes); the host

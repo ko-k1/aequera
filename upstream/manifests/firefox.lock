@@ -17,16 +17,16 @@ upstream:
     url: https://github.com/mozilla-firefox/firefox.git
 
   channel: release
-  version: "158.0.1"
+  version: "159.0.1"
 
   revision:
-    git: "9378fbc58660847fbc02c3486a0ecd6049978e25"
+    git: "6181e6b5f28a8fbae1d5c3ef6f6626b5a2180213"
 
   resolved_from:
     type: tag
-    ref: FIREFOX_158_0_1_RELEASE
+    ref: FIREFOX_159_0_1_RELEASE
 
-  pinned_at: 2026-10-26
+  pinned_at: 2026-11-04
 
 patchset:
   manifest: patches/manifest.yaml

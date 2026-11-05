@@ -4,6 +4,7 @@
 ["browser_aequera_adveil.js"]
 support-files = [
   "adveil_page.html",
+  "adveil_late.html",
   "adveil_app.js",
   "ads.bundle.js",
   "adveil_ad.svg",

@@ -35,7 +35,7 @@ Upstream risk: low for the patch (one line next to two stable imports).
   and the test checks the main ones.
 
 diff --git a/toolkit/themes/shared/in-content/common-shared.css b/toolkit/themes/shared/in-content/common-shared.css
-index 21e9e8d5593b..3fde91dc1c02 100644
+index 14c0bf4c4d4e..8b7b62105e06 100644
 --- a/toolkit/themes/shared/in-content/common-shared.css
 +++ b/toolkit/themes/shared/in-content/common-shared.css
 @@ -4,6 +4,9 @@

@@ -56,10 +56,10 @@ Upstream risk: medium. Hooks nsWindow's opaque-region path, container
   itself, drop this patch in favor of upstream's.
 
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index ea124d888416..19b4a888c9ad 100644
+index 80be46d83cc0..b97be57eecde 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
-@@ -21056,6 +21056,13 @@
+@@ -21113,6 +21113,13 @@
    value: true
    mirror: once
  
@@ -74,7 +74,7 @@ index ea124d888416..19b4a888c9ad 100644
  - name: widget.wayland.vsync.enabled
    type: bool
 diff --git a/widget/gtk/nsWaylandDisplay.cpp b/widget/gtk/nsWaylandDisplay.cpp
-index 2f8bde9993e2..e553e4acf215 100644
+index f64d7fee0b7f..f3b017a44a8e 100644
 --- a/widget/gtk/nsWaylandDisplay.cpp
 +++ b/widget/gtk/nsWaylandDisplay.cpp
 @@ -11,6 +11,7 @@
@@ -85,7 +85,7 @@ index 2f8bde9993e2..e553e4acf215 100644
  #include "mozilla/Sprintf.h"
  #include "mozilla/StaticMutex.h"
  #include "mozilla/StaticPrefs_general.h"
-@@ -621,6 +622,43 @@ void nsWaylandDisplay::SetColorManager(wp_color_manager_v1* aColorManager) {
+@@ -644,6 +645,43 @@ void nsWaylandDisplay::SetColorManager(wp_color_manager_v1* aColorManager) {
    }
  }
  
@@ -129,7 +129,7 @@ index 2f8bde9993e2..e553e4acf215 100644
  void nsWaylandDisplay::SetSupportedCoefficientsAndRanges(uint32_t aCoefficients,
                                                           uint32_t aRange) {
    if (aCoefficients < sSupportedRangesNum) {
-@@ -896,6 +934,10 @@ static void global_registry_handler(void* data, wl_registry* registry,
+@@ -919,6 +957,10 @@ static void global_registry_handler(void* data, wl_registry* registry,
      auto* pipShell = WaylandRegistryBind<xx_pip_shell_v1>(
          registry, id, &xx_pip_shell_v1_interface, 1);
      display->SetPipShell(pipShell);
@@ -140,7 +140,7 @@ index 2f8bde9993e2..e553e4acf215 100644
    } else if (iface.EqualsLiteral("xdg_wm_base")) {
      uint32_t vers = MIN(version, (uint32_t)xdg_wm_base_interface.version);
      auto* xdgWm = WaylandRegistryBind<xdg_wm_base>(
-@@ -1355,6 +1397,7 @@ void nsWaylandDisplay::Init() {
+@@ -1378,6 +1420,7 @@ void nsWaylandDisplay::Init() {
    if (!GetFractionalScaleManager()) {
      NS_WARNING("Missing wp_fractional_scale_v1 wayland protocol!");
    }
@@ -149,7 +149,7 @@ index 2f8bde9993e2..e553e4acf215 100644
  
  bool nsWaylandDisplay::IsTFSupported(uint32_t aTF) {
 diff --git a/widget/gtk/nsWaylandDisplay.h b/widget/gtk/nsWaylandDisplay.h
-index f7430873a469..c517c06d3dfa 100644
+index e66056d2ac4a..b419105f6d46 100644
 --- a/widget/gtk/nsWaylandDisplay.h
 +++ b/widget/gtk/nsWaylandDisplay.h
 @@ -16,6 +16,7 @@
@@ -160,7 +160,7 @@ index f7430873a469..c517c06d3dfa 100644
  #include "mozilla/widget/fractional-scale-v1-client-protocol.h"
  #include "mozilla/widget/gtk-primary-selection-client-protocol.h"
  #include "mozilla/widget/idle-inhibit-unstable-v1-client-protocol.h"
-@@ -142,6 +143,15 @@ class nsWaylandDisplay {
+@@ -145,6 +146,15 @@ class nsWaylandDisplay {
    }
    void SetPipShell(xx_pip_shell_v1* aShell) { mPipShell = aShell; }
    xx_pip_shell_v1* GetPipShell() const { return mPipShell; }
@@ -176,7 +176,7 @@ index f7430873a469..c517c06d3dfa 100644
    void SetXdgWm(xdg_wm_base* aWmBase) { mWmBase = aWmBase; }
    xdg_wm_base* GetXdgWm() const { return mWmBase; }
    void SetCMSupportedFeature(uint32_t aFeature);
-@@ -236,6 +246,9 @@ class nsWaylandDisplay {
+@@ -239,6 +249,9 @@ class nsWaylandDisplay {
    wp_color_manager_v1* mColorManager = nullptr;
    wp_color_representation_manager_v1* mColorRepresentationManager = nullptr;
    xx_pip_shell_v1* mPipShell = nullptr;
@@ -187,7 +187,7 @@ index f7430873a469..c517c06d3dfa 100644
    xdg_session_manager_v1* mSessionManager = nullptr;
    xdg_session_v1* mWaylandSession = nullptr;
 diff --git a/widget/gtk/nsWindow.cpp b/widget/gtk/nsWindow.cpp
-index 42d7d8a88500..e93256d01159 100644
+index 8b8fc4480ab2..5a1b869a9db0 100644
 --- a/widget/gtk/nsWindow.cpp
 +++ b/widget/gtk/nsWindow.cpp
 @@ -2401,6 +2401,12 @@ void nsWindow::OnContainerSizeAllocate(GtkAllocation* aAllocation) {
@@ -203,7 +203,7 @@ index 42d7d8a88500..e93256d01159 100644
    // Invalidate the new part of the window now for the pending paint to
    // minimize background flashes (GDK does not do this for external
    // renewClientSizes of toplevels.)
-@@ -5077,6 +5083,12 @@ void nsWindow::UpdateOpaqueRegionInternal() {
+@@ -5073,6 +5079,12 @@ void nsWindow::UpdateOpaqueRegionInternal() {
      }
  #endif
    }
@@ -216,7 +216,7 @@ index 42d7d8a88500..e93256d01159 100644
  }
  
  bool nsWindow::IsChromeWindowTitlebar() {
-@@ -7405,6 +7417,7 @@ void nsWindow::OnUnmap() {
+@@ -7401,6 +7413,7 @@ void nsWindow::OnUnmap() {
  #ifdef MOZ_WAYLAND
    if (AsWayland()) {
      AsWayland()->ClearPipResources();
@@ -225,7 +225,7 @@ index 42d7d8a88500..e93256d01159 100644
  #endif
  
 diff --git a/widget/gtk/nsWindowWayland.cpp b/widget/gtk/nsWindowWayland.cpp
-index b9f7e3cf2413..a25df93ab13c 100644
+index e45d51344563..111a86447d90 100644
 --- a/widget/gtk/nsWindowWayland.cpp
 +++ b/widget/gtk/nsWindowWayland.cpp
 @@ -6,8 +6,12 @@
@@ -241,7 +241,7 @@ index b9f7e3cf2413..a25df93ab13c 100644
  #include "mozilla/PresShell.h"
  #include "mozilla/StaticPrefs_widget.h"
  #include "mozilla/VsyncDispatcher.h"
-@@ -2056,6 +2060,117 @@ void nsWindowWayland::ClearPipResources() {
+@@ -2062,6 +2066,117 @@ void nsWindowWayland::ClearPipResources() {
    MozClearPointer(mPipResources.mXdgSurface, xdg_surface_destroy);
  }
  
@@ -359,7 +359,7 @@ index b9f7e3cf2413..a25df93ab13c 100644
  bool nsWindowWayland::PIPMove() {
    if (!mPipResources.mPipSurface) {
      return false;
-@@ -2177,6 +2292,7 @@ void nsWindowWayland::DestroyNative() {
+@@ -2183,6 +2298,7 @@ void nsWindowWayland::DestroyNative() {
    }
    MozClearPointer(mSessionRestoreToken, xdg_toplevel_session_v1_destroy);
    ClearPipResources();
@@ -367,7 +367,7 @@ index b9f7e3cf2413..a25df93ab13c 100644
  
    // Shut down our local vsync source
    // Also drops reference to nsWindow::mSurface.
-@@ -2294,7 +2410,10 @@ bool nsWindowWayland::ApplyEnterLeaveMutterWorkaround() {
+@@ -2300,7 +2416,10 @@ bool nsWindowWayland::ApplyEnterLeaveMutterWorkaround() {
    return false;
  }
  

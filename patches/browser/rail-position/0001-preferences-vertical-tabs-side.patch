@@ -33,10 +33,10 @@ Upstream risk: low-medium; one setting and one group item in the
   reworking, so the group's item list may move between releases.
 
 diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
-index 50ba8c2da36d..15e309d7481c 100644
+index 4f4aa1a0d9a5..5733b8630d4a 100644
 --- a/browser/components/preferences/config/tabs-browsing.mjs
 +++ b/browser/components/preferences/config/tabs-browsing.mjs
-@@ -101,6 +101,7 @@ Preferences.addAll([
+@@ -107,6 +107,7 @@ Preferences.addAll([
  
    // Browser layout
    { id: "sidebar.verticalTabs", type: "bool" },
@@ -44,7 +44,7 @@ index 50ba8c2da36d..15e309d7481c 100644
  ]);
  
  if (lazy.AppConstants.platform === "win") {
-@@ -560,6 +561,23 @@ Preferences.addSetting({
+@@ -621,6 +622,23 @@ Preferences.addSetting({
    set: value => value === "true",
  });
  
@@ -68,7 +68,7 @@ index 50ba8c2da36d..15e309d7481c 100644
  SettingGroupManager.registerGroups({
    browserLayout: {
      subcategory: "layout",
-@@ -593,6 +611,23 @@ SettingGroupManager.registerGroups({
+@@ -654,6 +672,23 @@ SettingGroupManager.registerGroups({
            },
          ],
        },
@@ -93,7 +93,7 @@ index 50ba8c2da36d..15e309d7481c 100644
    },
    tabs: {
 diff --git a/browser/locales/en-US/browser/preferences/preferences.ftl b/browser/locales/en-US/browser/preferences/preferences.ftl
-index 1e4acae2ef88..5f9dbcef23a7 100644
+index 0097319b4918..43f6312e231c 100644
 --- a/browser/locales/en-US/browser/preferences/preferences.ftl
 +++ b/browser/locales/en-US/browser/preferences/preferences.ftl
 @@ -365,6 +365,15 @@ browser-layout-vertical-tabs2 =

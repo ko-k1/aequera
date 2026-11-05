@@ -120,6 +120,19 @@ pref("browser.tabs.parkedHiddenSources", "aequera-workspaces", locked);
 // than one tab it asks first. Unchecking the prompt's box sets this false.
 pref("aequera.workspaces.warnOnClose", true);
 
+// Inactive workspaces park tabs; they should not keep every page's content
+// process alive for the whole session. A tab hidden by a workspace is
+// discarded after this delay (ms), measured from when that tab was parked;
+// switching other workspaces does not restart it, and switching back reloads
+// it from session state. 10 minutes matches Firefox's own floor for unloading
+// an inactive tab under memory pressure
+// (browser.tabs.min_inactive_duration_before_unload), so a quick look at
+// another workspace never reloads anything. 0 keeps every parked tab
+// loaded. Tabs playing media or sharing camera/mic/screen, private tabs,
+// pinned tabs, and tabs a page or extension marked undiscardable are never
+// discarded.
+pref("aequera.workspaces.unloadAfterMs", 600000);
+
 // Sort Tabs by Site (Ctrl+Alt+S, the tab context menu, the command surface;
 // never automatic): a site with more than this many tabs in the workspace
 // moves to a workspace named after it. 0 sorts without moving; a negative

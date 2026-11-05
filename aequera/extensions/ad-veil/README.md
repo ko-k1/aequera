@@ -87,6 +87,10 @@ Slice 1:
   `127.0.0.1` and `localhost` by EasyList's own `$generichide` exceptions.
 - SpiderMonkey (content process, 30,368 corpus requests): 8.5 µs mean per
   check, p99 40 µs; list compile 115 ms; module instantiate 157 ms.
+- Engine cache (2026-11-04): the serialized engine is 6.3 MB (4.8 MB on
+  disk), restore 31 ms vs compile 169 ms for the shipped lists in a Node/V8
+  check; the ABI's serialize/deserialize round trip is covered by
+  `cargo test`.
 
 Slice 2:
 
@@ -212,9 +216,18 @@ Popups and redirects (`docs/design/ADS.md`):
 
 ## Known gaps (later slices)
 
-- Startup cost: instantiate + compile (about 270 ms) runs on every start;
-  requests wait for it. A cached serialized engine (load 44 ms in the spike)
-  and a smaller module are the first candidates.
+- Startup cost: the first start still instantiates and compiles (about
+  270 ms), but later starts restore the serialized engine from IndexedDB
+  (44 ms in the spike; 31 ms for the shipped lists in a Node check) and
+  requests wait only for that. The cache key includes both list digests,
+  engine.wasm's digest, and the add-on version, so changed lists or a
+  rebuilt module recompile; a smaller module remains a candidate.
+- Class/id discovery after load is a bounded sweep, not an attribute
+  MutationObserver: a mutation-heavy page kept Gecko busy creating a record
+  per changed class/id. The sweep visits 5000 elements a second, so a class
+  that appears on an existing element is hidden within about a second on
+  pages up to that size; larger documents cycle in chunks. Inserted
+  subtrees are queued at once.
 - Block mode stops ads before they exist, so the vault fills mostly from
   veiled sites; ads drawn on a canvas or as HTML5 without an `<img>` are
   recorded without an image; lazy images never scrolled into view are not

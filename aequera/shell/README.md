@@ -372,13 +372,20 @@ the rest are parked with Firefox's native hidden tabs.
 | File | Role |
 |---|---|
 | `workspace-model.js` | Pure model: state validation/recovery, switch plans, digit shortcuts, close plans. A classic script (the bootstrap loads it uncached) that also exports itself as CommonJS; node tests: `node --test aequera/shell/firefox/workspaces/workspace-model.test.mjs` |
-| `aequera-workspaces.js` | Window controller: applies plans via gBrowser, persists with SessionStore (window value `aequera-workspaces`, tab value `aequera-workspace`), renders the dock |
+| `aequera-workspaces.js` | Window controller: applies plans via gBrowser, persists with SessionStore (window value `aequera-workspaces`, tab value `aequera-workspace`), discards parked tabs, renders the dock |
 | `aequera-workspaces.css` | Dock: one layout in both states ("icons never move": each dot stays centered on the collapsed icon column); names and counts are always laid out and fade in/out, revealed by the widening rail and clipped away by the narrowing one |
 
 - Pinned tabs are global (Firefox cannot hide them).
 - Only tabs hidden by workspaces are ever shown again; tabs hidden by
   extensions keep their state (extension privilege boundary).
 - Tabs sharing camera/mic/screen are never hidden.
+- After 10 minutes away, a workspace's parked tabs are discarded
+  (`aequera.workspaces.unloadAfterMs`; 0 keeps them loaded). The delay is
+  per tab: switching other workspaces does not restart it. Session state is
+  flushed first, so switching back reloads the page; media/WebRTC,
+  private, pinned, and undiscardable tabs stay live. Tabs sorted into
+  another workspace are parked the same way. Before this, parked tabs kept
+  every content process alive for the whole session.
 - Reaching another workspace's tab switches to that workspace.
 - Closing a workspace's last tab replaces it with a new tab in the same
   workspace; the window never closes while other workspaces hold tabs

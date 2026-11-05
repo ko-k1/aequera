@@ -10,13 +10,19 @@
 
 class VeilEngine {
   static #module = null;
+  static #source = null;
+
+  // The bytes engine.wasm was compiled from. Cached for the digest in the
+  // engine cache key; load() uses the same fetch.
+  static source() {
+    VeilEngine.#source ||= fetch(browser.runtime.getURL("engine.wasm")).then(response => response.arrayBuffer());
+    return VeilEngine.#source;
+  }
 
   // One compiled module; each engine is an instance of it (its own memory,
   // its own rules).
   static async load() {
-    VeilEngine.#module ||= fetch(browser.runtime.getURL("engine.wasm"))
-      .then(response => response.arrayBuffer())
-      .then(bytes => WebAssembly.compile(bytes));
+    VeilEngine.#module ||= VeilEngine.source().then(bytes => WebAssembly.compile(bytes));
     const instance = await WebAssembly.instantiate(await VeilEngine.#module, {});
     return new VeilEngine(instance.exports);
   }
@@ -82,6 +88,29 @@ class VeilEngine {
       return this.#x.veil_compile(at, encoded.length) === 0;
     } finally {
       this.#x.veil_free(at, encoded.length);
+    }
+  }
+
+  // The compiled engine as bytes for the next start's restore(); null
+  // without an engine. A copy: the module's output buffer is reused.
+  serialize() {
+    const length = this.#x.veil_serialize();
+    if (!length) {
+      return null;
+    }
+    const at = this.#x.veil_out();
+    return this.#bytes().slice(at, at + length);
+  }
+
+  // Loads bytes from serialize(). False (and the current engine stays) if
+  // they do not load.
+  restore(bytes) {
+    const at = this.#x.veil_alloc(bytes.length);
+    this.#bytes().set(bytes, at);
+    try {
+      return this.#x.veil_load(at, bytes.length) === 0;
+    } finally {
+      this.#x.veil_free(at, bytes.length);
     }
   }
 

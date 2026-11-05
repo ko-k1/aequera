@@ -31,7 +31,7 @@ Validation: generated dist/bin/application.ini carries Vendor=Aequera,
 Upstream risk: low; three literal values next to MOZ_APP_ID.
 
 diff --git a/browser/moz.configure b/browser/moz.configure
-index ef7de8397fa9..d05e17dec5bc 100644
+index 8979a2e4e8d9..cbd817ed9d02 100644
 --- a/browser/moz.configure
 +++ b/browser/moz.configure
 @@ -11,7 +11,15 @@ imply_option("MOZ_NORMANDY", True)

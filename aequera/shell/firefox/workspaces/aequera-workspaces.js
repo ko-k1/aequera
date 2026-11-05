@@ -29,6 +29,13 @@ var AequeraWorkspaces = (() => {
   const SORT_OVER_PREF = "aequera.tabs.sortBySite.over";
   const SORT_KEY_ID = "aequera-key-sort-tabs";
   const WARN_CLOSE_PREF = "aequera.workspaces.warnOnClose";
+  const UNLOAD_PREF = "aequera.workspaces.unloadAfterMs";
+  // Firefox's own floor for memory-pressure tab unloading. Leaving a
+  // workspace for at least this long is what makes a reload acceptable.
+  const UNLOAD_DEFAULT_MS = 10 * 60 * 1000;
+  // A tab whose discard failed (a beforeunload prompt, a dialog) is tried
+  // again after this long instead of immediately.
+  const UNLOAD_RETRY_MS = 60 * 1000;
   // The modifier Firefox's own tab digits leave free on this OS.
   const DIGIT_MODIFIER = AequeraPlatform.workspaceDigitModifier;
 
@@ -57,6 +64,14 @@ var AequeraWorkspaces = (() => {
     lastSelected: new Map(),
     /** digit -> { label (as menus show it), aria (aria-keyshortcuts) }. */
     digitShortcuts: new Map(),
+    /** Pending discard pass for tabs in inactive workspaces (0: none). */
+    unloadTimer: 0,
+    /** tab -> when it was parked by an inactive workspace (ms). */
+    parkedSince: new WeakMap(),
+    /** tab -> when a failed discard may be tried again (ms). */
+    unloadRetryAt: new WeakMap(),
+    /** Set by the window's unload: no timers or passes after it. */
+    unloaded: false,
     /** Resolves once state is loaded and the dock is mounted. */
     ready: null,
 
@@ -138,6 +153,7 @@ var AequeraWorkspaces = (() => {
       for (const tab of plan.hide) {
         gBrowser.hideTab(tab, WORKSPACE_SOURCE);
       }
+      this.scheduleUnload();
     },
 
     switchTo(id) {
@@ -146,6 +162,176 @@ var AequeraWorkspaces = (() => {
       }
       this.apply(id);
       this.render();
+    },
+
+    /** Delay before a parked tab is discarded; 0 keeps every tab loaded. */
+    unloadDelay() {
+      return Math.max(0, Services.prefs.getIntPref(UNLOAD_PREF, UNLOAD_DEFAULT_MS));
+    },
+
+    /**
+     * A tab parked by an inactive workspace: hidden by this feature and not
+     * in the workspace on screen. Protected tabs are parked too; the time
+     * they spend away is kept so they can unload when the protection goes.
+     */
+    isParked(tab) {
+      return (
+        !tab.closing &&
+        !tab.pinned &&
+        tab.hidden &&
+        SessionStore.getCustomTabValue(tab, "hiddenBy") === WORKSPACE_SOURCE &&
+        this.workspaceOf(tab) !== this.state.active
+      );
+    },
+
+    /** Remember when each tab was parked; forget tabs shown again. */
+    trackParkedTabs() {
+      const now = Date.now();
+      for (const tab of gBrowser.tabs) {
+        if (this.isParked(tab)) {
+          if (!this.parkedSince.has(tab)) {
+            this.parkedSince.set(tab, now);
+          }
+        } else {
+          this.parkedSince.delete(tab);
+          this.unloadRetryAt.delete(tab);
+        }
+      }
+    },
+
+    /**
+     * A parked tab may be discarded once its own delay has passed. Anything
+     * a user is watching, listening to, or sharing, or that a page/extension
+     * asked to keep loaded, stays live: the same protections as Firefox's own
+     * TabUnloader.
+     */
+    canUnload(tab) {
+      if (tab.selected || !this.isParked(tab)) {
+        return false;
+      }
+      if (tab.undiscardable || tab.soundPlaying || tab.pictureinpicture || tab.hasAttribute("pending")) {
+        return false;
+      }
+      const browser = tab.linkedBrowser;
+      if (!browser?.isConnected || !browser.isRemoteBrowser) {
+        return false;
+      }
+      if (browser._sharingState?.webRTC?.sharing) {
+        return false;
+      }
+      try {
+        if (browser.browsingContext?.currentWindowGlobal?.hasActivePeerConnections()) {
+          return false;
+        }
+      } catch {
+        // A browser going away: nothing to discard.
+        return false;
+      }
+      return !(typeof PrivateBrowsingUtils != "undefined" && PrivateBrowsingUtils.isBrowserPrivate(browser));
+    },
+
+    /**
+     * Arm the next discard pass for the earliest tab whose own delay has
+     * passed. Switching workspaces only changes which tabs are parked; it
+     * does not restart the clock for tabs that stayed hidden, so frequent
+     * switching cannot keep them loaded forever.
+     */
+    scheduleUnload() {
+      if (this.unloadTimer) {
+        clearTimeout(this.unloadTimer);
+        this.unloadTimer = 0;
+      }
+      if (this.unloaded) {
+        return;
+      }
+      this.trackParkedTabs();
+      const delay = this.unloadDelay();
+      if (!delay) {
+        return;
+      }
+      const now = Date.now();
+      let nextAt = Infinity;
+      for (const tab of gBrowser.tabs) {
+        if (!this.isParked(tab) || tab.hasAttribute("pending") || !this.canUnload(tab)) {
+          // A protected tab is not given a wake-up of its own: the next
+          // workspace switch or sort checks it again once its protection is
+          // gone. A due tab that failed to discard has a retry time below.
+          continue;
+        }
+        const since = this.parkedSince.get(tab) ?? now;
+        const due = Math.max(since + delay, this.unloadRetryAt.get(tab) ?? 0);
+        if (due < nextAt) {
+          nextAt = due;
+        }
+      }
+      if (nextAt === Infinity) {
+        return;
+      }
+      this.unloadTimer = setTimeout(() => {
+        this.unloadTimer = 0;
+        this.unloadInactiveWorkspaceTabs({ due: true })
+          .catch(error => {
+            console.error("aequera-workspaces: unloading parked tabs failed", error);
+          })
+          .finally(() => this.scheduleUnload());
+      }, Math.max(0, nextAt - now));
+    },
+
+    /**
+     * Discard parked tabs. With `due`, only tabs whose own delay has passed
+     * are discarded (the timer's pass); without it, every candidate is
+     * discarded (tests and the benchmark). Session state is flushed first,
+     * so switching back restores the page; tabs that ask before being left
+     * are skipped (no force discard). Returns the count.
+     */
+    async unloadInactiveWorkspaceTabs({ due = false } = {}) {
+      let unloaded = 0;
+      const delay = this.unloadDelay();
+      if (due && !delay) {
+        return 0;
+      }
+      const isDue = tab => {
+        const since = this.parkedSince.get(tab);
+        return since !== undefined && since + delay <= Date.now();
+      };
+      for (const tab of gBrowser.tabs) {
+        if (this.unloaded) {
+          break;
+        }
+        if (!this.isParked(tab) || tab.hasAttribute("pending")) {
+          continue;
+        }
+        if (due && !isDue(tab)) {
+          continue;
+        }
+        if (!this.canUnload(tab)) {
+          continue;
+        }
+        try {
+          await gBrowser.prepareDiscardBrowser(tab);
+        } catch {
+          this.unloadRetryAt.set(tab, Date.now() + UNLOAD_RETRY_MS);
+          continue;
+        }
+        // Flushing is async: the tab may have been selected, closed, or
+        // started playing media since the snapshot.
+        if (!this.canUnload(tab) || (due && !isDue(tab))) {
+          continue;
+        }
+        try {
+          if (gBrowser.discardBrowser(tab)) {
+            this.parkedSince.delete(tab);
+            this.unloadRetryAt.delete(tab);
+            unloaded++;
+          } else {
+            this.unloadRetryAt.set(tab, Date.now() + UNLOAD_RETRY_MS);
+          }
+        } catch (error) {
+          this.unloadRetryAt.set(tab, Date.now() + UNLOAD_RETRY_MS);
+          console.error("aequera-workspaces: discarding a parked tab failed", error);
+        }
+      }
+      return unloaded;
     },
 
     newWorkspace() {
@@ -328,6 +514,7 @@ var AequeraWorkspaces = (() => {
         const used = move.keys.reduce((best, t) => (!best || t.lastAccessed > best.lastAccessed ? t : best), null);
         this.lastSelected.set(move.workspace, new WeakRef(used));
       }
+      this.scheduleUnload();
     },
 
     /**
@@ -418,6 +605,11 @@ var AequeraWorkspaces = (() => {
           this.render();
           break;
         case "unload":
+          this.unloaded = true;
+          if (this.unloadTimer) {
+            clearTimeout(this.unloadTimer);
+            this.unloadTimer = 0;
+          }
           gBrowser.tabContainer.removeEventListener("TabOpen", this);
           gBrowser.tabContainer.removeEventListener("TabSelect", this);
           gBrowser.tabContainer.removeEventListener("TabClose", this);
