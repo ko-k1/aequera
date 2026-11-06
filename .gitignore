@@ -24,6 +24,7 @@ upstream/firefox/
 .claude/
 .codex/
 .koteli/
+.kilo/
 
 # Local test/profile state
 .tmp/
